@@ -1,4 +1,4 @@
-/* Atlas: callouts, folder colors, badges, the change bar, the sessions pane, mentions. */
+/* Atlas: callouts, folder colors, badges, the change bar, the sessions pane, mentions, graph colors. */
 
 /* Callouts: the lead callout of each thread, session, and change document. */
 .callout[data-callout="stub"] {
@@ -217,4 +217,78 @@
 .atlas-setting-status {
 	margin-top: var(--size-4-1);
 	color: var(--text-faint);
+}
+
+/* Graph colors: the mode buttons and the legend over the graph view. */
+/* Bottom left: the graph's own controls take the top right, and a narrow pane widens them. */
+.atlas-graph-colors {
+	position: absolute;
+	bottom: var(--size-4-2);
+	left: var(--size-4-2);
+	z-index: 2;
+	display: flex;
+	flex-direction: column-reverse;
+	gap: var(--size-4-2);
+	max-width: calc(100% - 2 * var(--size-4-2));
+	pointer-events: none;
+}
+.atlas-graph-modes,
+.atlas-graph-legend {
+	pointer-events: auto;
+	align-self: flex-start;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+}
+.atlas-graph-modes {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px;
+	padding: 2px;
+}
+.atlas-graph-mode {
+	padding: var(--size-2-1) var(--size-4-2);
+	font-size: var(--font-ui-smaller);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+}
+.atlas-graph-mode:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}
+.atlas-graph-mode.is-active {
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+}
+.atlas-graph-legend {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	align-items: center;
+	column-gap: var(--size-4-2);
+	row-gap: var(--size-2-2);
+	padding: var(--size-4-2) var(--size-4-3);
+	max-height: 40vh;
+	overflow-y: auto;
+	font-size: var(--font-ui-smaller);
+}
+.atlas-graph-legend-row {
+	display: contents;
+}
+.atlas-graph-swatch {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+}
+.atlas-graph-legend-name {
+	color: var(--text-normal);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.atlas-graph-legend-count {
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+	text-align: right;
 }

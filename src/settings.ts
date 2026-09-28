@@ -1,17 +1,20 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import { binaryVersion, findBinary } from "./cli";
+import { GRAPH_MODES, GraphMode } from "./graphgroups";
 import type AtlasPlugin from "./main";
 
 export interface AtlasSettings {
 	binaryPath: string;
 	syncOnChange: boolean;
 	badges: boolean;
+	graphColors: GraphMode;
 }
 
 export const DEFAULT_SETTINGS: AtlasSettings = {
 	binaryPath: "",
 	syncOnChange: true,
 	badges: true,
+	graphColors: "area",
 };
 
 export class AtlasSettingTab extends PluginSettingTab {
@@ -72,5 +75,15 @@ export class AtlasSettingTab extends PluginSettingTab {
 					this.plugin.badges.setEnabled(value);
 				}),
 			);
+
+		new Setting(containerEl)
+			.setName("Graph colors")
+			.setDesc("Colors the nodes of the graph by area, by type, by the state of their threads, or by how recently they changed. The graph view has the same buttons.")
+			.addDropdown((dropdown) => {
+				for (const { mode, label } of GRAPH_MODES) dropdown.addOption(mode, label);
+				dropdown
+					.setValue(this.plugin.settings.graphColors)
+					.onChange((value) => void this.plugin.graphColors.setMode(value as GraphMode));
+			});
 	}
 }

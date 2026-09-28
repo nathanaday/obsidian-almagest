@@ -2,6 +2,8 @@ import { FileSystemAdapter, Notice, Plugin, TFile, debounce } from "obsidian";
 import { Badges } from "./badges";
 import { ChangeBar } from "./changebar";
 import { AtlasError, findBinary, runAtlas } from "./cli";
+import { GraphColors } from "./graphcolors";
+import { GRAPH_MODES, isGraphMode } from "./graphgroups";
 import { Synced, isThreadPath, syncSummary, syncedPaths, waitingLabel } from "./helpers";
 import { mentionEditor, mentionReading } from "./mentions";
 import { SESSIONS_VIEW, SessionsView, activeSessions } from "./sessions";
@@ -14,6 +16,7 @@ const ECHO_WINDOW = 5000;
 export default class AtlasPlugin extends Plugin {
 	settings: AtlasSettings = { ...DEFAULT_SETTINGS };
 	badges!: Badges;
+	graphColors!: GraphColors;
 
 	private syncing = false;
 	private syncTimer: number | null = null;
@@ -32,6 +35,15 @@ export default class AtlasPlugin extends Plugin {
 		this.badges = this.addChild(new Badges(this.app));
 		this.badges.setEnabled(this.settings.badges);
 		this.addChild(new ChangeBar(this));
+
+		this.graphColors = this.addChild(new GraphColors(this));
+		for (const { mode, label } of GRAPH_MODES) {
+			this.addCommand({
+				id: `graph-colors-${mode}`,
+				name: mode === "off" ? "Stop coloring the graph" : `Color the graph by ${label.toLowerCase()}`,
+				callback: () => void this.graphColors.setMode(mode),
+			});
+		}
 
 		this.addRibbonIcon("refresh-cw", "Atlas: sync the vault", () => void this.sync(true));
 		this.addCommand({ id: "sync", name: "Sync the vault", callback: () => void this.sync(true) });
@@ -71,6 +83,7 @@ export default class AtlasPlugin extends Plugin {
 
 	async loadSettings(): Promise<void> {
 		this.settings = { ...DEFAULT_SETTINGS, ...((await this.loadData()) as Partial<AtlasSettings> | null) };
+		if (!isGraphMode(this.settings.graphColors)) this.settings.graphColors = DEFAULT_SETTINGS.graphColors;
 	}
 
 	async saveSettings(): Promise<void> {
