@@ -1,0 +1,19 @@
+{
+  "name": "atlas-obsidian-plugin",
+  "version": "6.0.0",
+  "private": true,
+  "description": "The Obsidian plugin for Atlas.",
+  "scripts": {
+    "build": "tsc --noEmit && node esbuild.config.mjs production",
+    "dev": "node esbuild.config.mjs",
+    "test": "node esbuild.config.mjs test && node --test build-test/*.test.cjs"
+  },
+  "devDependencies": {
+    "@codemirror/state": "6.5.0",
+    "@codemirror/view": "6.38.6",
+    "@types/node": "26.6.3",
+    "esbuild": "0.28.2",
+    "obsidian": "1.13.1",
+    "typescript": "7.0.2"
+  }
+}

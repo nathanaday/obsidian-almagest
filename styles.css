@@ -1,0 +1,220 @@
+/* Atlas: callouts, folder colors, badges, the change bar, the sessions pane, mentions. */
+
+/* Callouts: the lead callout of each thread, session, and change document. */
+.callout[data-callout="stub"] {
+	--callout-color: var(--color-yellow-rgb);
+	--callout-icon: lucide-sprout;
+}
+.callout[data-callout="spec"] {
+	--callout-color: var(--color-blue-rgb);
+	--callout-icon: lucide-file-text;
+}
+.callout[data-callout="task"] {
+	--callout-color: var(--color-purple-rgb);
+	--callout-icon: lucide-list-checks;
+}
+.callout[data-callout="receipt"] {
+	--callout-color: var(--color-green-rgb);
+	--callout-icon: lucide-receipt;
+}
+.callout[data-callout="killed"] {
+	--callout-color: var(--color-red-rgb);
+	--callout-icon: lucide-ban;
+}
+.callout[data-callout="session"] {
+	--callout-color: var(--color-cyan-rgb);
+	--callout-icon: lucide-bot;
+}
+.callout[data-callout="change"] {
+	--callout-color: var(--color-orange-rgb);
+	--callout-icon: lucide-git-pull-request;
+}
+
+.callout[data-callout="atlas"] {
+	--callout-color: var(--color-cyan-rgb);
+	--callout-icon: lucide-map;
+}
+.callout[data-callout="area"] {
+	--callout-color: var(--color-cyan-rgb);
+	--callout-icon: lucide-layers;
+}
+.callout[data-callout="repository"] {
+	--callout-color: var(--color-cyan-rgb);
+	--callout-icon: lucide-git-branch;
+}
+
+/* Folder colors in the file explorer. The main folders Atlas keeps are cyan; the wiki's
+   knowledge folders are cool; the inbox, where the user drops work, is warm.
+   Bookkeeping folders keep the theme's color. */
+.nav-folder-title[data-path="inbox"] { --atlas-folder: var(--color-orange-rgb); }
+.nav-folder-title[data-path="threads"] { --atlas-folder: var(--color-cyan-rgb); }
+.nav-folder-title[data-path="sessions"] { --atlas-folder: var(--color-cyan-rgb); }
+.nav-folder-title[data-path="wiki"] { --atlas-folder: var(--color-cyan-rgb); }
+.nav-folder-title[data-path="wiki/concepts"] { --atlas-folder: var(--color-cyan-rgb); }
+.nav-folder-title[data-path="wiki/entities"] { --atlas-folder: var(--color-blue-rgb); }
+.nav-folder-title[data-path="wiki/policies"] { --atlas-folder: var(--color-purple-rgb); }
+
+.nav-folder-title[data-path="inbox"],
+.nav-folder-title[data-path="threads"],
+.nav-folder-title[data-path="sessions"],
+.nav-folder-title[data-path="wiki"],
+.nav-folder-title[data-path="wiki/concepts"],
+.nav-folder-title[data-path="wiki/entities"],
+.nav-folder-title[data-path="wiki/policies"] {
+	color: rgb(var(--atlas-folder));
+}
+
+/* Badges: a stub's stage and a session's status. */
+.atlas-badge {
+	--atlas-badge: var(--mono-rgb-100);
+	margin-inline-start: auto;
+	padding: 0 6px;
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.5;
+	flex-shrink: 0;
+	color: rgb(var(--atlas-badge));
+	background-color: rgba(var(--atlas-badge), 0.14);
+}
+.atlas-badge[data-kind="stage"][data-value="stub"] { --atlas-badge: var(--color-yellow-rgb); }
+.atlas-badge[data-kind="stage"][data-value="spec"] { --atlas-badge: var(--color-blue-rgb); }
+.atlas-badge[data-kind="stage"][data-value="tasks"] { --atlas-badge: var(--color-purple-rgb); }
+.atlas-badge[data-kind="stage"][data-value="closed"] { --atlas-badge: var(--color-green-rgb); }
+.atlas-badge[data-kind="status"][data-value="running"] { --atlas-badge: var(--color-green-rgb); }
+.atlas-badge[data-kind="status"][data-value="waiting"] { --atlas-badge: var(--color-orange-rgb); }
+.atlas-badge[data-kind="status"][data-value="lost"] { --atlas-badge: var(--color-red-rgb); }
+.atlas-badge[data-kind="status"][data-value="idle"],
+.atlas-badge[data-kind="status"][data-value="ended"] {
+	color: var(--text-faint);
+	background-color: var(--background-modifier-hover);
+}
+
+/* The bar over a proposed change. */
+.workspace-leaf-content:has(> .atlas-change-bar) > .view-content {
+	height: auto;
+	flex: 1 1 0;
+	min-height: 0;
+}
+.atlas-change-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-2) var(--size-4-3);
+	padding: var(--size-4-2) var(--size-4-4);
+	border-bottom: 1px solid var(--background-modifier-border);
+	background-color: rgba(var(--color-orange-rgb), 0.1);
+	font-size: var(--font-ui-small);
+}
+.atlas-change-bar-label {
+	font-weight: var(--font-semibold);
+	color: rgb(var(--color-orange-rgb));
+}
+.atlas-change-bar-counts {
+	color: var(--text-muted);
+}
+.atlas-change-bar-buttons {
+	display: flex;
+	gap: var(--size-4-2);
+	margin-inline-start: auto;
+}
+
+/* The sessions pane. */
+.atlas-sessions {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2);
+}
+.atlas-sessions-empty {
+	color: var(--text-muted);
+	padding: var(--size-4-2);
+}
+.atlas-session {
+	--atlas-session: var(--color-green-rgb);
+	padding: var(--size-4-2) var(--size-4-3);
+	border: 1px solid var(--background-modifier-border);
+	border-inline-start: 3px solid rgb(var(--atlas-session));
+	border-radius: var(--radius-m);
+	cursor: pointer;
+	font-size: var(--font-ui-small);
+}
+.atlas-session[data-status="waiting"] {
+	--atlas-session: var(--color-orange-rgb);
+}
+.atlas-session:hover {
+	background-color: var(--background-modifier-hover);
+}
+.atlas-session-head {
+	display: flex;
+	align-items: baseline;
+	gap: var(--size-4-2);
+}
+.atlas-session-status {
+	flex-shrink: 0;
+	padding: 0 6px;
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-smaller);
+	color: rgb(var(--atlas-session));
+	background-color: rgba(var(--atlas-session), 0.14);
+}
+.atlas-session-title {
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+.atlas-session-where,
+.atlas-session-progress {
+	margin-top: var(--size-4-1);
+	color: var(--text-muted);
+}
+.atlas-session-progress:empty {
+	display: none;
+}
+.atlas-session-foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-top: var(--size-4-2);
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+/* A count on the sessions ribbon icon while a session waits. */
+.atlas-sessions-ribbon {
+	position: relative;
+}
+.atlas-sessions-ribbon[data-atlas-count]::after {
+	content: attr(data-atlas-count);
+	position: absolute;
+	top: 0;
+	right: 0;
+	min-width: 14px;
+	height: 14px;
+	padding: 0 3px;
+	border-radius: 7px;
+	font-size: 10px;
+	line-height: 14px;
+	text-align: center;
+	color: var(--text-on-accent);
+	background-color: rgb(var(--color-orange-rgb));
+}
+.atlas-status-waiting {
+	color: rgb(var(--color-orange-rgb));
+	cursor: pointer;
+}
+.atlas-status-waiting.is-hidden {
+	display: none;
+}
+
+/* Mentions: "@atlas" in a task line. */
+.atlas-mention {
+	padding: 0 2px;
+	border-radius: var(--radius-s);
+	color: rgb(var(--color-purple-rgb));
+	background-color: rgba(var(--color-purple-rgb), 0.14);
+	font-weight: var(--font-semibold);
+}
+
+.atlas-setting-status {
+	margin-top: var(--size-4-1);
+	color: var(--text-faint);
+}
