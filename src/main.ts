@@ -2,6 +2,7 @@ import { FileSystemAdapter, Notice, Plugin, TFile, debounce } from "obsidian";
 import { Badges } from "./badges";
 import { ChangeBar } from "./changebar";
 import { AtlasError, findBinary, runAtlas } from "./cli";
+import { ScopeFolders } from "./folders";
 import { GraphColors } from "./graphcolors";
 import { GRAPH_MODES, isGraphMode } from "./graphgroups";
 import { Synced, isThreadPath, syncSummary, syncedPaths, waitingLabel } from "./helpers";
@@ -16,6 +17,7 @@ const ECHO_WINDOW = 5000;
 export default class AtlasPlugin extends Plugin {
 	settings: AtlasSettings = { ...DEFAULT_SETTINGS };
 	badges!: Badges;
+	scopeFolders!: ScopeFolders;
 	graphColors!: GraphColors;
 
 	private syncing = false;
@@ -35,6 +37,13 @@ export default class AtlasPlugin extends Plugin {
 		this.badges = this.addChild(new Badges(this.app));
 		this.badges.setEnabled(this.settings.badges);
 		this.addChild(new ChangeBar(this));
+		// A move in the wiki changes scopes, which sync writes into the pages' fields.
+		this.scopeFolders = this.addChild(
+			new ScopeFolders(this.app, () => {
+				if (this.settings.syncOnChange) this.scheduleSync();
+			}),
+		);
+		this.scopeFolders.setEnabled(this.settings.folderPages);
 
 		this.graphColors = this.addChild(new GraphColors(this));
 		for (const { mode, label } of GRAPH_MODES) {

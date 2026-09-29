@@ -221,3 +221,48 @@ export function isThreadPath(path: string): boolean {
 export function waitingLabel(n: number): string {
 	return n === 1 ? "Atlas: 1 session waits" : `Atlas: ${n} sessions wait`;
 }
+
+function baseName(path: string): string {
+	return path.slice(path.lastIndexOf("/") + 1);
+}
+
+function dirName(path: string): string {
+	const i = path.lastIndexOf("/");
+	return i < 0 ? "" : path.slice(0, i);
+}
+
+/** The page that would make a folder of the wiki a scope: wiki/…/X/X.md; null outside the wiki. */
+export function folderPagePath(folder: string): string | null {
+	if (!folder.startsWith("wiki/")) return null;
+	return `${folder}/${baseName(folder)}.md`;
+}
+
+/** Whether a path is the page of its own folder under the wiki. */
+export function isFolderPage(path: string): boolean {
+	return folderPagePath(dirName(path)) === path;
+}
+
+/**
+ * The rename that keeps a scope folder and its page in step after the user renamed one of
+ * them: a renamed folder renames its page, a renamed page renames its folder. null when
+ * nothing needs to follow.
+ */
+export function companionRename(isFolder: boolean, path: string, oldPath: string): { from: string; to: string } | null {
+	if (!path.startsWith("wiki/")) return null;
+	if (isFolder) {
+		const oldName = baseName(oldPath);
+		const name = baseName(path);
+		if (oldName === name) return null;
+		return { from: `${path}/${oldName}.md`, to: `${path}/${name}.md` };
+	}
+	if (!isFolderPage(oldPath) || dirName(path) !== dirName(oldPath) || !path.endsWith(".md")) return null;
+	const folder = dirName(path);
+	const name = baseName(path).slice(0, -3);
+	if (name === "" || name === baseName(folder)) return null;
+	return { from: folder, to: `${dirName(folder)}/${name}` };
+}
+
+/** A CSS string literal of s. */
+export function cssString(s: string): string {
+	return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\a ")}"`;
+}

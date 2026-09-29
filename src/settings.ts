@@ -7,6 +7,7 @@ export interface AtlasSettings {
 	binaryPath: string;
 	syncOnChange: boolean;
 	badges: boolean;
+	folderPages: boolean;
 	graphColors: GraphMode;
 }
 
@@ -14,6 +15,7 @@ export const DEFAULT_SETTINGS: AtlasSettings = {
 	binaryPath: "",
 	syncOnChange: true,
 	badges: true,
+	folderPages: true,
 	graphColors: "area",
 };
 
@@ -56,8 +58,8 @@ export class AtlasSettingTab extends PluginSettingTab {
 		void showVersion();
 
 		new Setting(containerEl)
-			.setName("Sync when a thread document changes")
-			.setDesc("Runs atlas-obsidian vault sync after you edit a file under threads/, so the board and the callouts follow.")
+			.setName("Sync when a thread document changes or a wiki page moves")
+			.setDesc("Runs atlas-obsidian vault sync after you edit a file under threads/ or move a file in wiki/, so the board, the callouts, and each page's scope follow.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncOnChange).onChange(async (value) => {
 					this.plugin.settings.syncOnChange = value;
@@ -73,6 +75,17 @@ export class AtlasSettingTab extends PluginSettingTab {
 					this.plugin.settings.badges = value;
 					await this.plugin.saveSettings();
 					this.plugin.badges.setEnabled(value);
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName("Open a scope folder's page from the folder")
+			.setDesc("In the file explorer, a click on an area's or a repository's folder opens its page, and the page itself is hidden inside the folder.")
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.folderPages).onChange(async (value) => {
+					this.plugin.settings.folderPages = value;
+					await this.plugin.saveSettings();
+					this.plugin.scopeFolders.setEnabled(value);
 				}),
 			);
 

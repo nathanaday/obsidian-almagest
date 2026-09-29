@@ -5,10 +5,14 @@ import {
 	asList,
 	binaryCandidates,
 	chooseBinary,
+	companionRename,
 	compareSessions,
 	countsLine,
+	cssString,
 	errorMessage,
+	folderPagePath,
 	formatAgo,
+	isFolderPage,
 	isThreadPath,
 	lastProgressLine,
 	linkTitle,
@@ -138,4 +142,18 @@ test("small labels", () => {
 	assert.ok(!isThreadPath("wiki/threads/x.md"));
 	assert.equal(waitingLabel(1), "Atlas: 1 session waits");
 	assert.equal(waitingLabel(2), "Atlas: 2 sessions wait");
+});
+
+test("a scope folder and its page follow each other's rename", () => {
+	assert.equal(folderPagePath("wiki/ML/CS566"), "wiki/ML/CS566/CS566.md");
+	assert.equal(folderPagePath("threads/X"), null);
+	assert.ok(isFolderPage("wiki/ML/CS566/CS566.md"));
+	assert.ok(!isFolderPage("wiki/ML/CS566/concepts/Backprop.md"));
+	assert.deepEqual(companionRename(true, "wiki/ML/CS566 DL", "wiki/ML/CS566"), { from: "wiki/ML/CS566 DL/CS566.md", to: "wiki/ML/CS566 DL/CS566 DL.md" });
+	assert.equal(companionRename(true, "wiki/Other/CS566", "wiki/ML/CS566"), null, "a moved folder keeps its name");
+	assert.deepEqual(companionRename(false, "wiki/ML/CS566/CS566 DL.md", "wiki/ML/CS566/CS566.md"), { from: "wiki/ML/CS566", to: "wiki/ML/CS566 DL" });
+	assert.equal(companionRename(false, "wiki/ML/CS566 DL/CS566 DL.md", "wiki/ML/CS566 DL/CS566.md"), null, "the page caught up with its folder");
+	assert.equal(companionRename(false, "wiki/ML/CS566/concepts/B.md", "wiki/ML/CS566/concepts/A.md"), null);
+	assert.equal(companionRename(false, "wiki/ML/CS566.md", "wiki/ML/CS566/CS566.md"), null, "a page moved out of its folder");
+	assert.equal(cssString('wiki/a "b"\\c'), '"wiki/a \\"b\\"\\\\c"');
 });

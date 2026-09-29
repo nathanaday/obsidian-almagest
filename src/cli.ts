@@ -47,7 +47,7 @@ export async function runAtlas<T>(bin: string | null, vault: string, args: strin
 	}
 }
 
-/** The version line the binary prints, such as "atlas-obsidian 6.3.0". */
+/** The version line the binary prints, such as "atlas-obsidian 6.4.0". */
 export async function binaryVersion(bin: string): Promise<string> {
 	return (await exec(bin, ["version"], undefined)).trim();
 }

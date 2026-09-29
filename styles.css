@@ -43,24 +43,24 @@
 	--callout-icon: lucide-git-branch;
 }
 
-/* Folder colors in the file explorer. The main folders Atlas keeps are cyan; the wiki's
-   knowledge folders are cool; the inbox, where the user drops work, is warm.
-   Bookkeeping folders keep the theme's color. */
+/* Folder colors in the file explorer. The main folders Atlas keeps are cyan; the type
+   folders of the wiki, at every level, are cool; the inbox, where the user drops work, is
+   warm. Bookkeeping folders keep the theme's color. */
 .nav-folder-title[data-path="inbox"] { --atlas-folder: var(--color-orange-rgb); }
 .nav-folder-title[data-path="threads"] { --atlas-folder: var(--color-cyan-rgb); }
 .nav-folder-title[data-path="sessions"] { --atlas-folder: var(--color-cyan-rgb); }
 .nav-folder-title[data-path="wiki"] { --atlas-folder: var(--color-cyan-rgb); }
-.nav-folder-title[data-path="wiki/concepts"] { --atlas-folder: var(--color-cyan-rgb); }
-.nav-folder-title[data-path="wiki/entities"] { --atlas-folder: var(--color-blue-rgb); }
-.nav-folder-title[data-path="wiki/policies"] { --atlas-folder: var(--color-purple-rgb); }
+.nav-folder-title[data-path^="wiki/"][data-path$="/concepts"] { --atlas-folder: var(--color-cyan-rgb); }
+.nav-folder-title[data-path^="wiki/"][data-path$="/entities"] { --atlas-folder: var(--color-blue-rgb); }
+.nav-folder-title[data-path^="wiki/"][data-path$="/policies"] { --atlas-folder: var(--color-purple-rgb); }
 
 .nav-folder-title[data-path="inbox"],
 .nav-folder-title[data-path="threads"],
 .nav-folder-title[data-path="sessions"],
 .nav-folder-title[data-path="wiki"],
-.nav-folder-title[data-path="wiki/concepts"],
-.nav-folder-title[data-path="wiki/entities"],
-.nav-folder-title[data-path="wiki/policies"] {
+.nav-folder-title[data-path^="wiki/"][data-path$="/concepts"],
+.nav-folder-title[data-path^="wiki/"][data-path$="/entities"],
+.nav-folder-title[data-path^="wiki/"][data-path$="/policies"] {
 	color: rgb(var(--atlas-folder));
 }
 
