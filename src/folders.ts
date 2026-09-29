@@ -1,5 +1,5 @@
 import { App, Component, Keymap, TAbstractFile, TFile, TFolder, debounce, getFrontMatterInfo, parseYaml } from "obsidian";
-import { companionRename, cssString, folderPagePath, isFolderPage } from "./helpers";
+import { companionRename, cssString, folderPagePath, isFolderPage, mirrorOf, wikiFolderOf } from "./helpers";
 
 const SCOPE_TYPES = new Set(["area", "repository"]);
 
@@ -29,7 +29,8 @@ export class ScopeFolders extends Component {
 		this.registerEvent(
 			this.app.vault.on("rename", (file, oldPath) => {
 				this.refresh();
-				if (!file.path.startsWith("wiki/") && !oldPath.startsWith("wiki/")) return;
+				const moved = (p: string) => p.startsWith("wiki/") || p.startsWith("threads/");
+				if (!moved(file.path) && !moved(oldPath)) return;
 				void this.follow(file instanceof TFolder, file.path, oldPath).finally(() => this.onMove());
 			}),
 		);
@@ -53,9 +54,10 @@ export class ScopeFolders extends Component {
 		return typeof type === "string" && SCOPE_TYPES.has(type);
 	}
 
-	/** The page that makes a folder a scope, or null. */
+	/** The page that makes a folder a scope, or null. A folder of threads/ stands for the
+	 * scope folder of the wiki at the same place. */
 	private pageOf(folder: string): TFile | null {
-		const path = folderPagePath(folder);
+		const path = folderPagePath(wikiFolderOf(folder));
 		const file = path ? this.app.vault.getAbstractFileByPath(path) : null;
 		return file instanceof TFile && this.isScopePage(file) ? file : null;
 	}
@@ -63,7 +65,11 @@ export class ScopeFolders extends Component {
 	private apply(): void {
 		this.scopes.clear();
 		for (const file of this.app.vault.getMarkdownFiles()) {
-			if (isFolderPage(file.path) && this.isScopePage(file)) this.scopes.add(file.parent?.path ?? "");
+			if (!isFolderPage(file.path) || !this.isScopePage(file)) continue;
+			const folder = file.parent?.path ?? "";
+			this.scopes.add(folder);
+			const mirror = mirrorOf(folder);
+			if (this.app.vault.getAbstractFileByPath(mirror) instanceof TFolder) this.scopes.add(mirror);
 		}
 		if (!this.style) return;
 		const rules: string[] = [];
@@ -71,7 +77,7 @@ export class ScopeFolders extends Component {
 			rules.push(`.nav-folder-title[data-path=${cssString(folder)}] .nav-folder-title-content { font-weight: var(--font-semibold); }`);
 			if (this.enabled) {
 				rules.push(`.nav-folder-title[data-path=${cssString(folder)}] { cursor: pointer; }`);
-				rules.push(`.nav-file-title[data-path=${cssString(folderPagePath(folder) ?? "")}] { display: none; }`);
+				if (folder.startsWith("wiki/")) rules.push(`.nav-file-title[data-path=${cssString(folderPagePath(folder) ?? "")}] { display: none; }`);
 			}
 		}
 		this.style.textContent = rules.join("\n");

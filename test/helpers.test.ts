@@ -13,6 +13,8 @@ import {
 	folderPagePath,
 	formatAgo,
 	isFolderPage,
+	mirrorOf,
+	wikiFolderOf,
 	isThreadPath,
 	lastProgressLine,
 	linkTitle,
@@ -156,4 +158,10 @@ test("a scope folder and its page follow each other's rename", () => {
 	assert.equal(companionRename(false, "wiki/ML/CS566/concepts/B.md", "wiki/ML/CS566/concepts/A.md"), null);
 	assert.equal(companionRename(false, "wiki/ML/CS566.md", "wiki/ML/CS566/CS566.md"), null, "a page moved out of its folder");
 	assert.equal(cssString('wiki/a "b"\\c'), '"wiki/a \\"b\\"\\\\c"');
+});
+
+test("a folder of threads/ stands for the scope folder of the wiki at the same place", () => {
+	assert.equal(mirrorOf("wiki/ML/CS566"), "threads/ML/CS566");
+	assert.equal(wikiFolderOf("threads/ML/CS566"), "wiki/ML/CS566");
+	assert.equal(wikiFolderOf("wiki/ML"), "wiki/ML");
 });

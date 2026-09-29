@@ -266,3 +266,13 @@ export function companionRename(isFolder: boolean, path: string, oldPath: string
 export function cssString(s: string): string {
 	return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\a ")}"`;
 }
+
+/** The folder of threads/ that stands for a scope folder of the wiki: wiki/ML is threads/ML. */
+export function mirrorOf(wikiFolder: string): string {
+	return "threads" + wikiFolder.slice("wiki".length);
+}
+
+/** The scope folder of the wiki a folder stands for: itself in the wiki, the same place for a folder of threads/. */
+export function wikiFolderOf(folder: string): string {
+	return folder.startsWith("threads/") ? "wiki" + folder.slice("threads".length) : folder;
+}
