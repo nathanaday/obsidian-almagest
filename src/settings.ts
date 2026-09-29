@@ -28,7 +28,7 @@ export class AtlasSettingTab extends PluginSettingTab {
 		const found = findBinary("");
 
 		const binary = new Setting(containerEl)
-			.setName("Path to the atlas binary")
+			.setName("Path to the atlas-obsidian binary")
 			.setDesc("Leave empty to use the binary Atlas finds.")
 			.addText((text) =>
 				text
@@ -57,7 +57,7 @@ export class AtlasSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Sync when a thread document changes")
-			.setDesc("Runs atlas vault sync after you edit a file under threads/, so the board and the callouts follow.")
+			.setDesc("Runs atlas-obsidian vault sync after you edit a file under threads/, so the board and the callouts follow.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncOnChange).onChange(async (value) => {
 					this.plugin.settings.syncOnChange = value;

@@ -43,11 +43,11 @@ export async function runAtlas<T>(bin: string | null, vault: string, args: strin
 	try {
 		return JSON.parse(out) as T;
 	} catch {
-		throw new AtlasError(`atlas ${args[0]} did not print JSON`);
+		throw new AtlasError(`atlas-obsidian ${args[0]} did not print JSON`);
 	}
 }
 
-/** The version line the binary prints, such as "atlas 0.1.0". */
+/** The version line the binary prints, such as "atlas-obsidian 6.3.0". */
 export async function binaryVersion(bin: string): Promise<string> {
 	return (await exec(bin, ["version"], undefined)).trim();
 }

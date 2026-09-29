@@ -16,11 +16,11 @@ export interface SessionFields {
 
 /**
  * The places to look for the binary, in order, after the setting: the ones the agent
- * plugin's wrapper uses. The system folders are left out, because another tool installs
- * a binary named atlas there.
+ * plugin's wrapper uses. PATH and the system folders are left out, so another tool's
+ * binary never runs in its place.
  */
 export function binaryCandidates(home: string): string[] {
-	return [`${home}/.atlas/bin/atlas`, `${home}/go/bin/atlas`];
+	return [`${home}/.atlas/bin/atlas-obsidian`, `${home}/go/bin/atlas-obsidian`];
 }
 
 /** The override when it is set, else the first candidate that exists. */

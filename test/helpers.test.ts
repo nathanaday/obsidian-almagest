@@ -25,11 +25,11 @@ import {
 test("chooseBinary prefers the setting, then the first place that exists", () => {
 	const home = "/Users/a";
 	const found = binaryCandidates(home);
-	assert.equal(found[0], "/Users/a/.atlas/bin/atlas");
-	assert.equal(chooseBinary("~/bin/atlas", found, () => false, home), "/Users/a/bin/atlas");
-	assert.equal(chooseBinary("  ", found, (p) => p === "/Users/a/go/bin/atlas", home), "/Users/a/go/bin/atlas");
-	assert.ok(!found.includes("/usr/local/bin/atlas"), "another tool's atlas lives in the system folders");
-	assert.equal(chooseBinary("", found, () => true, home), "/Users/a/.atlas/bin/atlas");
+	assert.equal(found[0], "/Users/a/.atlas/bin/atlas-obsidian");
+	assert.equal(chooseBinary("~/bin/atlas-obsidian", found, () => false, home), "/Users/a/bin/atlas-obsidian");
+	assert.equal(chooseBinary("  ", found, (p) => p === "/Users/a/go/bin/atlas-obsidian", home), "/Users/a/go/bin/atlas-obsidian");
+	assert.ok(!found.some((p) => p.startsWith("/usr/")), "the system folders are left out");
+	assert.equal(chooseBinary("", found, () => true, home), "/Users/a/.atlas/bin/atlas-obsidian");
 	assert.equal(chooseBinary("", found, () => false, home), null);
 });
 
