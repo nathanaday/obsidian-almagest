@@ -1,70 +1,59 @@
-/* Atlas: callouts, folder colors, badges, the change bar, the sessions pane, mentions, graph colors. */
+/* Atlas: callouts, folder colors, badges, the change and work bars, the tag navigator, the repository panel, the sessions pane, mentions, graph colors. */
 
-/* Callouts: the lead callout of each thread, session, and change document. */
-.callout[data-callout="stub"] {
-	--callout-color: var(--color-yellow-rgb);
-	--callout-icon: lucide-sprout;
-}
-.callout[data-callout="spec"] {
-	--callout-color: var(--color-blue-rgb);
-	--callout-icon: lucide-file-text;
-}
-.callout[data-callout="task"] {
-	--callout-color: var(--color-purple-rgb);
-	--callout-icon: lucide-list-checks;
-}
-.callout[data-callout="receipt"] {
-	--callout-color: var(--color-green-rgb);
-	--callout-icon: lucide-receipt;
-}
-.callout[data-callout="killed"] {
-	--callout-color: var(--color-red-rgb);
-	--callout-icon: lucide-ban;
-}
-.callout[data-callout="session"] {
-	--callout-color: var(--color-cyan-rgb);
-	--callout-icon: lucide-bot;
-}
-.callout[data-callout="change"] {
-	--callout-color: var(--color-orange-rgb);
-	--callout-icon: lucide-git-pull-request;
-}
+/* Callouts: the lead callout of each document type and kind, and of the views. */
+.callout[data-callout="source"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-file-image; }
+.callout[data-callout="repository"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-git-branch; }
+.callout[data-callout="repository-missing"] { --callout-color: var(--color-red-rgb); --callout-icon: lucide-git-branch-plus; }
+.callout[data-callout="concept"] { --callout-color: var(--color-blue-rgb); --callout-icon: lucide-lightbulb; }
+.callout[data-callout="entity"] { --callout-color: var(--color-blue-rgb); --callout-icon: lucide-box; }
+.callout[data-callout="policy"] { --callout-color: var(--color-purple-rgb); --callout-icon: lucide-scale; }
+.callout[data-callout="overview"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-map; }
+.callout[data-callout="stub"] { --callout-color: var(--color-yellow-rgb); --callout-icon: lucide-sprout; }
+.callout[data-callout="stub-resolved"] { --callout-color: var(--color-green-rgb); --callout-icon: lucide-sprout; }
+.callout[data-callout="stub-dropped"] { --callout-color: var(--mono-rgb-100); --callout-icon: lucide-ban; }
+.callout[data-callout="spec"] { --callout-color: var(--color-blue-rgb); --callout-icon: lucide-file-text; }
+.callout[data-callout="spec-done"] { --callout-color: var(--color-green-rgb); --callout-icon: lucide-check-circle-2; }
+.callout[data-callout="spec-dropped"] { --callout-color: var(--mono-rgb-100); --callout-icon: lucide-ban; }
+.callout[data-callout="design"] { --callout-color: var(--color-purple-rgb); --callout-icon: lucide-drafting-compass; }
+.callout[data-callout="design-superseded"] { --callout-color: var(--mono-rgb-100); --callout-icon: lucide-drafting-compass; }
+.callout[data-callout^="event-"] { --callout-color: var(--mono-rgb-100); --callout-icon: lucide-history; }
+.callout[data-callout="event-started"],
+.callout[data-callout="event-continued"] { --callout-color: var(--color-blue-rgb); --callout-icon: lucide-play; }
+.callout[data-callout="event-completed"] { --callout-color: var(--color-green-rgb); --callout-icon: lucide-check-circle-2; }
+.callout[data-callout="event-dropped"] { --callout-icon: lucide-ban; }
+.callout[data-callout="event-reopened"] { --callout-color: var(--color-yellow-rgb); --callout-icon: lucide-rotate-ccw; }
+.callout[data-callout="event-blocked"] { --callout-color: var(--color-orange-rgb); --callout-icon: lucide-octagon-pause; }
+.callout[data-callout="event-unblocked"] { --callout-color: var(--color-green-rgb); --callout-icon: lucide-circle-play; }
+.callout[data-callout="event-promoted"] { --callout-color: var(--color-purple-rgb); --callout-icon: lucide-arrow-up-circle; }
+.callout[data-callout="event-resolved"] { --callout-color: var(--color-green-rgb); --callout-icon: lucide-git-merge; }
+.callout[data-callout="event-note"] { --callout-color: var(--color-yellow-rgb); --callout-icon: lucide-sticky-note; }
+.callout[data-callout="session"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-bot; }
+.callout[data-callout="change"] { --callout-color: var(--color-orange-rgb); --callout-icon: lucide-git-pull-request; }
+.callout[data-callout="atlas"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-map; }
+.callout[data-callout="tag"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-tag; }
+.callout[data-callout="view"] { --callout-color: var(--mono-rgb-100); --callout-icon: lucide-eye; }
 
-.callout[data-callout="atlas"] {
-	--callout-color: var(--color-cyan-rgb);
-	--callout-icon: lucide-map;
-}
-.callout[data-callout="area"] {
-	--callout-color: var(--color-cyan-rgb);
-	--callout-icon: lucide-layers;
-}
-.callout[data-callout="repository"] {
-	--callout-color: var(--color-cyan-rgb);
-	--callout-icon: lucide-git-branch;
-}
-
-/* Folder colors in the file explorer. The main folders Atlas keeps are cyan; the type
-   folders of the wiki, at every level, are cool; the inbox, where the user drops work, is
-   warm. Bookkeeping folders keep the theme's color. */
+/* Folder colors in the file explorer: the folders Atlas keeps are cyan, the inbox, where
+   you drop work, is warm, and the views, which code writes, are muted. */
 .nav-folder-title[data-path="inbox"] { --atlas-folder: var(--color-orange-rgb); }
-.nav-folder-title[data-path="threads"] { --atlas-folder: var(--color-cyan-rgb); }
-.nav-folder-title[data-path="sessions"] { --atlas-folder: var(--color-cyan-rgb); }
 .nav-folder-title[data-path="wiki"] { --atlas-folder: var(--color-cyan-rgb); }
-.nav-folder-title[data-path^="wiki/"][data-path$="/concepts"] { --atlas-folder: var(--color-cyan-rgb); }
-.nav-folder-title[data-path^="wiki/"][data-path$="/entities"] { --atlas-folder: var(--color-blue-rgb); }
-.nav-folder-title[data-path^="wiki/"][data-path$="/policies"] { --atlas-folder: var(--color-purple-rgb); }
+.nav-folder-title[data-path="wiki/documents"] { --atlas-folder: var(--color-cyan-rgb); }
+.nav-folder-title[data-path="sessions"] { --atlas-folder: var(--color-cyan-rgb); }
+.nav-folder-title[data-path="changes"] { --atlas-folder: var(--color-cyan-rgb); }
+.nav-folder-title[data-path="views"] { --atlas-folder: var(--color-purple-rgb); }
+.nav-folder-title[data-path^="views/tags/"] { --atlas-folder: var(--color-purple-rgb); }
 
 .nav-folder-title[data-path="inbox"],
-.nav-folder-title[data-path="threads"],
-.nav-folder-title[data-path="sessions"],
 .nav-folder-title[data-path="wiki"],
-.nav-folder-title[data-path^="wiki/"][data-path$="/concepts"],
-.nav-folder-title[data-path^="wiki/"][data-path$="/entities"],
-.nav-folder-title[data-path^="wiki/"][data-path$="/policies"] {
+.nav-folder-title[data-path="wiki/documents"],
+.nav-folder-title[data-path="sessions"],
+.nav-folder-title[data-path="changes"],
+.nav-folder-title[data-path="views"],
+.nav-folder-title[data-path^="views/tags/"] {
 	color: rgb(var(--atlas-folder));
 }
 
-/* Badges: a stub's stage and a session's status. */
+/* Badges: the status of a stub, a plan, or a session; the kind of an event. */
 .atlas-badge {
 	--atlas-badge: var(--mono-rgb-100);
 	margin-inline-start: auto;
@@ -76,18 +65,22 @@
 	color: rgb(var(--atlas-badge));
 	background-color: rgba(var(--atlas-badge), 0.14);
 }
-.atlas-badge[data-kind="stage"][data-value="stub"] { --atlas-badge: var(--color-yellow-rgb); }
-.atlas-badge[data-kind="stage"][data-value="spec"] { --atlas-badge: var(--color-blue-rgb); }
-.atlas-badge[data-kind="stage"][data-value="tasks"] { --atlas-badge: var(--color-purple-rgb); }
-.atlas-badge[data-kind="stage"][data-value="closed"] { --atlas-badge: var(--color-green-rgb); }
+.atlas-badge[data-kind="status"][data-value="open"] { --atlas-badge: var(--color-yellow-rgb); }
+.atlas-badge[data-kind="status"][data-value="started"] { --atlas-badge: var(--color-blue-rgb); }
+.atlas-badge[data-kind="status"][data-value="blocked"] { --atlas-badge: var(--color-orange-rgb); }
+.atlas-badge[data-kind="status"][data-value="done"],
+.atlas-badge[data-kind="status"][data-value="resolved"] { --atlas-badge: var(--color-green-rgb); }
 .atlas-badge[data-kind="status"][data-value="running"] { --atlas-badge: var(--color-green-rgb); }
 .atlas-badge[data-kind="status"][data-value="waiting"] { --atlas-badge: var(--color-orange-rgb); }
 .atlas-badge[data-kind="status"][data-value="lost"] { --atlas-badge: var(--color-red-rgb); }
+.atlas-badge[data-kind="status"][data-value="dropped"],
 .atlas-badge[data-kind="status"][data-value="idle"],
-.atlas-badge[data-kind="status"][data-value="ended"] {
+.atlas-badge[data-kind="status"][data-value="ended"],
+.atlas-badge[data-kind="event"] {
 	color: var(--text-faint);
 	background-color: var(--background-modifier-hover);
 }
+.atlas-badge[data-kind="event"][data-value="completed"] { color: rgb(var(--color-green-rgb)); }
 
 /* The bar over a proposed change. */
 .workspace-leaf-content:has(> .atlas-change-bar) > .view-content {
@@ -291,4 +284,197 @@
 	color: var(--text-muted);
 	font-variant-numeric: tabular-nums;
 	text-align: right;
+}
+
+/* The bar over a stub or a plan. */
+.workspace-leaf-content:has(> .atlas-work-bar) > .view-content {
+	height: auto;
+	flex: 1 1 0;
+	min-height: 0;
+}
+.atlas-work-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-2) var(--size-4-3);
+	padding: var(--size-2-3) var(--size-4-4);
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-small);
+}
+.atlas-work-bar-label {
+	font-weight: var(--font-semibold);
+}
+.atlas-work-bar-status {
+	color: var(--text-muted);
+}
+.atlas-work-bar-buttons {
+	display: flex;
+	gap: var(--size-4-2);
+	margin-inline-start: auto;
+}
+.atlas-work-bar-buttons button {
+	font-size: var(--font-ui-smaller);
+}
+
+/* The tag navigator. */
+.atlas-tagnav {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	padding: var(--size-4-2);
+	font-size: var(--font-ui-small);
+}
+.atlas-tagnav-path {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-2-3);
+}
+.atlas-tagnav-path::before {
+	content: none;
+}
+.atlas-tagnav-home {
+	font-size: var(--font-ui-smaller);
+}
+.atlas-tagnav-tag > span:first-child,
+.atlas-tagnav-chip > span:first-child {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.atlas-tagnav-chip {
+	display: inline-flex;
+	max-width: 100%;
+	min-width: 0;
+	align-items: center;
+	gap: 2px;
+	padding: 0 2px 0 8px;
+	border-radius: var(--radius-l);
+	color: rgb(var(--color-purple-rgb));
+	background-color: rgba(var(--color-purple-rgb), 0.14);
+}
+.atlas-tagnav-x {
+	padding: 0 6px;
+	background: transparent;
+	box-shadow: none;
+	color: inherit;
+}
+.atlas-tagnav-tags,
+.atlas-tagnav-with {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-2-2);
+}
+.atlas-tagnav-label {
+	color: var(--text-faint);
+	margin-inline-end: var(--size-2-2);
+}
+.atlas-tagnav-tag {
+	display: inline-flex;
+	max-width: 100%;
+	min-width: 0;
+	gap: var(--size-2-2);
+	padding: var(--size-2-1) var(--size-4-2);
+	font-size: var(--font-ui-smaller);
+}
+.atlas-tagnav-tag-count,
+.atlas-tagnav-count,
+.atlas-tagnav-doc-meta {
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+}
+.atlas-tagnav-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+.atlas-tagnav-count {
+	white-space: nowrap;
+}
+.atlas-tagnav-actions .atlas-tagnav-count {
+	margin-inline-end: auto;
+}
+.atlas-tagnav-group-name {
+	margin-bottom: var(--size-2-2);
+	font-weight: var(--font-semibold);
+	color: var(--text-muted);
+}
+.atlas-tagnav-doc {
+	display: flex;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+	padding: var(--size-2-1) var(--size-4-2);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+.atlas-tagnav-doc:hover {
+	background-color: var(--background-modifier-hover);
+}
+.atlas-tagnav-empty {
+	color: var(--text-muted);
+}
+
+/* The live status panel of a repository. */
+.atlas-repo {
+	padding: var(--size-4-2) var(--size-4-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	font-size: var(--font-ui-small);
+}
+.atlas-repo-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+.atlas-repo-branch {
+	font-weight: var(--font-semibold);
+}
+.atlas-repo-sha {
+	font-family: var(--font-monospace);
+	color: var(--text-muted);
+}
+.atlas-repo-sync,
+.atlas-repo-clean,
+.atlas-repo-note,
+.atlas-repo-ago,
+.atlas-repo-loading {
+	color: var(--text-muted);
+}
+.atlas-repo-refresh {
+	margin-inline-start: auto;
+	font-size: var(--font-ui-smaller);
+}
+.atlas-repo-dirty,
+.atlas-repo-clean {
+	margin-top: var(--size-4-2);
+}
+.atlas-repo-commit {
+	display: flex;
+	gap: var(--size-4-2);
+	margin-top: var(--size-2-2);
+}
+.atlas-repo-subject {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.atlas-repo-error {
+	color: rgb(var(--color-red-rgb));
+}
+
+/* The migration notice and its report. */
+.atlas-notice-button {
+	margin-top: var(--size-4-2);
+}
+.atlas-migration details {
+	margin-top: var(--size-4-2);
+}
+.atlas-migration-buttons {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--size-4-2);
+	margin-top: var(--size-4-4);
 }

@@ -17,8 +17,8 @@ export interface ActiveSession {
 	file: TFile;
 	status: string;
 	description: string;
-	thread: string;
-	tasks: string[];
+	work: string;
+	specs: string[];
 	updated: string;
 	harness: string;
 	harness_id: string;
@@ -33,13 +33,13 @@ export function activeSessions(app: App): ActiveSession[] {
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
 		if (!fm || fm.type !== "session") continue;
 		if (fm.status !== "running" && fm.status !== "waiting") continue;
-		const threads = asList(fm.threads);
+		const work = asList(fm.work);
 		out.push({
 			file,
 			status: fm.status,
 			description: typeof fm.description === "string" && fm.description.trim() ? fm.description : file.basename,
-			thread: linkTitle(threads[threads.length - 1]),
-			tasks: asList(fm.tasks),
+			work: linkTitle(work[work.length - 1]),
+			specs: asList(fm.specs),
 			updated: String(fm.updated ?? ""),
 			harness: String(fm.harness ?? "claude"),
 			harness_id: String(fm.harness_id ?? ""),
@@ -49,16 +49,16 @@ export function activeSessions(app: App): ActiveSession[] {
 	return out.sort(compareSessions);
 }
 
-/** The session's last open task, else its last task. */
-function currentTask(app: App, s: ActiveSession): { title: string; file: TFile | null } | null {
+/** The plan the session started last that is still started, else the last it started. */
+function currentPlan(app: App, s: ActiveSession): { title: string; file: TFile | null } | null {
 	let fallback: { title: string; file: TFile | null } | null = null;
-	for (let i = s.tasks.length - 1; i >= 0; i--) {
-		const title = linkTitle(s.tasks[i]);
+	for (let i = s.specs.length - 1; i >= 0; i--) {
+		const title = linkTitle(s.specs[i]);
 		if (!title) continue;
 		const file = app.metadataCache.getFirstLinkpathDest(title, s.file.path);
 		const entry = { title, file };
 		fallback ??= entry;
-		if (file && app.metadataCache.getFileCache(file)?.frontmatter?.status === "open") return entry;
+		if (file && app.metadataCache.getFileCache(file)?.frontmatter?.status === "started") return entry;
 	}
 	return fallback;
 }
@@ -133,8 +133,8 @@ export class SessionsView extends ItemView {
 			head.createSpan({ cls: "atlas-session-status", text: s.status });
 			head.createSpan({ cls: "atlas-session-title", text: s.description });
 
-			const task = currentTask(this.app, s);
-			const where = [s.thread, task?.title].filter((t) => t).join(" · ");
+			const task = currentPlan(this.app, s);
+			const where = (task?.title ?? s.work) || "";
 			if (where) card.createDiv({ cls: "atlas-session-where", text: where });
 
 			const progress = card.createDiv({ cls: "atlas-session-progress" });

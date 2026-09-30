@@ -5,17 +5,25 @@ import {
 	asList,
 	binaryCandidates,
 	chooseBinary,
-	companionRename,
 	compareSessions,
 	countsLine,
 	cssString,
 	errorMessage,
-	folderPagePath,
+	expandTags,
+	groupDocs,
+	holds,
+	isTagView,
+	isWatchedPath,
+	layoutOf,
+	narrow,
+	normalTag,
+	repoBlock,
+	searchURI,
+	tagOfFolder,
+	tagViewPath,
+	TagDoc,
+	topTags,
 	formatAgo,
-	isFolderPage,
-	mirrorOf,
-	wikiFolderOf,
-	isThreadPath,
 	lastProgressLine,
 	linkTitle,
 	mentionRanges,
@@ -46,17 +54,18 @@ test("errorMessage takes the atlas line of stderr", () => {
 });
 
 test("syncSummary says what changed in one line", () => {
-	assert.equal(syncSummary({ threads: [], lost: null, sessions: [], settings: false }), "Nothing to heal.");
+	assert.equal(syncSummary({ work: [], lost: null, sessions: [], settings: false, views: 0 }), "Nothing to heal.");
 	assert.equal(
-		syncSummary({ threads: ["a", "b"], lost: ["c"], sessions: null, settings: true }),
-		"Synced 2 thread documents, 1 lost session, the harness settings.",
+		syncSummary({ work: ["a", "b"], knowledge: ["k"], lost: ["c"], sessions: null, settings: true, views: 3 }),
+		"Synced 2 work documents, 1 knowledge document, 1 lost session, the harness settings, 3 views.",
 	);
-	assert.deepEqual(syncedPaths({ threads: ["a"], lost: null, sessions: ["s"] }), ["a", "s"]);
+	assert.deepEqual(syncedPaths({ work: ["a"], knowledge: ["k"], lost: null, sessions: ["s"] }), ["a", "k", "s"]);
 });
 
 test("countsLine drops the zeros from a string or an object", () => {
 	assert.equal(countsLine("3 create, 1 modify, 0 rename, 0 remove, 2 link rewrites"), "3 create, 1 modify, 2 link rewrites");
 	assert.equal(countsLine({ create: 0, modify: 2, rename: 0, remove: 1, link_rewrites: 10 }), "2 modify, 1 remove, 10 link rewrites");
+	assert.equal(countsLine({ promote: 1, retag: 1, tag_rewrites: 4 }), "1 promote, 1 retag, 4 tag rewrites");
 	assert.equal(countsLine(undefined), "");
 });
 
@@ -139,29 +148,64 @@ test("mentionRanges marks @atlas in task lines only", () => {
 });
 
 test("small labels", () => {
-	assert.ok(isThreadPath("threads/Filter/Filter.md"));
-	assert.ok(!isThreadPath("threads/board.base"));
-	assert.ok(!isThreadPath("wiki/threads/x.md"));
+	assert.ok(isWatchedPath("wiki/documents/Filter.md"));
+	assert.ok(!isWatchedPath("views/View · Work.md"), "a view change never starts a sync");
+	assert.ok(!isWatchedPath(".obsidian/app.json"));
+	assert.ok(!isWatchedPath("wiki/assets/a.png"));
 	assert.equal(waitingLabel(1), "Atlas: 1 session waits");
 	assert.equal(waitingLabel(2), "Atlas: 2 sessions wait");
-});
-
-test("a scope folder and its page follow each other's rename", () => {
-	assert.equal(folderPagePath("wiki/ML/CS566"), "wiki/ML/CS566/CS566.md");
-	assert.equal(folderPagePath("threads/X"), null);
-	assert.ok(isFolderPage("wiki/ML/CS566/CS566.md"));
-	assert.ok(!isFolderPage("wiki/ML/CS566/concepts/Backprop.md"));
-	assert.deepEqual(companionRename(true, "wiki/ML/CS566 DL", "wiki/ML/CS566"), { from: "wiki/ML/CS566 DL/CS566.md", to: "wiki/ML/CS566 DL/CS566 DL.md" });
-	assert.equal(companionRename(true, "wiki/Other/CS566", "wiki/ML/CS566"), null, "a moved folder keeps its name");
-	assert.deepEqual(companionRename(false, "wiki/ML/CS566/CS566 DL.md", "wiki/ML/CS566/CS566.md"), { from: "wiki/ML/CS566", to: "wiki/ML/CS566 DL" });
-	assert.equal(companionRename(false, "wiki/ML/CS566 DL/CS566 DL.md", "wiki/ML/CS566 DL/CS566.md"), null, "the page caught up with its folder");
-	assert.equal(companionRename(false, "wiki/ML/CS566/concepts/B.md", "wiki/ML/CS566/concepts/A.md"), null);
-	assert.equal(companionRename(false, "wiki/ML/CS566.md", "wiki/ML/CS566/CS566.md"), null, "a page moved out of its folder");
 	assert.equal(cssString('wiki/a "b"\\c'), '"wiki/a \\"b\\"\\\\c"');
+	assert.equal(layoutOf({ layout: 3 }), 3);
+	assert.equal(layoutOf({ layout: "2" }), 2);
+	assert.equal(layoutOf(undefined), 0);
+	assert.deepEqual(repoBlock(" doc-abc123 · ~/src/p3-edge \n"), { id: "doc-abc123", path: "~/src/p3-edge" });
 });
 
-test("a folder of threads/ stands for the scope folder of the wiki at the same place", () => {
-	assert.equal(mirrorOf("wiki/ML/CS566"), "threads/ML/CS566");
-	assert.equal(wikiFolderOf("threads/ML/CS566"), "wiki/ML/CS566");
-	assert.equal(wikiFolderOf("wiki/ML"), "wiki/ML");
+test("a tag's view lies in a folder per tag part", () => {
+	assert.equal(tagViewPath("work/p3"), "views/tags/work/p3/Tag · work › p3.md");
+	assert.ok(isTagView("views/tags/work/p3/Tag · work › p3.md"));
+	assert.ok(!isTagView("views/tags/work/p3/Notes.md"));
+	assert.ok(!isTagView("views/View · Work.md"));
+	assert.equal(tagOfFolder("views/tags/work/p3"), "work/p3");
+	assert.equal(tagOfFolder("views/tags/"), null);
+	assert.equal(tagOfFolder("wiki/documents"), null);
+});
+
+test("a tag holds its children, and a list expands to every ancestor", () => {
+	assert.equal(normalTag(" #Work/P3 "), "work/p3");
+	assert.ok(holds(["work/p3/edge"], "work"));
+	assert.ok(holds(["work/p3"], "work/p3"));
+	assert.ok(!holds(["work/p3x"], "work/p3"));
+	assert.deepEqual(expandTags(["work/p3/edge", "cs513"]).sort(), ["cs513", "work", "work/p3", "work/p3/edge"]);
+});
+
+function tdoc(title: string, type: string, tags: string[], kind = "", status = ""): TagDoc {
+	return { path: `wiki/documents/${title}.md`, title, type, kind, status, description: "", tags };
+}
+
+test("narrow finds the documents at the intersection and the tags that occur with them", () => {
+	const docs = [
+		tdoc("Lidar", "topic", ["cs513", "self-driving"], "concept"),
+		tdoc("Planner", "spec", ["cs513/project", "self-driving"], "plan", "started"),
+		tdoc("Homework", "topic", ["cs513"], "entity"),
+		tdoc("Tesla", "source", ["self-driving"]),
+		tdoc("Old idea", "stub", ["cs513/project", "self-driving"], "", "resolved"),
+	];
+	const { matches, with: facets } = narrow(docs, ["cs513", "self-driving"]);
+	assert.deepEqual(matches.map((d) => d.title), ["Lidar", "Planner", "Old idea"]);
+	assert.deepEqual(facets, [{ tag: "cs513/project", count: 2 }]);
+	assert.deepEqual(topTags(docs), [
+		{ tag: "self-driving", count: 4 },
+		{ tag: "cs513", count: 4 },
+	].sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag)));
+	assert.deepEqual(
+		groupDocs(matches).map((g) => [g.name, g.docs.map((d) => d.title)]),
+		[
+			["Open work", ["Planner"]],
+			["Topics", ["Lidar"]],
+			["Closed work", ["Old idea"]],
+		],
+		"a started plan is open work",
+	);
+	assert.equal(searchURI("My Work", ["cs513", "self-driving"]), "obsidian://search?vault=My%20Work&query=tag%3A%23cs513%20tag%3A%23self-driving");
 });

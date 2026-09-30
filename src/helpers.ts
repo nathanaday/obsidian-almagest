@@ -1,11 +1,13 @@
 // Pure functions: no Obsidian, no Node. The tests cover them.
 
 export interface Synced {
-	threads?: string[] | null;
+	moved?: string[] | null;
 	lost?: string[] | null;
+	work?: string[] | null;
+	knowledge?: string[] | null;
 	sessions?: string[] | null;
-	scopes?: string[] | null;
 	settings?: boolean;
+	views?: number;
 }
 
 export interface SessionFields {
@@ -57,27 +59,29 @@ function plural(n: number, one: string, many: string): string {
 /** One line for a sync result. */
 export function syncSummary(s: Synced): string {
 	const parts: string[] = [];
-	const threads = s.threads?.length ?? 0;
-	const lost = s.lost?.length ?? 0;
-	const sessions = s.sessions?.length ?? 0;
-	if (threads) parts.push(plural(threads, "thread document", "thread documents"));
-	if (lost) parts.push(plural(lost, "lost session", "lost sessions"));
-	if (sessions) parts.push(plural(sessions, "session callout", "session callouts"));
-	const scopes = s.scopes?.length ?? 0;
-	if (scopes) parts.push(plural(scopes, "wiki page", "wiki pages"));
+	const add = (list: string[] | null | undefined, one: string, many: string) => {
+		const n = list?.length ?? 0;
+		if (n) parts.push(plural(n, one, many));
+	};
+	add(s.work, "work document", "work documents");
+	add(s.knowledge, "knowledge document", "knowledge documents");
+	add(s.moved, "document moved back", "documents moved back");
+	add(s.lost, "lost session", "lost sessions");
+	add(s.sessions, "session callout", "session callouts");
 	if (s.settings) parts.push("the harness settings");
+	if (s.views) parts.push(plural(s.views, "view", "views"));
 	if (parts.length === 0) return "Nothing to heal.";
 	return `Synced ${parts.join(", ")}.`;
 }
 
 /** Every path a sync wrote. */
 export function syncedPaths(s: Synced): string[] {
-	return [...(s.threads ?? []), ...(s.lost ?? []), ...(s.sessions ?? []), ...(s.scopes ?? [])];
+	return [...(s.work ?? []), ...(s.knowledge ?? []), ...(s.moved ?? []), ...(s.lost ?? []), ...(s.sessions ?? [])];
 }
 
 /**
  * The counts of a change without the zeros. The frontmatter holds a string such as
- * "3 create, 1 modify, 0 rename, 0 remove, 2 link rewrites"; a Preview holds an object.
+ * "3 create, 1 modify, 0 promote, …, 2 link rewrites"; a Preview holds an object.
  */
 export function countsLine(counts: unknown): string {
 	if (typeof counts === "string") {
@@ -91,9 +95,13 @@ export function countsLine(counts: unknown): string {
 		const names: Record<string, string> = {
 			create: "create",
 			modify: "modify",
+			promote: "promote",
 			rename: "rename",
 			remove: "remove",
+			confirm: "confirm",
+			retag: "retag",
 			link_rewrites: "link rewrites",
+			tag_rewrites: "tag rewrites",
 		};
 		return Object.entries(names)
 			.map(([key, name]) => [(counts as Record<string, unknown>)[key], name] as const)
@@ -214,52 +222,13 @@ export function textMentions(text: string): [number, number][] {
 	return out;
 }
 
-export function isThreadPath(path: string): boolean {
-	return path.startsWith("threads/") && path.endsWith(".md");
+/** Whether a change to a file should refresh the views: any markdown file outside them. */
+export function isWatchedPath(path: string): boolean {
+	return path.endsWith(".md") && !path.startsWith("views/") && !path.startsWith(".");
 }
 
 export function waitingLabel(n: number): string {
 	return n === 1 ? "Atlas: 1 session waits" : `Atlas: ${n} sessions wait`;
-}
-
-function baseName(path: string): string {
-	return path.slice(path.lastIndexOf("/") + 1);
-}
-
-function dirName(path: string): string {
-	const i = path.lastIndexOf("/");
-	return i < 0 ? "" : path.slice(0, i);
-}
-
-/** The page that would make a folder of the wiki a scope: wiki/…/X/X.md; null outside the wiki. */
-export function folderPagePath(folder: string): string | null {
-	if (!folder.startsWith("wiki/")) return null;
-	return `${folder}/${baseName(folder)}.md`;
-}
-
-/** Whether a path is the page of its own folder under the wiki. */
-export function isFolderPage(path: string): boolean {
-	return folderPagePath(dirName(path)) === path;
-}
-
-/**
- * The rename that keeps a scope folder and its page in step after the user renamed one of
- * them: a renamed folder renames its page, a renamed page renames its folder. null when
- * nothing needs to follow.
- */
-export function companionRename(isFolder: boolean, path: string, oldPath: string): { from: string; to: string } | null {
-	if (!path.startsWith("wiki/")) return null;
-	if (isFolder) {
-		const oldName = baseName(oldPath);
-		const name = baseName(path);
-		if (oldName === name) return null;
-		return { from: `${path}/${oldName}.md`, to: `${path}/${name}.md` };
-	}
-	if (!isFolderPage(oldPath) || dirName(path) !== dirName(oldPath) || !path.endsWith(".md")) return null;
-	const folder = dirName(path);
-	const name = baseName(path).slice(0, -3);
-	if (name === "" || name === baseName(folder)) return null;
-	return { from: folder, to: `${dirName(folder)}/${name}` };
 }
 
 /** A CSS string literal of s. */
@@ -267,12 +236,135 @@ export function cssString(s: string): string {
 	return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\a ")}"`;
 }
 
-/** The folder of threads/ that stands for a scope folder of the wiki: wiki/ML is threads/ML. */
-export function mirrorOf(wikiFolder: string): string {
-	return "threads" + wikiFolder.slice("wiki".length);
+const TAG_FOLDER = "views/tags/";
+
+/** The title of a tag's view: "Tag · school › cs513". */
+export function tagTitle(tag: string): string {
+	return "Tag · " + tag.split("/").join(" › ");
 }
 
-/** The scope folder of the wiki a folder stands for: itself in the wiki, the same place for a folder of threads/. */
-export function wikiFolderOf(folder: string): string {
-	return folder.startsWith("threads/") ? "wiki" + folder.slice("threads".length) : folder;
+/** The tag a folder of views/tags stands for, or null. */
+export function tagOfFolder(folder: string): string | null {
+	if (!folder.startsWith(TAG_FOLDER)) return null;
+	const tag = folder.slice(TAG_FOLDER.length);
+	return tag === "" ? null : tag;
+}
+
+/** The view note inside a tag's folder. */
+export function tagViewPath(tag: string): string {
+	return `${TAG_FOLDER}${tag}/${tagTitle(tag)}.md`;
+}
+
+/** Whether a path is the view note of its own tag folder. */
+export function isTagView(path: string): boolean {
+	const i = path.lastIndexOf("/");
+	if (i < 0) return false;
+	const tag = tagOfFolder(path.slice(0, i));
+	return tag !== null && tagViewPath(tag) === path;
+}
+
+/** A tag as the property holds it: lower case, without #. */
+export function normalTag(t: string): string {
+	return t.trim().replace(/^#/, "").toLowerCase();
+}
+
+/** Whether a list of tags holds t: it lists t or a tag below it. */
+export function holds(list: string[], t: string): boolean {
+	return list.some((x) => x === t || x.startsWith(t + "/"));
+}
+
+/** Every tag of a list and the tags above each. */
+export function expandTags(list: string[]): string[] {
+	const out = new Set<string>();
+	for (const t of list) {
+		const parts = t.split("/");
+		for (let i = 1; i <= parts.length; i++) out.add(parts.slice(0, i).join("/"));
+	}
+	return [...out];
+}
+
+/** One document as the tag navigator sees it. */
+export interface TagDoc {
+	path: string;
+	title: string;
+	type: string;
+	kind: string;
+	status: string;
+	description: string;
+	tags: string[];
+}
+
+export interface Facet {
+	tag: string;
+	count: number;
+}
+
+/** The documents that hold every chosen tag, and the other tags among them, most first. */
+export function narrow(docs: TagDoc[], chosen: string[]): { matches: TagDoc[]; with: Facet[] } {
+	const matches = docs.filter((d) => chosen.every((t) => holds(d.tags, t)));
+	const counts = new Map<string, number>();
+	const skip = new Set<string>(expandTags(chosen));
+	for (const d of matches) {
+		for (const t of expandTags(d.tags)) {
+			if (skip.has(t)) continue;
+			counts.set(t, (counts.get(t) ?? 0) + 1);
+		}
+	}
+	const withTags = [...counts.entries()]
+		.map(([tag, count]) => ({ tag, count }))
+		.sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+	return { matches, with: withTags };
+}
+
+/** The top tags of the vault with their counts, most first. */
+export function topTags(docs: TagDoc[]): Facet[] {
+	const counts = new Map<string, number>();
+	for (const d of docs) {
+		for (const t of expandTags(d.tags)) {
+			if (!t.includes("/")) counts.set(t, (counts.get(t) ?? 0) + 1);
+		}
+	}
+	return [...counts.entries()].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+}
+
+/** The order the navigator groups documents in: open work first. */
+const CLOSED = new Set(["done", "dropped", "resolved"]);
+
+export const NAV_GROUPS: { name: string; test: (d: TagDoc) => boolean }[] = [
+	{ name: "Open work", test: (d) => (d.type === "stub" || (d.type === "spec" && d.kind === "plan")) && !CLOSED.has(d.status) },
+	{ name: "Topics", test: (d) => d.type === "topic" },
+	{ name: "Designs", test: (d) => d.type === "spec" && d.kind === "design" },
+	{ name: "Sources", test: (d) => d.type === "source" },
+	{ name: "Repositories", test: (d) => d.type === "repository" },
+	{ name: "Closed work", test: (d) => d.type === "stub" || d.type === "spec" },
+	{ name: "Events", test: (d) => d.type === "event" },
+];
+
+/** Documents in the navigator's groups; a document goes in the first group that takes it. */
+export function groupDocs(docs: TagDoc[]): { name: string; docs: TagDoc[] }[] {
+	const out = NAV_GROUPS.map((g) => ({ name: g.name, docs: [] as TagDoc[] }));
+	for (const d of docs) {
+		const i = NAV_GROUPS.findIndex((g) => g.test(d));
+		if (i >= 0) out[i].docs.push(d);
+	}
+	for (const g of out) g.docs.sort((a, b) => a.title.localeCompare(b.title));
+	return out.filter((g) => g.docs.length > 0);
+}
+
+/** An obsidian:// URI that opens the search for every chosen tag. */
+export function searchURI(vault: string, chosen: string[]): string {
+	const query = chosen.map((t) => `tag:#${t}`).join(" ");
+	return `obsidian://search?vault=${encodeURIComponent(vault)}&query=${encodeURIComponent(query)}`;
+}
+
+/** The id and path an atlas-repo code block holds: "doc-abc123 · ~/code/x · …". */
+export function repoBlock(source: string): { id: string; path: string } {
+	const [id, path] = source.trim().split(" · ");
+	return { id: (id ?? "").trim(), path: (path ?? "").trim() };
+}
+
+/** The layout a vault document records: 0 when it records none. */
+export function layoutOf(fields: Record<string, unknown> | undefined): number {
+	const n = Number(fields?.layout ?? 0);
+	return Number.isFinite(n) ? n : 0;
 }

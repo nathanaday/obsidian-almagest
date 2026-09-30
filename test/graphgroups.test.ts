@@ -16,20 +16,18 @@ function doc(path: string, fields: Record<string, unknown>, links: string[] = []
 }
 
 const vault: GraphDoc[] = [
-	doc("wiki/areas/Work.md", { type: "area", created: "2026-01-01", chain: [] }),
-	doc("wiki/areas/Home.md", { type: "area", created: "2026-02-01" }),
-	doc("wiki/areas/Sub.md", { type: "area", created: "2026-03-01", parent: "[[Work]]", chain: ["[[Work]]"] }, ["wiki/areas/Work.md"]),
-	doc("wiki/repositories/app.md", { type: "repository", parent: "[[Sub]]", chain: ["[[Work]]", "[[Sub]]"] }),
-	doc("wiki/concepts/Idea.md", { type: "concept", scope: "[[app]]", chain: ["[[Work]]", "[[Sub]]", "[[app]]"] }),
-	doc("wiki/concepts/Loose.md", { type: "concept", scope: "", chain: [] }),
-	doc("wiki/policies/Unsynced.md", { type: "policy", scope: "[[Home]]" }),
-	doc("threads/Fix/Fix.md", { type: "stub", scope: ["[[app]]"], stage: "tasks" }, ["wiki/repositories/app.md"]),
-	doc("threads/Fix/Fix — Spec.md", { type: "spec", thread: "[[Fix]]" }, ["threads/Fix/Fix.md", "wiki/concepts/Idea.md"]),
-	doc("threads/Old/Old.md", { type: "stub", scope: ["[[Home]]"], stage: "closed" }, ["wiki/areas/Home.md"]),
-	doc("threads/Old/Old — Receipt.md", { type: "receipt", thread: "[[Old]]" }, ["threads/Old/Old.md", "wiki/concepts/Idea.md", "wiki/concepts/Loose.md"]),
-	doc("sessions/2026-09/s1.md", { type: "session", threads: ["[[Fix]]"] }),
-	doc("changes/2026-09/c1.md", { type: "change", thread: "" }),
-	doc("Notes.md", {}, ["wiki/concepts/Idea.md"]),
+	doc("wiki/documents/P3.md", { type: "topic", kind: "overview", created: "2026-01-01", defines: "work/p3" }),
+	doc("wiki/documents/Lidar.md", { type: "topic", kind: "concept", created: "2026-02-01", tags: ["cs513", "self-driving"] }),
+	doc("wiki/documents/p3-edge.md", { type: "repository", created: "2026-01-05", tags: ["work/p3"] }),
+	doc("wiki/documents/Rules.md", { type: "topic", kind: "policy", created: "2026-03-01", tags: ["work"] }),
+	doc("wiki/documents/Paper.md", { type: "source", created: "2026-02-10", tags: ["cs513"] }),
+	doc("wiki/documents/Filter.md", { type: "spec", kind: "plan", status: "started", blocked: "data", tags: ["work/p3"] }, ["wiki/documents/p3-edge.md"]),
+	doc("wiki/documents/Idea.md", { type: "stub", status: "resolved", tags: ["cs513"] }, ["wiki/documents/Lidar.md"]),
+	doc("wiki/documents/Design.md", { type: "spec", kind: "design", tags: ["work/p3"] }),
+	doc("wiki/documents/Filter · started.md", { type: "event", kind: "started", subject: "[[Filter]]" }, ["wiki/documents/Filter.md"]),
+	doc("sessions/2026-09/s1.md", { type: "session", specs: ["[[Filter]]"] }),
+	doc("changes/2026-09/c1.md", { type: "change" }),
+	doc("Notes.md", {}, ["wiki/documents/Lidar.md"]),
 ];
 
 const resolve: Resolve = (link) => vault.find((d) => d.path.endsWith(`/${link}.md`) || d.path === `${link}.md`)?.path ?? null;
@@ -38,59 +36,52 @@ function names(groups: { name: string; paths: string[] }[]): Record<string, stri
 	return Object.fromEntries(groups.map((g) => [g.name, [...g.paths].sort()]));
 }
 
-test("area mode groups each document under its nearest area, oldest area first", () => {
-	const groups = graphGroups("area", vault, resolve, "light");
-	assert.deepEqual(groups.map((g) => g.name), ["Work", "Home", "Sub"]);
+test("tag mode groups each document under the top part of its first tag, oldest tag first", () => {
+	const groups = graphGroups("tag", vault, resolve, "light");
+	assert.deepEqual(groups.map((g) => g.name), ["#work", "#cs513"]);
 	assert.deepEqual(names(groups), {
-		Work: ["wiki/areas/Work.md"],
-		Home: ["threads/Old/Old — Receipt.md", "threads/Old/Old.md", "wiki/areas/Home.md", "wiki/policies/Unsynced.md"],
-		Sub: [
+		"#work": [
 			"sessions/2026-09/s1.md",
-			"threads/Fix/Fix — Spec.md",
-			"threads/Fix/Fix.md",
-			"wiki/areas/Sub.md",
-			"wiki/concepts/Idea.md",
-			"wiki/repositories/app.md",
+			"wiki/documents/Design.md",
+			"wiki/documents/Filter · started.md",
+			"wiki/documents/Filter.md",
+			"wiki/documents/P3.md",
+			"wiki/documents/Rules.md",
+			"wiki/documents/p3-edge.md",
 		],
+		"#cs513": ["wiki/documents/Idea.md", "wiki/documents/Lidar.md", "wiki/documents/Paper.md"],
 	});
 	assert.equal(groups[0].color, "#2a78d6");
-	assert.equal(graphGroups("area", vault, resolve, "dark")[0].color, "#3987e5");
+	assert.equal(graphGroups("tag", vault, resolve, "dark")[0].color, "#3987e5");
 });
 
-test("area mode folds the areas past the eighth into one muted group", () => {
-	const areas = Array.from({ length: 10 }, (_, i) =>
-		doc(`wiki/areas/A${i}.md`, { type: "area", created: `2026-01-${String(i + 1).padStart(2, "0")}` }),
+test("tag mode folds the tags past the eighth into one muted group", () => {
+	const docs = Array.from({ length: 10 }, (_, i) =>
+		doc(`wiki/documents/T${i}.md`, { type: "topic", tags: [`t${i}`], created: `2026-01-${String(i + 1).padStart(2, "0")}` }),
 	);
-	const groups = graphGroups("area", areas, () => null, "light");
+	const groups = graphGroups("tag", docs, () => null, "light");
 	assert.equal(groups.length, 9);
-	assert.deepEqual(groups[8], { name: "Other areas", color: "#898781", paths: ["wiki/areas/A8.md", "wiki/areas/A9.md"] });
+	assert.deepEqual(groups[8], { name: "Other tags", color: "#898781", paths: ["wiki/documents/T8.md", "wiki/documents/T9.md"] });
 	assert.equal(new Set(groups.slice(0, 8).map((g) => g.color)).size, 8);
 });
 
-test("type mode puts the four thread documents in one group and leaves empty groups out", () => {
+test("type mode splits topics by kind and leaves empty groups out", () => {
 	const groups = names(graphGroups("type", vault, resolve, "light"));
-	assert.deepEqual(Object.keys(groups), ["Areas", "Repositories", "Concepts", "Policies", "Threads", "Sessions and changes"]);
-	assert.equal(groups.Threads.length, 4);
+	assert.deepEqual(Object.keys(groups), ["Sources", "Repositories", "Concepts", "Policies", "Overviews", "Stubs and specs", "Events", "Sessions and changes"]);
+	assert.equal(groups["Stubs and specs"].length, 3);
 	assert.deepEqual(groups["Sessions and changes"], ["changes/2026-09/c1.md", "sessions/2026-09/s1.md"]);
 });
 
-test("threads mode: an open thread wins over a closed one; the rest is gray", () => {
-	const groups = names(graphGroups("threads", vault, resolve, "light"));
-	assert.deepEqual(groups["Open threads"], [
-		"sessions/2026-09/s1.md",
-		"threads/Fix/Fix — Spec.md",
-		"threads/Fix/Fix.md",
-		"wiki/concepts/Idea.md",
-		"wiki/repositories/app.md",
+test("work mode: started work is open, an event takes its subject's state, the rest is gray", () => {
+	const groups = names(graphGroups("work", vault, resolve, "light"));
+	assert.deepEqual(groups["Open work"], [
+		"wiki/documents/Filter · started.md",
+		"wiki/documents/Filter.md",
+		"wiki/documents/p3-edge.md",
 	]);
-	assert.deepEqual(groups["Closed threads"], [
-		"threads/Old/Old — Receipt.md",
-		"threads/Old/Old.md",
-		"wiki/areas/Home.md",
-		"wiki/concepts/Loose.md",
-	]);
-	assert.ok(groups["No threads"].includes("Notes.md"));
-	assert.ok(groups["No threads"].includes("changes/2026-09/c1.md"));
+	assert.deepEqual(groups["Done work"], ["wiki/documents/Idea.md", "wiki/documents/Lidar.md"]);
+	assert.ok(groups["No work"].includes("Notes.md"));
+	assert.ok(groups["No work"].includes("wiki/documents/Design.md"), "a design has no state");
 });
 
 test("activity mode splits by the day of the update, then the modification time", () => {

@@ -2,13 +2,13 @@
 
 import { asList, linkTitle } from "./helpers";
 
-export type GraphMode = "off" | "area" | "type" | "threads" | "activity";
+export type GraphMode = "off" | "tag" | "type" | "work" | "activity";
 
 export const GRAPH_MODES: { mode: GraphMode; label: string }[] = [
 	{ mode: "off", label: "Off" },
-	{ mode: "area", label: "Area" },
+	{ mode: "tag", label: "Tag" },
 	{ mode: "type", label: "Type" },
-	{ mode: "threads", label: "Threads" },
+	{ mode: "work", label: "Work" },
 	{ mode: "activity", label: "Activity" },
 ];
 
@@ -56,17 +56,17 @@ const RECENCY: Record<Theme, string[]> = {
 };
 const MUTED = "#898781";
 
-const THREAD_TYPES = ["stub", "spec", "task", "receipt"];
+const WORK_TYPES = ["stub", "spec"];
 
-const TYPE_GROUPS: { name: string; types: string[] }[] = [
-	{ name: "Areas", types: ["area"] },
-	{ name: "Repositories", types: ["repository"] },
-	{ name: "Concepts", types: ["concept"] },
-	{ name: "Entities", types: ["entity"] },
-	{ name: "Policies", types: ["policy"] },
-	{ name: "Sources", types: ["source"] },
-	{ name: "Threads", types: THREAD_TYPES },
-	{ name: "Sessions and changes", types: ["session", "change"] },
+const TYPE_GROUPS: { name: string; test: (fields: Record<string, unknown>) => boolean }[] = [
+	{ name: "Sources", test: (f) => f.type === "source" },
+	{ name: "Repositories", test: (f) => f.type === "repository" },
+	{ name: "Concepts", test: (f) => f.type === "topic" && f.kind === "concept" },
+	{ name: "Entities", test: (f) => f.type === "topic" && f.kind === "entity" },
+	{ name: "Policies", test: (f) => f.type === "topic" && f.kind === "policy" },
+	{ name: "Overviews", test: (f) => f.type === "topic" && f.kind === "overview" },
+	{ name: "Stubs and specs", test: (f) => f.type === "stub" || f.type === "spec" },
+	{ name: "Events", test: (f) => f.type === "event" },
 ];
 
 const QUARTERS = ["Newest 25%", "25–50%", "50–75%", "Oldest 25%"];
@@ -76,14 +76,14 @@ export function graphGroups(mode: GraphMode, docs: GraphDoc[], resolve: Resolve,
 	const vault = new Vault(docs, resolve);
 	let groups: Group[];
 	switch (mode) {
-		case "area":
-			groups = vault.byArea(theme);
+		case "tag":
+			groups = vault.byTag(theme);
 			break;
 		case "type":
 			groups = vault.byType(theme);
 			break;
-		case "threads":
-			groups = vault.byThreads(theme);
+		case "work":
+			groups = vault.byWork(theme);
 			break;
 		case "activity":
 			groups = byActivity(docs, theme);
@@ -94,10 +94,17 @@ export function graphGroups(mode: GraphMode, docs: GraphDoc[], resolve: Resolve,
 	return groups.filter((g) => g.paths.length > 0);
 }
 
+/** The top part of the first tag a field list holds, or null. */
+function topTag(fields: Record<string, unknown>): string | null {
+	const list = asList(fields.tags);
+	if (typeof fields.defines === "string" && fields.defines) list.push(fields.defines);
+	const first = list.map((t) => t.trim().replace(/^#/, "").toLowerCase()).find((t) => t !== "");
+	return first ? first.split("/")[0] : null;
+}
+
 class Vault {
 	private byPath = new Map<string, GraphDoc>();
 	private backlinks = new Map<string, string[]>();
-	private areas = new Map<string, string | null>();
 
 	constructor(private docs: GraphDoc[], private resolve: Resolve) {
 		for (const d of docs) this.byPath.set(d.path, d);
@@ -121,136 +128,112 @@ class Vault {
 			.filter((p): p is string => p !== null && this.byPath.has(p));
 	}
 
-	byArea(theme: Theme): Group[] {
-		const members = new Map<string, string[]>();
-		for (const d of this.docs) {
-			const area = this.areaOf(d.path);
-			if (area === null) continue;
-			members.set(area, [...(members.get(area) ?? []), d.path]);
-		}
-		// The oldest areas keep the first colors, so a new area never repaints the others.
-		const order = [...members.keys()].sort((a, b) => {
-			const ca = String(this.byPath.get(a)?.fields.created ?? "");
-			const cb = String(this.byPath.get(b)?.fields.created ?? "");
-			return ca.localeCompare(cb) || basename(a).localeCompare(basename(b));
-		});
-		const palette = CATEGORICAL[theme];
-		const groups = order.slice(0, palette.length).map((area, i) => ({
-			name: basename(area),
-			color: palette[i],
-			paths: members.get(area) ?? [],
-		}));
-		const rest = order.slice(palette.length).flatMap((area) => members.get(area) ?? []);
-		if (rest.length > 0) groups.push({ name: "Other areas", color: MUTED, paths: rest });
-		return groups;
-	}
-
-	/** The nearest area of a document: the area it is about, or the area of its scope or thread. */
-	areaOf(path: string, seen = new Set<string>()): string | null {
-		if (this.areas.has(path)) return this.areas.get(path) ?? null;
-		if (seen.has(path)) return null;
-		seen.add(path);
-		const area = this.findArea(path, seen);
-		this.areas.set(path, area);
-		return area;
-	}
-
-	private findArea(path: string, seen: Set<string>): string | null {
-		const doc = this.byPath.get(path);
-		if (!doc) return null;
-		const first = (paths: string[]) => {
-			for (const p of paths) {
-				const a = this.areaOf(p, seen);
-				if (a !== null) return a;
+	/** The top tag a document belongs to: its own; an event's subject's; a session's or a change's first document's. */
+	tagOf(doc: GraphDoc, depth = 0): string | null {
+		if (depth > 3) return null;
+		const own = topTag(doc.fields);
+		if (own) return own;
+		const via = (field: string) => {
+			for (const p of this.links(doc, field)) {
+				const t = this.tagOf(this.byPath.get(p)!, depth + 1);
+				if (t) return t;
 			}
 			return null;
 		};
-		switch (this.type(path)) {
-			case "area":
-				return path;
-			case "repository":
-			case "concept":
-			case "entity":
-			case "policy":
-			case "source": {
-				// The chain runs from the top down; the last area in it is the nearest.
-				const chain = this.links(doc, "chain").filter((p) => this.type(p) === "area");
-				if (chain.length > 0) return chain[chain.length - 1];
-				return first([...this.links(doc, "parent"), ...this.links(doc, "scope")]);
-			}
-			case "stub":
-				return first(this.links(doc, "scope"));
-			case "spec":
-			case "task":
-			case "receipt":
-			case "change":
-				return first(this.links(doc, "thread"));
+		switch (this.type(doc.path)) {
+			case "event":
+				return via("subject");
 			case "session":
-				return first([...this.links(doc, "threads"), ...this.links(doc, "repositories")]);
+				return via("specs") ?? via("work");
+			case "change":
+				return via("absorbs") ?? via("work");
 		}
 		return null;
 	}
 
-	byType(theme: Theme): Group[] {
+	byTag(theme: Theme): Group[] {
+		const members = new Map<string, string[]>();
+		const first = new Map<string, string>();
+		for (const d of this.docs) {
+			const tag = this.tagOf(d);
+			if (tag === null) continue;
+			members.set(tag, [...(members.get(tag) ?? []), d.path]);
+			const created = String(d.fields.created ?? "9999");
+			if (!first.has(tag) || created < (first.get(tag) ?? "")) first.set(tag, created);
+		}
+		// The tags held first keep the first colors, so a new tag never repaints the others.
+		const order = [...members.keys()].sort((a, b) => (first.get(a) ?? "").localeCompare(first.get(b) ?? "") || a.localeCompare(b));
 		const palette = CATEGORICAL[theme];
-		return TYPE_GROUPS.map((g, i) => ({
-			name: g.name,
-			color: palette[i],
-			paths: this.docs.filter((d) => g.types.includes(this.type(d.path))).map((d) => d.path),
-		}));
+		const groups = order.slice(0, palette.length).map((tag, i) => ({ name: "#" + tag, color: palette[i], paths: members.get(tag) ?? [] }));
+		const rest = order.slice(palette.length).flatMap((tag) => members.get(tag) ?? []);
+		if (rest.length > 0) groups.push({ name: "Other tags", color: MUTED, paths: rest });
+		return groups;
 	}
 
-	byThreads(theme: Theme): Group[] {
+	byType(theme: Theme): Group[] {
+		const palette = CATEGORICAL[theme];
+		const groups = TYPE_GROUPS.map((g, i) => ({
+			name: g.name,
+			color: palette[i],
+			paths: this.docs.filter((d) => g.test(d.fields)).map((d) => d.path),
+		}));
+		groups.push({ name: "Sessions and changes", color: MUTED, paths: this.docs.filter((d) => this.type(d.path) === "session" || this.type(d.path) === "change").map((d) => d.path) });
+		return groups;
+	}
+
+	byWork(theme: Theme): Group[] {
 		const open: string[] = [];
-		const closed: string[] = [];
+		const done: string[] = [];
 		const none: string[] = [];
 		for (const d of this.docs) {
-			const states = this.threadStates(d);
+			const states = this.workStates(d);
 			if (states.has("open")) open.push(d.path);
-			else if (states.has("closed")) closed.push(d.path);
+			else if (states.has("done")) done.push(d.path);
 			else none.push(d.path);
 		}
 		const palette = CATEGORICAL[theme];
 		return [
-			{ name: "Open threads", color: palette[1], paths: open },
-			{ name: "Closed threads", color: palette[0], paths: closed },
-			{ name: "No threads", color: MUTED, paths: none },
+			{ name: "Open work", color: palette[1], paths: open },
+			{ name: "Done work", color: palette[0], paths: done },
+			{ name: "No work", color: MUTED, paths: none },
 		];
 	}
 
-	/** The stubs a document belongs to. */
-	private threadsOf(doc: GraphDoc): string[] {
-		switch (this.type(doc.path)) {
-			case "stub":
-				return [doc.path];
-			case "spec":
-			case "task":
-			case "receipt":
-			case "change":
-				return this.links(doc, "thread");
-			case "session":
-				return this.links(doc, "threads");
+	/** A stub's or a plan's own state, or null for any other document. */
+	private stateOf(path: string): string | null {
+		const d = this.byPath.get(path);
+		if (!d) return null;
+		const t = this.type(path);
+		if (t === "stub" || (t === "spec" && d.fields.kind === "plan")) {
+			const s = String(d.fields.status ?? "open");
+			return s === "done" || s === "dropped" || s === "resolved" ? "done" : "open";
 		}
-		return [];
+		return null;
 	}
 
 	/**
-	 * The states of the threads a document belongs to or shares a link with. A thread
-	 * document takes only its own thread's state.
+	 * The states of the work a document belongs to or shares a link with. A stub or a plan
+	 * takes only its own state; an event takes its subject's.
 	 */
-	private threadStates(doc: GraphDoc): Set<string> {
-		const stubs = new Set(this.threadsOf(doc));
-		if (!THREAD_TYPES.includes(this.type(doc.path))) {
-			const near = [...doc.links, ...(this.backlinks.get(doc.path) ?? [])];
-			for (const p of near) {
-				const other = this.byPath.get(p);
-				if (other && THREAD_TYPES.includes(this.type(p))) this.threadsOf(other).forEach((s) => stubs.add(s));
-			}
-		}
+	private workStates(doc: GraphDoc): Set<string> {
 		const states = new Set<string>();
-		for (const s of stubs) {
-			if (this.type(s) !== "stub") continue;
-			states.add(this.byPath.get(s)?.fields.stage === "closed" ? "closed" : "open");
+		const own = this.stateOf(doc.path);
+		if (own) {
+			states.add(own);
+			return states;
+		}
+		if (this.type(doc.path) === "event") {
+			for (const p of this.links(doc, "subject")) {
+				const s = this.stateOf(p);
+				if (s) states.add(s);
+			}
+			return states;
+		}
+		const near = [...doc.links, ...(this.backlinks.get(doc.path) ?? [])];
+		for (const p of near) {
+			if (!WORK_TYPES.includes(this.type(p))) continue;
+			const s = this.stateOf(p);
+			if (s) states.add(s);
 		}
 		return states;
 	}
@@ -272,10 +255,6 @@ function localDate(ms: number): string {
 	const t = new Date(ms);
 	const pad = (n: number) => String(n).padStart(2, "0");
 	return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
-}
-
-function basename(path: string): string {
-	return path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/, "");
 }
 
 /** A graph query that matches exactly these paths. */

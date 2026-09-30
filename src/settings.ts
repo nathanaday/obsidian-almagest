@@ -7,7 +7,8 @@ export interface AtlasSettings {
 	binaryPath: string;
 	syncOnChange: boolean;
 	badges: boolean;
-	folderPages: boolean;
+	viewFolders: boolean;
+	tagClick: boolean;
 	graphColors: GraphMode;
 }
 
@@ -15,8 +16,9 @@ export const DEFAULT_SETTINGS: AtlasSettings = {
 	binaryPath: "",
 	syncOnChange: true,
 	badges: true,
-	folderPages: true,
-	graphColors: "area",
+	viewFolders: true,
+	tagClick: false,
+	graphColors: "tag",
 };
 
 export class AtlasSettingTab extends PluginSettingTab {
@@ -58,8 +60,8 @@ export class AtlasSettingTab extends PluginSettingTab {
 		void showVersion();
 
 		new Setting(containerEl)
-			.setName("Sync when a thread document changes or a wiki page moves")
-			.setDesc("Runs atlas-obsidian vault sync after you edit a file under threads/ or move a file in wiki/, so the board, the callouts, and each page's scope follow.")
+			.setName("Keep the views fresh")
+			.setDesc("Runs atlas-obsidian vault sync --views two seconds after a note changes, so the views, the statuses, and the callouts follow your edits.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncOnChange).onChange(async (value) => {
 					this.plugin.settings.syncOnChange = value;
@@ -69,7 +71,7 @@ export class AtlasSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Badges in the file explorer")
-			.setDesc("Shows the stage of each stub and the status of each session.")
+			.setDesc("Shows the status of each stub, plan, and session, and the kind of each event.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.badges).onChange(async (value) => {
 					this.plugin.settings.badges = value;
@@ -79,19 +81,29 @@ export class AtlasSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Open a scope folder's page from the folder")
-			.setDesc("In the file explorer, a click on an area's or a repository's folder opens its page, and the page itself is hidden inside the folder.")
+			.setName("Open a tag's view from its folder")
+			.setDesc("In the file explorer, a click on a folder under views/tags opens the tag's view, and the view itself is hidden inside the folder.")
 			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.folderPages).onChange(async (value) => {
-					this.plugin.settings.folderPages = value;
+				toggle.setValue(this.plugin.settings.viewFolders).onChange(async (value) => {
+					this.plugin.settings.viewFolders = value;
 					await this.plugin.saveSettings();
-					this.plugin.scopeFolders.setEnabled(value);
+					this.plugin.viewFolders.setEnabled(value);
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName("Open a tag in the tag navigator")
+			.setDesc("A click on a #tag in a note opens the tag navigator at that tag, in place of Obsidian's search.")
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.tagClick).onChange(async (value) => {
+					this.plugin.settings.tagClick = value;
+					await this.plugin.saveSettings();
 				}),
 			);
 
 		new Setting(containerEl)
 			.setName("Graph colors")
-			.setDesc("Colors the nodes of the graph by area, by type, by the state of their threads, or by how recently they changed. The graph view has the same buttons.")
+			.setDesc("Colors the nodes of the graph by top tag, by type, by the state of their work, or by how recently they changed. The graph view has the same buttons.")
 			.addDropdown((dropdown) => {
 				for (const { mode, label } of GRAPH_MODES) dropdown.addOption(mode, label);
 				dropdown
