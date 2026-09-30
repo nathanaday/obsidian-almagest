@@ -1,6 +1,6 @@
 {
   "name": "atlas-obsidian-plugin",
-  "version": "7.0.2",
+  "version": "7.0.3",
   "private": true,
   "description": "The Obsidian plugin for Atlas.",
   "scripts": {
