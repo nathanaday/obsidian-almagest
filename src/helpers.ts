@@ -283,7 +283,7 @@ export function expandTags(list: string[]): string[] {
 	return [...out];
 }
 
-/** One document as the tag navigator sees it. */
+/** One document as the Atlas navigator sees it. */
 export interface TagDoc {
 	path: string;
 	title: string;
@@ -300,6 +300,12 @@ export interface Facet {
 }
 
 /** The documents that hold every chosen tag, and the other tags among them, most first. */
+/** A tag as the navigator shows it under the chosen ones: below a chosen tag, the part after it. */
+export function relativeTag(tag: string, chosen: string[]): string {
+	const above = chosen.filter((c) => tag.startsWith(c + "/")).sort((a, b) => b.length - a.length)[0];
+	return above ? "› " + tag.slice(above.length + 1).split("/").join(" › ") : "#" + tag;
+}
+
 export function narrow(docs: TagDoc[], chosen: string[]): { matches: TagDoc[]; with: Facet[] } {
 	const matches = docs.filter((d) => chosen.every((t) => holds(d.tags, t)));
 	const counts = new Map<string, number>();

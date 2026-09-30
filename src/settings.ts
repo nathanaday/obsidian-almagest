@@ -12,7 +12,7 @@ export interface AtlasSettings {
 	graphColors: GraphMode;
 	/** The graph queries Atlas wrote last, so it replaces only its own groups. */
 	graphOwned: string[];
-	/** The tags Focus mode crosses: the tag navigator's last choice. */
+	/** The tags Focus mode crosses: the Atlas navigator's last choice. */
 	focusTags: string[];
 }
 
@@ -98,8 +98,8 @@ export class AtlasSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Open a tag in the tag navigator")
-			.setDesc("A click on a #tag in a note opens the tag navigator at that tag, in place of Obsidian's search.")
+			.setName("Open a tag in the Atlas navigator")
+			.setDesc("A click on a #tag in a note opens the Atlas navigator at that tag, in place of Obsidian's search.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.tagClick).onChange(async (value) => {
 					this.plugin.settings.tagClick = value;

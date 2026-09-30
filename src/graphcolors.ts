@@ -82,7 +82,7 @@ export class GraphColors extends Component {
 		}
 	}
 
-	/** The tags Focus mode crosses: the tag navigator's choice. */
+	/** The tags Focus mode crosses: the Atlas navigator's choice. */
 	async setFocus(tags: string[]): Promise<void> {
 		if (JSON.stringify(tags) === JSON.stringify(this.host.settings.focusTags)) return;
 		this.host.settings.focusTags = [...tags];
@@ -166,7 +166,11 @@ export class GraphColors extends Component {
 				button.onClickEvent(() => void this.setMode(m.mode));
 			}
 			if (mode === "focus" && this.host.settings.focusTags.length === 0) {
-				bar.createDiv({ cls: "atlas-graph-legend-row", text: "Choose tags in the tag navigator to focus on them." });
+				bar.createDiv({ cls: "atlas-graph-legend-row", text: "Open the Atlas navigator (left ribbon) and choose tags to focus on them." });
+				continue;
+			}
+			if (mode === "focus" && this.groups.length === 0) {
+				bar.createDiv({ cls: "atlas-graph-legend-row", text: "No document holds all the chosen tags." });
 				continue;
 			}
 			if (this.groups.length === 0) continue;

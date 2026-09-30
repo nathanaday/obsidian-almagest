@@ -9,7 +9,7 @@ import { mentionEditor, mentionReading } from "./mentions";
 import { repoProcessor } from "./repo";
 import { SESSIONS_VIEW, SessionsView, activeSessions } from "./sessions";
 import { AtlasSettingTab, AtlasSettings, DEFAULT_SETTINGS } from "./settings";
-import { TAG_NAV_VIEW, TagNavigator } from "./tagnav";
+import { NAV_ICON, TAG_NAV_VIEW, TagNavigator } from "./tagnav";
 import { ViewFolders } from "./viewfolders";
 import { WorkBar } from "./workbar";
 
@@ -80,8 +80,8 @@ export default class AtlasPlugin extends Plugin {
 					() => void this.focusGraph(),
 				),
 		);
-		this.addRibbonIcon("tags", "Atlas: open the tag navigator", () => void this.openTags());
-		this.addCommand({ id: "open-tags", name: "Open the tag navigator", callback: () => void this.openTags() });
+		this.addRibbonIcon(NAV_ICON, "Atlas: open the Atlas navigator", () => void this.openTags());
+		this.addCommand({ id: "open-tags", name: "Open the Atlas navigator", callback: () => void this.openTags() });
 		// A click on a #tag opens the navigator at it, when the setting asks.
 		this.registerDomEvent(document, "click", (evt) => this.onTagClick(evt), { capture: true });
 

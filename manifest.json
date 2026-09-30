@@ -1,7 +1,7 @@
 {
   "id": "atlas",
   "name": "Atlas",
-  "version": "7.1.0",
+  "version": "7.2.0",
   "minAppVersion": "1.9.0",
   "description": "Colors and icons for Atlas documents, a sessions pane, and buttons that apply a change or refresh the vault through the atlas binary.",
   "author": "nathanaday",

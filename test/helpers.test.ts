@@ -17,6 +17,7 @@ import {
 	layoutOf,
 	narrow,
 	normalTag,
+	relativeTag,
 	repoBlock,
 	searchURI,
 	tagOfFolder,
@@ -173,6 +174,9 @@ test("a tag's view lies in a folder per tag part", () => {
 
 test("a tag holds its children, and a list expands to every ancestor", () => {
 	assert.equal(normalTag(" #Work/P3 "), "work/p3");
+	assert.equal(relativeTag("ml/cs566/project", ["ml"]), "› cs566 › project");
+	assert.equal(relativeTag("ml/cs566/project", ["ml", "ml/cs566"]), "› project");
+	assert.equal(relativeTag("tool", ["ml"]), "#tool");
 	assert.ok(holds(["work/p3/edge"], "work"));
 	assert.ok(holds(["work/p3"], "work/p3"));
 	assert.ok(!holds(["work/p3x"], "work/p3"));

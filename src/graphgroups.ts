@@ -75,8 +75,6 @@ const TYPE_GROUPS: { name: string; query: string; test: (fields: Record<string, 
 	{ name: "Stubs and specs", query: "[type:stub] OR [type:spec]", test: (f) => f.type === "stub" || f.type === "spec" },
 ];
 
-/** The most tags Focus mode crosses in full: three tags make seven groups. */
-const FOCUS_FULL = 3;
 
 const QUARTERS = ["Newest 25%", "25–50%", "50–75%", "Oldest 25%"];
 
@@ -302,36 +300,20 @@ class Vault {
 }
 
 /**
- * The tags chosen in the tag navigator, crossed: a group for the documents that hold all
- * of them first, then each smaller set, down to each tag alone. The first group that
- * matches colors a node, so a group holds the documents of its set and of no larger one.
- * Past three tags, only the full set and each tag alone.
+ * The tags chosen in the Atlas navigator: one group, the documents that hold every one
+ * of them. The rest stay uncolored, so the overlap stands out in a large graph.
  */
 function byFocus(docs: GraphDoc[], chosen: string[], theme: Theme): Group[] {
 	const tags = [...new Set(chosen.map(normalTag).filter((t) => t !== ""))];
 	if (tags.length === 0) return [];
-	let sets: string[][];
-	if (tags.length <= FOCUS_FULL) {
-		sets = [];
-		// Ascending masks and a stable sort keep the chosen order within each size.
-		for (let mask = 1; mask < 1 << tags.length; mask++) sets.push(tags.filter((_, i) => mask & (1 << i)));
-		sets.sort((a, b) => b.length - a.length);
-	} else {
-		sets = [tags, ...tags.map((t) => [t])];
-	}
-	const palette = CATEGORICAL[theme];
-	const groups: Group[] = sets.slice(0, palette.length).map((set, i) => ({
-		name: set.map((t) => "#" + t).join(" + "),
-		color: palette[i],
-		paths: [],
-		query: allTagsQuery(set),
-	}));
-	for (const d of docs) {
-		const own = tagsOf(d.fields);
-		const i = sets.findIndex((set, k) => k < groups.length && set.every((t) => holds(own, t)));
-		if (i >= 0) groups[i].paths.push(d.path);
-	}
-	return groups;
+	return [
+		{
+			name: tags.map((t) => "#" + t).join(" + "),
+			color: CATEGORICAL[theme][0],
+			paths: docs.filter((d) => tags.every((t) => holds(tagsOf(d.fields), t))).map((d) => d.path),
+			query: allTagsQuery(tags),
+		},
+	];
 }
 
 /** Quarters by the day of the last update, then by the modification time. */

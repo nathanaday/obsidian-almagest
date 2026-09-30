@@ -74,25 +74,15 @@ test("tag mode colors eight tags; a tie on the day goes to the larger tag", () =
 	assert.deepEqual(graphGroups("tag", tie, () => null, "light").map((g) => [g.name, g.paths.length]), [["#subject", 2]], "no group for a note with no type");
 });
 
-test("focus mode crosses the chosen tags, the full set first", () => {
+test("focus mode colors only the documents that hold every chosen tag", () => {
 	const groups = graphGroups("focus", vault, resolve, "light", ["cs513", "#Self-driving"]);
 	assert.deepEqual(
 		groups.map((g) => [g.name, g.query, g.paths]),
-		[
-			["#cs513 + #self-driving", "(tag:#cs513 OR [defines:/^cs513(\\/|$)/]) (tag:#self-driving OR [defines:/^self-driving(\\/|$)/])", ["wiki/documents/Lidar.md"]],
-			["#cs513", "tag:#cs513 OR [defines:/^cs513(\\/|$)/]", ["wiki/documents/Paper.md", "wiki/documents/Idea.md"]],
-		],
-		"a tag no other document holds leaves its group out",
+		[["#cs513 + #self-driving", "(tag:#cs513 OR [defines:/^cs513(\\/|$)/]) (tag:#self-driving OR [defines:/^self-driving(\\/|$)/])", ["wiki/documents/Lidar.md"]]],
 	);
-	assert.deepEqual(graphGroups("focus", vault, resolve, "light", ["work"])[0].paths.length, 6, "a tag holds the tags below it");
+	assert.equal(graphGroups("focus", vault, resolve, "light", ["work"])[0].paths.length, 6, "a tag holds the tags below it");
 	assert.deepEqual(graphGroups("focus", vault, resolve, "light", []), []);
-	const three = ["a", "b", "c"].map((t) => doc(`${t}.md`, { tags: ["a", "b", "c"] }));
-	const mixed = [doc("m.md", { tags: ["a"] }), doc("n.md", { tags: ["b"] }), doc("o.md", { tags: ["a", "c"] }), doc("p.md", { tags: ["a", "b", "c"] })];
-	assert.deepEqual(graphGroups("focus", mixed, () => null, "light", ["a", "b", "c"]).map((g) => g.name), ["#a + #b + #c", "#a + #c", "#a", "#b"], "each size keeps the chosen order");
-	const all = graphGroups("focus", three, () => null, "light", ["a", "b", "c"]);
-	assert.equal(all.length, 1, "every document holds the full set");
-	const five = [doc("x.md", { tags: ["a"] }), doc("y.md", { tags: ["a", "b", "c", "d", "e"] })];
-	assert.deepEqual(graphGroups("focus", five, () => null, "light", ["a", "b", "c", "d", "e"]).map((g) => g.name), ["#a + #b + #c + #d + #e", "#a"], "past three tags: the full set and each tag alone");
+	assert.deepEqual(graphGroups("focus", vault, resolve, "light", ["cs513", "work"]), [], "no overlap, no group");
 	assert.equal(allTagsQuery(["x"]), tagQuery("x"));
 });
 
