@@ -45,13 +45,14 @@ function same(a: ColorGroup[], b: ColorGroup[]): boolean {
 
 export interface GraphColorsHost {
 	app: App;
-	settings: { graphColors: GraphMode };
+	settings: { graphColors: GraphMode; graphOwned: string[]; focusTags: string[] };
 	saveSettings(): Promise<void>;
 }
 
 /**
- * Color groups for the graph, one mode at a time. The groups list paths, so they follow
- * every change to the vault; the user's own groups stay after them.
+ * Color groups for the graph, one mode at a time. Tag, Focus, and Type groups are search
+ * queries; Work and Activity groups name their paths, so they follow every change to the
+ * vault. The user's own groups stay after ours.
  */
 export class GraphColors extends Component {
 	private groups: Group[] = [];
@@ -81,6 +82,14 @@ export class GraphColors extends Component {
 		}
 	}
 
+	/** The tags Focus mode crosses: the tag navigator's choice. */
+	async setFocus(tags: string[]): Promise<void> {
+		if (JSON.stringify(tags) === JSON.stringify(this.host.settings.focusTags)) return;
+		this.host.settings.focusTags = [...tags];
+		await this.host.saveSettings();
+		if (this.host.settings.graphColors === "focus") this.apply();
+	}
+
 	async setMode(mode: GraphMode): Promise<void> {
 		this.host.settings.graphColors = mode;
 		await this.host.saveSettings();
@@ -94,7 +103,7 @@ export class GraphColors extends Component {
 		this.groups =
 			mode === "off"
 				? []
-				: graphGroups(mode, this.docs(), (link, from) => cache.getFirstLinkpathDest(link, from)?.path ?? null, theme);
+				: graphGroups(mode, this.docs(), (link, from) => cache.getFirstLinkpathDest(link, from)?.path ?? null, theme, this.host.settings.focusTags);
 		this.write(colorGroups(this.groups));
 		this.renderBars();
 	}
@@ -113,7 +122,8 @@ export class GraphColors extends Component {
 	private write(ours: ColorGroup[]): void {
 		const instance = graphInstance(this.app);
 		if (!instance) return;
-		const merged = mergeColorGroups(instance.options.colorGroups ?? [], ours);
+		const owned = this.host.settings.graphOwned;
+		const merged = mergeColorGroups(instance.options.colorGroups ?? [], ours, owned);
 		if (!same(instance.options.colorGroups ?? [], merged)) {
 			instance.options.colorGroups = merged;
 			instance.saveOptions();
@@ -123,9 +133,14 @@ export class GraphColors extends Component {
 				const engine = engineOf(leaf.view);
 				if (!engine) continue;
 				const current = engine.getOptions().colorGroups ?? [];
-				const next = mergeColorGroups(current, ours);
+				const next = mergeColorGroups(current, ours, owned);
 				if (!same(current, next)) engine.setOptions({ colorGroups: next });
 			}
+		}
+		const queries = ours.map((g) => g.query);
+		if (JSON.stringify(queries) !== JSON.stringify(owned)) {
+			this.host.settings.graphOwned = queries;
+			void this.host.saveSettings();
 		}
 	}
 
@@ -149,6 +164,10 @@ export class GraphColors extends Component {
 				button.toggleClass("is-active", m.mode === mode);
 				button.setAttr("aria-pressed", String(m.mode === mode));
 				button.onClickEvent(() => void this.setMode(m.mode));
+			}
+			if (mode === "focus" && this.host.settings.focusTags.length === 0) {
+				bar.createDiv({ cls: "atlas-graph-legend-row", text: "Choose tags in the tag navigator to focus on them." });
+				continue;
 			}
 			if (this.groups.length === 0) continue;
 			const legend = bar.createDiv({ cls: "atlas-graph-legend" });

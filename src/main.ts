@@ -71,7 +71,15 @@ export default class AtlasPlugin extends Plugin {
 		this.addRibbonIcon("refresh-cw", "Atlas: sync the vault", () => void this.sync(true));
 		this.addCommand({ id: "sync", name: "Sync the vault", callback: () => void this.sync(true) });
 
-		this.registerView(TAG_NAV_VIEW, (leaf) => new TagNavigator(leaf));
+		this.registerView(
+			TAG_NAV_VIEW,
+			(leaf) =>
+				new TagNavigator(
+					leaf,
+					(tags) => void this.graphColors.setFocus(tags),
+					() => void this.focusGraph(),
+				),
+		);
 		this.addRibbonIcon("tags", "Atlas: open the tag navigator", () => void this.openTags());
 		this.addCommand({ id: "open-tags", name: "Open the tag navigator", callback: () => void this.openTags() });
 		// A click on a #tag opens the navigator at it, when the setting asks.
@@ -126,6 +134,14 @@ export default class AtlasPlugin extends Plugin {
 		if (this.syncTimer !== null) window.clearTimeout(this.syncTimer);
 	}
 
+	/** Colors the graph by the navigator's tags, and opens the graph. */
+	private async focusGraph(): Promise<void> {
+		await this.graphColors.setMode("focus");
+		const open = this.app.workspace.getLeavesOfType("graph")[0];
+		if (open) this.app.workspace.revealLeaf(open);
+		else (this.app as unknown as { commands?: { executeCommandById?(id: string): void } }).commands?.executeCommandById?.("graph:open");
+	}
+
 	async loadSettings(): Promise<void> {
 		const saved = (await this.loadData()) as (Partial<AtlasSettings> & { folderPages?: boolean }) | null;
 		this.settings = { ...DEFAULT_SETTINGS };
@@ -135,6 +151,10 @@ export default class AtlasPlugin extends Plugin {
 		}
 		if (saved?.folderPages !== undefined && saved.viewFolders === undefined) this.settings.viewFolders = saved.folderPages;
 		if (!isGraphMode(this.settings.graphColors)) this.settings.graphColors = DEFAULT_SETTINGS.graphColors;
+		for (const key of ["graphOwned", "focusTags"] as const) {
+			const list = this.settings[key];
+			this.settings[key] = Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : [];
+		}
 	}
 
 	async saveSettings(): Promise<void> {

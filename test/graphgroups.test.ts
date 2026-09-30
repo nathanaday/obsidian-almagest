@@ -6,9 +6,11 @@ import {
 	Resolve,
 	colorGroups,
 	graphGroups,
+	allTagsQuery,
 	isAtlasQuery,
 	mergeColorGroups,
 	pathQuery,
+	tagQuery,
 } from "../src/graphgroups";
 
 function doc(path: string, fields: Record<string, unknown>, links: string[] = [], mtime = 0): GraphDoc {
@@ -24,7 +26,7 @@ const vault: GraphDoc[] = [
 	doc("wiki/documents/Filter.md", { type: "spec", kind: "plan", status: "started", blocked: "data", tags: ["work/p3"] }, ["wiki/documents/p3-edge.md"]),
 	doc("wiki/documents/Idea.md", { type: "stub", status: "resolved", tags: ["cs513"] }, ["wiki/documents/Lidar.md"]),
 	doc("wiki/documents/Design.md", { type: "spec", kind: "design", tags: ["work/p3"] }),
-	doc("wiki/documents/Filter · started.md", { type: "event", kind: "started", subject: "[[Filter]]" }, ["wiki/documents/Filter.md"]),
+	doc("wiki/documents/Filter · started.md", { type: "event", kind: "started", subject: "[[Filter]]", tags: ["work/p3"] }, ["wiki/documents/Filter.md"]),
 	doc("sessions/2026-09/s1.md", { type: "session", specs: ["[[Filter]]"] }),
 	doc("changes/2026-09/c1.md", { type: "change" }),
 	doc("Notes.md", {}, ["wiki/documents/Lidar.md"]),
@@ -36,7 +38,7 @@ function names(groups: { name: string; paths: string[] }[]): Record<string, stri
 	return Object.fromEntries(groups.map((g) => [g.name, [...g.paths].sort()]));
 }
 
-test("tag mode groups each document under the top part of its first tag, oldest tag first", () => {
+test("tag mode: a query per top tag, oldest tag first; records join by path", () => {
 	const groups = graphGroups("tag", vault, resolve, "light");
 	assert.deepEqual(groups.map((g) => g.name), ["#work", "#cs513"]);
 	assert.deepEqual(names(groups), {
@@ -51,23 +53,54 @@ test("tag mode groups each document under the top part of its first tag, oldest 
 		],
 		"#cs513": ["wiki/documents/Idea.md", "wiki/documents/Lidar.md", "wiki/documents/Paper.md"],
 	});
+	assert.equal(groups[0].query, 'tag:#work OR [defines:/^work(\\/|$)/] OR path:"sessions/2026-09/s1.md"');
+	assert.equal(groups[1].query, "tag:#cs513 OR [defines:/^cs513(\\/|$)/]");
 	assert.equal(groups[0].color, "#2a78d6");
 	assert.equal(graphGroups("tag", vault, resolve, "dark")[0].color, "#3987e5");
 });
 
-test("tag mode folds the tags past the eighth into one muted group", () => {
+test("tag mode colors eight tags; a tie on the day goes to the larger tag", () => {
 	const docs = Array.from({ length: 10 }, (_, i) =>
 		doc(`wiki/documents/T${i}.md`, { type: "topic", tags: [`t${i}`], created: `2026-01-${String(i + 1).padStart(2, "0")}` }),
 	);
 	const groups = graphGroups("tag", docs, () => null, "light");
-	assert.equal(groups.length, 9);
-	assert.deepEqual(groups[8], { name: "Other tags", color: "#898781", paths: ["wiki/documents/T8.md", "wiki/documents/T9.md"] });
-	assert.equal(new Set(groups.slice(0, 8).map((g) => g.color)).size, 8);
+	assert.equal(groups.length, 8);
+	assert.ok(!groups.some((g) => g.paths.includes("wiki/documents/T8.md")), "a tag past the eighth gets no group");
+	const tie = [
+		doc("a.md", { type: "topic", tags: ["subject", "tool"], created: "2026-09-28T00:00:00" }),
+		doc("b.md", { type: "topic", tags: ["subject"], created: "2026-09-28T00:00:00" }),
+		doc("note.md", { tags: ["stray"] }),
+	];
+	assert.deepEqual(graphGroups("tag", tie, () => null, "light").map((g) => [g.name, g.paths.length]), [["#subject", 2]], "no group for a note with no type");
+});
+
+test("focus mode crosses the chosen tags, the full set first", () => {
+	const groups = graphGroups("focus", vault, resolve, "light", ["cs513", "#Self-driving"]);
+	assert.deepEqual(
+		groups.map((g) => [g.name, g.query, g.paths]),
+		[
+			["#cs513 + #self-driving", "(tag:#cs513 OR [defines:/^cs513(\\/|$)/]) (tag:#self-driving OR [defines:/^self-driving(\\/|$)/])", ["wiki/documents/Lidar.md"]],
+			["#cs513", "tag:#cs513 OR [defines:/^cs513(\\/|$)/]", ["wiki/documents/Paper.md", "wiki/documents/Idea.md"]],
+		],
+		"a tag no other document holds leaves its group out",
+	);
+	assert.deepEqual(graphGroups("focus", vault, resolve, "light", ["work"])[0].paths.length, 6, "a tag holds the tags below it");
+	assert.deepEqual(graphGroups("focus", vault, resolve, "light", []), []);
+	const three = ["a", "b", "c"].map((t) => doc(`${t}.md`, { tags: ["a", "b", "c"] }));
+	const mixed = [doc("m.md", { tags: ["a"] }), doc("n.md", { tags: ["b"] }), doc("o.md", { tags: ["a", "c"] }), doc("p.md", { tags: ["a", "b", "c"] })];
+	assert.deepEqual(graphGroups("focus", mixed, () => null, "light", ["a", "b", "c"]).map((g) => g.name), ["#a + #b + #c", "#a + #c", "#a", "#b"], "each size keeps the chosen order");
+	const all = graphGroups("focus", three, () => null, "light", ["a", "b", "c"]);
+	assert.equal(all.length, 1, "every document holds the full set");
+	const five = [doc("x.md", { tags: ["a"] }), doc("y.md", { tags: ["a", "b", "c", "d", "e"] })];
+	assert.deepEqual(graphGroups("focus", five, () => null, "light", ["a", "b", "c", "d", "e"]).map((g) => g.name), ["#a + #b + #c + #d + #e", "#a"], "past three tags: the full set and each tag alone");
+	assert.equal(allTagsQuery(["x"]), tagQuery("x"));
 });
 
 test("type mode splits topics by kind and leaves empty groups out", () => {
 	const groups = names(graphGroups("type", vault, resolve, "light"));
-	assert.deepEqual(Object.keys(groups), ["Sources", "Repositories", "Concepts", "Policies", "Overviews", "Stubs and specs", "Events", "Sessions and changes"]);
+	assert.deepEqual(Object.keys(groups), ["Events", "Sources", "Repositories", "Concepts", "Policies", "Overviews", "Stubs and specs", "Sessions and changes"]);
+	const queries = graphGroups("type", vault, resolve, "light").map((g) => g.query);
+	assert.deepEqual(queries.slice(0, 3), ["[type:event]", "[type:source]", "[type:repository]"]);
 	assert.equal(groups["Stubs and specs"].length, 3);
 	assert.deepEqual(groups["Sessions and changes"], ["changes/2026-09/c1.md", "sessions/2026-09/s1.md"]);
 });
@@ -137,4 +170,8 @@ test("mergeColorGroups replaces our groups and keeps the user's after them", () 
 	assert.deepEqual(ours[0].color, { a: 1, rgb: 0x2a78d6 });
 	assert.deepEqual(mergeColorGroups([...old, user], ours), [...ours, user]);
 	assert.deepEqual(mergeColorGroups([...old, user], []), [user]);
+	const lastTime: ColorGroup = { query: "tag:#gone OR [defines:gone]", color: { a: 1, rgb: 2 } };
+	const edited: ColorGroup = { query: "tag:#gone", color: { a: 1, rgb: 3 } };
+	assert.deepEqual(mergeColorGroups([lastTime, edited, user], ours, [lastTime.query]), [...ours, edited, user], "a query Atlas wrote goes; one the user edited stays");
+	assert.deepEqual(colorGroups([{ name: "q", color: "#000001", paths: ["z.md"], query: "tag:#q" }])[0].query, "tag:#q");
 });

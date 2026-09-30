@@ -1,12 +1,13 @@
 // Pure functions: no Obsidian, no Node. The tests cover them.
 
-import { asList, linkTitle } from "./helpers";
+import { asList, holds, linkTitle, normalTag } from "./helpers";
 
-export type GraphMode = "off" | "tag" | "type" | "work" | "activity";
+export type GraphMode = "off" | "tag" | "focus" | "type" | "work" | "activity";
 
 export const GRAPH_MODES: { mode: GraphMode; label: string }[] = [
 	{ mode: "off", label: "Off" },
 	{ mode: "tag", label: "Tag" },
+	{ mode: "focus", label: "Focus" },
 	{ mode: "type", label: "Type" },
 	{ mode: "work", label: "Work" },
 	{ mode: "activity", label: "Activity" },
@@ -35,7 +36,10 @@ export interface Group {
 	name: string;
 	/** "#rrggbb" */
 	color: string;
+	/** The documents the group colors, for the legend; the query decides in the graph. */
 	paths: string[];
+	/** The graph query; without one, the group names its paths. */
+	query?: string;
 }
 
 /** A color group as Obsidian's graph keeps it. */
@@ -58,26 +62,34 @@ const MUTED = "#898781";
 
 const WORK_TYPES = ["stub", "spec"];
 
-const TYPE_GROUPS: { name: string; test: (fields: Record<string, unknown>) => boolean }[] = [
-	{ name: "Sources", test: (f) => f.type === "source" },
-	{ name: "Repositories", test: (f) => f.type === "repository" },
-	{ name: "Concepts", test: (f) => f.type === "topic" && f.kind === "concept" },
-	{ name: "Entities", test: (f) => f.type === "topic" && f.kind === "entity" },
-	{ name: "Policies", test: (f) => f.type === "topic" && f.kind === "policy" },
-	{ name: "Overviews", test: (f) => f.type === "topic" && f.kind === "overview" },
-	{ name: "Stubs and specs", test: (f) => f.type === "stub" || f.type === "spec" },
-	{ name: "Events", test: (f) => f.type === "event" },
+// Obsidian matches a property's name as a substring, so [type:spec] also reads an event's
+// to_type. Events come first: the first group that matches colors a node.
+const TYPE_GROUPS: { name: string; query: string; test: (fields: Record<string, unknown>) => boolean }[] = [
+	{ name: "Events", query: "[type:event]", test: (f) => f.type === "event" },
+	{ name: "Sources", query: "[type:source]", test: (f) => f.type === "source" },
+	{ name: "Repositories", query: "[type:repository]", test: (f) => f.type === "repository" },
+	{ name: "Concepts", query: "[type:topic] [kind:concept]", test: (f) => f.type === "topic" && f.kind === "concept" },
+	{ name: "Entities", query: "[type:topic] [kind:entity]", test: (f) => f.type === "topic" && f.kind === "entity" },
+	{ name: "Policies", query: "[type:topic] [kind:policy]", test: (f) => f.type === "topic" && f.kind === "policy" },
+	{ name: "Overviews", query: "[type:topic] [kind:overview]", test: (f) => f.type === "topic" && f.kind === "overview" },
+	{ name: "Stubs and specs", query: "[type:stub] OR [type:spec]", test: (f) => f.type === "stub" || f.type === "spec" },
 ];
+
+/** The most tags Focus mode crosses in full: three tags make seven groups. */
+const FOCUS_FULL = 3;
 
 const QUARTERS = ["Newest 25%", "25–50%", "50–75%", "Oldest 25%"];
 
 /** The groups of a mode, in the order the graph applies them. Empty groups are left out. */
-export function graphGroups(mode: GraphMode, docs: GraphDoc[], resolve: Resolve, theme: Theme): Group[] {
+export function graphGroups(mode: GraphMode, docs: GraphDoc[], resolve: Resolve, theme: Theme, focus: string[] = []): Group[] {
 	const vault = new Vault(docs, resolve);
 	let groups: Group[];
 	switch (mode) {
 		case "tag":
 			groups = vault.byTag(theme);
+			break;
+		case "focus":
+			groups = byFocus(docs, focus, theme);
 			break;
 		case "type":
 			groups = vault.byType(theme);
@@ -94,12 +106,29 @@ export function graphGroups(mode: GraphMode, docs: GraphDoc[], resolve: Resolve,
 	return groups.filter((g) => g.paths.length > 0);
 }
 
-/** The top part of the first tag a field list holds, or null. */
-function topTag(fields: Record<string, unknown>): string | null {
+/** Every tag a document holds, the one it defines included. */
+function tagsOf(fields: Record<string, unknown>): string[] {
 	const list = asList(fields.tags);
 	if (typeof fields.defines === "string" && fields.defines) list.push(fields.defines);
-	const first = list.map((t) => t.trim().replace(/^#/, "").toLowerCase()).find((t) => t !== "");
-	return first ? first.split("/")[0] : null;
+	return list.map(normalTag).filter((t) => t !== "");
+}
+
+/** The top parts of a document's tags, in the order it holds them. */
+function topTags(fields: Record<string, unknown>): string[] {
+	return [...new Set(tagsOf(fields).map((t) => t.split("/")[0]))];
+}
+
+/**
+ * The graph query of the documents that hold a tag or a tag below it, or define one.
+ * Obsidian matches a property's value as a substring, so defines takes a regex.
+ */
+export function tagQuery(tag: string): string {
+	return `tag:#${tag} OR [defines:/^${tag}(\\/|$)/]`;
+}
+
+/** A query that matches the documents holding every one of these tags. */
+export function allTagsQuery(tags: string[]): string {
+	return tags.length === 1 ? tagQuery(tags[0]) : tags.map((t) => `(${tagQuery(t)})`).join(" ");
 }
 
 class Vault {
@@ -131,7 +160,7 @@ class Vault {
 	/** The top tag a document belongs to: its own; an event's subject's; a session's or a change's first document's. */
 	tagOf(doc: GraphDoc, depth = 0): string | null {
 		if (depth > 3) return null;
-		const own = topTag(doc.fields);
+		const own = topTags(doc.fields)[0];
 		if (own) return own;
 		const via = (field: string) => {
 			for (const p of this.links(doc, field)) {
@@ -151,33 +180,66 @@ class Vault {
 		return null;
 	}
 
+	/**
+	 * A group per top tag of the typed documents, at most eight: the tags held first take
+	 * the first colors, so a new tag never repaints the others, and of two tags held first
+	 * on one day, the one more documents hold. The graph colors a node by the first group
+	 * that matches, so the legend counts each document in the first group whose tag it
+	 * holds. Sessions and changes hold no tags: each joins the group of the work it touched,
+	 * by its path. A tag past the eighth, and a note with no type, get no group.
+	 */
 	byTag(theme: Theme): Group[] {
-		const members = new Map<string, string[]>();
+		const typed = this.docs.filter((d) => this.type(d.path) !== "");
 		const first = new Map<string, string>();
-		for (const d of this.docs) {
-			const tag = this.tagOf(d);
-			if (tag === null) continue;
-			members.set(tag, [...(members.get(tag) ?? []), d.path]);
-			const created = String(d.fields.created ?? "9999");
-			if (!first.has(tag) || created < (first.get(tag) ?? "")) first.set(tag, created);
+		const count = new Map<string, number>();
+		for (const d of typed) {
+			const created = String(d.fields.created ?? "9999").slice(0, 10);
+			for (const t of topTags(d.fields)) {
+				if (!first.has(t) || created < (first.get(t) ?? "")) first.set(t, created);
+				count.set(t, (count.get(t) ?? 0) + 1);
+			}
 		}
-		// The tags held first keep the first colors, so a new tag never repaints the others.
-		const order = [...members.keys()].sort((a, b) => (first.get(a) ?? "").localeCompare(first.get(b) ?? "") || a.localeCompare(b));
+		const order = [...first.keys()].sort(
+			(a, b) => (first.get(a) ?? "").localeCompare(first.get(b) ?? "") || (count.get(b) ?? 0) - (count.get(a) ?? 0) || a.localeCompare(b),
+		);
 		const palette = CATEGORICAL[theme];
-		const groups = order.slice(0, palette.length).map((tag, i) => ({ name: "#" + tag, color: palette[i], paths: members.get(tag) ?? [] }));
-		const rest = order.slice(palette.length).flatMap((tag) => members.get(tag) ?? []);
-		if (rest.length > 0) groups.push({ name: "Other tags", color: MUTED, paths: rest });
-		return groups;
+		const groups = order.slice(0, palette.length).map((t, i) => ({ name: "#" + t, color: palette[i], tag: t, paths: [] as string[], records: [] as string[] }));
+		for (const d of typed) {
+			const own = topTags(d.fields);
+			if (own.length > 0) {
+				groups.find((g) => own.includes(g.tag))?.paths.push(d.path);
+				continue;
+			}
+			const type = this.type(d.path);
+			if (type !== "session" && type !== "change") continue;
+			const g = groups.find((x) => x.tag === this.tagOf(d));
+			if (g) {
+				g.paths.push(d.path);
+				g.records.push(d.path);
+			}
+		}
+		return groups.map((g) => ({
+			name: g.name,
+			color: g.color,
+			paths: g.paths,
+			query: [tagQuery(g.tag), ...g.records.sort().map((p) => `path:"${p}"`)].join(" OR "),
+		}));
 	}
 
 	byType(theme: Theme): Group[] {
 		const palette = CATEGORICAL[theme];
-		const groups = TYPE_GROUPS.map((g, i) => ({
+		const groups: Group[] = TYPE_GROUPS.map((g, i) => ({
 			name: g.name,
 			color: palette[i],
 			paths: this.docs.filter((d) => g.test(d.fields)).map((d) => d.path),
+			query: g.query,
 		}));
-		groups.push({ name: "Sessions and changes", color: MUTED, paths: this.docs.filter((d) => this.type(d.path) === "session" || this.type(d.path) === "change").map((d) => d.path) });
+		groups.push({
+			name: "Sessions and changes",
+			color: MUTED,
+			paths: this.docs.filter((d) => this.type(d.path) === "session" || this.type(d.path) === "change").map((d) => d.path),
+			query: "[type:session] OR [type:change]",
+		});
 		return groups;
 	}
 
@@ -239,6 +301,39 @@ class Vault {
 	}
 }
 
+/**
+ * The tags chosen in the tag navigator, crossed: a group for the documents that hold all
+ * of them first, then each smaller set, down to each tag alone. The first group that
+ * matches colors a node, so a group holds the documents of its set and of no larger one.
+ * Past three tags, only the full set and each tag alone.
+ */
+function byFocus(docs: GraphDoc[], chosen: string[], theme: Theme): Group[] {
+	const tags = [...new Set(chosen.map(normalTag).filter((t) => t !== ""))];
+	if (tags.length === 0) return [];
+	let sets: string[][];
+	if (tags.length <= FOCUS_FULL) {
+		sets = [];
+		// Ascending masks and a stable sort keep the chosen order within each size.
+		for (let mask = 1; mask < 1 << tags.length; mask++) sets.push(tags.filter((_, i) => mask & (1 << i)));
+		sets.sort((a, b) => b.length - a.length);
+	} else {
+		sets = [tags, ...tags.map((t) => [t])];
+	}
+	const palette = CATEGORICAL[theme];
+	const groups: Group[] = sets.slice(0, palette.length).map((set, i) => ({
+		name: set.map((t) => "#" + t).join(" + "),
+		color: palette[i],
+		paths: [],
+		query: allTagsQuery(set),
+	}));
+	for (const d of docs) {
+		const own = tagsOf(d.fields);
+		const i = sets.findIndex((set, k) => k < groups.length && set.every((t) => holds(own, t)));
+		if (i >= 0) groups[i].paths.push(d.path);
+	}
+	return groups;
+}
+
 /** Quarters by the day of the last update, then by the modification time. */
 function byActivity(docs: GraphDoc[], theme: Theme): Group[] {
 	const key = (d: GraphDoc) => {
@@ -265,20 +360,23 @@ export function pathQuery(paths: string[]): string {
 
 export function colorGroups(groups: Group[]): ColorGroup[] {
 	return groups.map((g) => ({
-		query: pathQuery(g.paths),
+		query: g.query ?? pathQuery(g.paths),
 		color: { a: 1, rgb: parseInt(g.color.slice(1), 16) },
 	}));
 }
 
-/** Whether Atlas wrote a group: only pathQuery gives this form. */
+/** Whether a query has the form only pathQuery gives. */
 export function isAtlasQuery(query: string): boolean {
 	return query.startsWith("path:/^(?:") && query.endsWith(")$/");
 }
 
 /**
  * The graph's groups with ours first, since the first group that matches a node colors
- * it. The user's own groups stay after ours.
+ * it. A group is ours when Atlas wrote its query before (`owned`), or when it names paths
+ * the way only Atlas does; the user's own groups, and a group the user edited, stay after
+ * ours.
  */
-export function mergeColorGroups(current: ColorGroup[], ours: ColorGroup[]): ColorGroup[] {
-	return [...ours, ...current.filter((g) => !isAtlasQuery(g.query))];
+export function mergeColorGroups(current: ColorGroup[], ours: ColorGroup[], owned: string[] = []): ColorGroup[] {
+	const mine = new Set([...owned, ...ours.map((g) => g.query)]);
+	return [...ours, ...current.filter((g) => !isAtlasQuery(g.query) && !mine.has(g.query))];
 }

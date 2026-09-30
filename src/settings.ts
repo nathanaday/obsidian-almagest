@@ -10,6 +10,10 @@ export interface AtlasSettings {
 	viewFolders: boolean;
 	tagClick: boolean;
 	graphColors: GraphMode;
+	/** The graph queries Atlas wrote last, so it replaces only its own groups. */
+	graphOwned: string[];
+	/** The tags Focus mode crosses: the tag navigator's last choice. */
+	focusTags: string[];
 }
 
 export const DEFAULT_SETTINGS: AtlasSettings = {
@@ -19,6 +23,8 @@ export const DEFAULT_SETTINGS: AtlasSettings = {
 	viewFolders: true,
 	tagClick: false,
 	graphColors: "tag",
+	graphOwned: [],
+	focusTags: [],
 };
 
 export class AtlasSettingTab extends PluginSettingTab {

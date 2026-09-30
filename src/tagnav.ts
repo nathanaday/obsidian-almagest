@@ -37,7 +37,11 @@ export class TagNavigator extends ItemView {
 	private chosen: string[] = [];
 	private readonly rerender = debounce(() => this.render(), 500, true);
 
-	constructor(leaf: WorkspaceLeaf) {
+	constructor(
+		leaf: WorkspaceLeaf,
+		private onChoose: (tags: string[]) => void = () => {},
+		private onGraph: () => void = () => {},
+	) {
 		super(leaf);
 	}
 
@@ -87,6 +91,7 @@ export class TagNavigator extends ItemView {
 	}
 
 	render(): void {
+		this.onChoose([...this.chosen]);
 		const root = this.contentEl;
 		root.empty();
 		root.addClass("atlas-tagnav");
@@ -114,6 +119,9 @@ export class TagNavigator extends ItemView {
 		actions.createSpan({ cls: "atlas-tagnav-count", text: `${matches.length} ${matches.length === 1 ? "document" : "documents"}` });
 		const search = actions.createEl("button", { text: "Search" });
 		search.onclick = () => this.openSearch();
+		const graph = actions.createEl("button", { text: "Graph" });
+		graph.setAttr("aria-label", "Color the graph by these tags");
+		graph.onclick = () => this.onGraph();
 		const view = actions.createEl("button", { text: "Tag view" });
 		view.setAttr("aria-label", "Open the view of " + this.chosen[0]);
 		view.onclick = () => void this.openView(this.chosen[0]);
