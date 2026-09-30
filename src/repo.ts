@@ -105,8 +105,20 @@ export function repoProcessor(plugin: AtlasPlugin) {
 	return (source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
 		const { id } = repoBlock(source);
 		if (!id) return;
-		const file = plugin.app.vault.getFileByPath(ctx.sourcePath);
-		const fm = file ? plugin.app.metadataCache.getFileCache(file)?.frontmatter : undefined;
-		ctx.addChild(new RepoPanel(el, plugin, id, String(fm?.branch ?? "")));
+		ctx.addChild(new RepoPanel(el, plugin, id, String(repoFields(plugin, id, ctx.sourcePath)?.branch ?? "")));
 	};
+}
+
+/** The frontmatter of the repository document with this id: the note that holds the block, or, in a view, the document it names. */
+function repoFields(plugin: AtlasPlugin, id: string, sourcePath: string): Record<string, unknown> | undefined {
+	const cache = plugin.app.metadataCache;
+	const own = plugin.app.vault.getFileByPath(sourcePath);
+	const fm = own ? cache.getFileCache(own)?.frontmatter : undefined;
+	if (fm?.id === id) return fm;
+	for (const f of plugin.app.vault.getMarkdownFiles()) {
+		if (!f.path.startsWith("wiki/documents/")) continue;
+		const other = cache.getFileCache(f)?.frontmatter;
+		if (other?.id === id) return other;
+	}
+	return undefined;
 }
