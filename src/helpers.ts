@@ -435,8 +435,19 @@ export interface CanvasState {
 	path?: string;
 	exists?: boolean;
 	differs: boolean;
+	threads?: string[] | null;
 	changes?: string[] | null;
 }
+
+/** The colors of a chord's cards, as code paints them: Obsidian's canvas presets. */
+export const CARD_LEGEND: { color: string; label: string }[] = [
+	{ color: "4", label: "verified" },
+	{ color: "5", label: "ready" },
+	{ color: "6", label: "started" },
+	{ color: "2", label: "to verify" },
+	{ color: "3", label: "blocked" },
+	{ color: "", label: "waiting" },
+];
 
 /** The chord a canvas path shows, or null: chords/<title>.canvas. */
 export function chordOfCanvas(path: string): string | null {
@@ -444,9 +455,12 @@ export function chordOfCanvas(path: string): string | null {
 	return m ? m[1] : null;
 }
 
-/** One line for a canvas against its stubs. */
+/** One short line for a canvas against its stubs: the threads that move, at most two by name. */
 export function canvasSummary(s: CanvasState): string {
-	const n = s.changes?.length ?? 0;
-	if (!s.differs || n === 0) return "The canvas shows the saved order.";
-	return `${plural(n, "change", "changes")} not saved: ${(s.changes ?? []).slice(0, 2).join("; ")}${n > 2 ? "; …" : ""}`;
+	if (!s.differs) return "Saved";
+	const names = s.threads ?? [];
+	const n = names.length;
+	if (n === 0) return "Not saved";
+	const shown = names.slice(0, 2).join(", ");
+	return `${plural(n, "thread moves", "threads move")}: ${shown}${n > 2 ? `, +${n - 2}` : ""}`;
 }

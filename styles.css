@@ -328,6 +328,42 @@
 .atlas-thread-bar[data-status="closed"] .atlas-thread-bar-status { color: rgb(var(--color-green-rgb)); }
 .atlas-thread-bar[data-status="blocked"] .atlas-thread-bar-status { color: rgb(var(--color-orange-rgb)); }
 .atlas-canvas-bar.is-changed .atlas-canvas-bar-status { color: rgb(var(--color-orange-rgb)); }
+.atlas-canvas-bar-status {
+	flex: 1 1 0;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.atlas-canvas-legend {
+	order: 10;
+	flex-basis: 100%;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-2-2) var(--size-4-3);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+.atlas-canvas-legend-item::before {
+	content: "";
+	display: inline-block;
+	width: 0.75em;
+	height: 0.75em;
+	margin-inline-end: var(--size-2-2);
+	border-radius: 2px;
+	vertical-align: -0.05em;
+	border: 1px solid rgba(var(--atlas-card), 0.9);
+	background-color: rgba(var(--atlas-card), 0.35);
+}
+/* Obsidian's canvas presets: 1 red, 2 orange, 3 yellow, 4 green, 5 cyan, 6 purple. */
+.atlas-canvas-legend-item { --atlas-card: var(--mono-rgb-100); }
+.atlas-canvas-legend-item[data-color=""]::before { border-color: var(--background-modifier-border); background-color: var(--background-secondary); }
+.atlas-canvas-legend-item[data-color="1"] { --atlas-card: var(--color-red-rgb); }
+.atlas-canvas-legend-item[data-color="2"] { --atlas-card: var(--color-orange-rgb); }
+.atlas-canvas-legend-item[data-color="3"] { --atlas-card: var(--color-yellow-rgb); }
+.atlas-canvas-legend-item[data-color="4"] { --atlas-card: var(--color-green-rgb); }
+.atlas-canvas-legend-item[data-color="5"] { --atlas-card: var(--color-cyan-rgb); }
+.atlas-canvas-legend-item[data-color="6"] { --atlas-card: var(--color-purple-rgb); }
 .atlas-thread-bar-buttons,
 .atlas-canvas-bar-buttons {
 	display: flex;

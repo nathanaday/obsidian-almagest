@@ -251,7 +251,8 @@ test("a chord's canvas lies in chords/, and its bar says what is not saved", () 
 	assert.equal(chordOfCanvas("notes/My board.canvas"), null);
 	assert.equal(chordOfCanvas("chords/sub/X.canvas"), null);
 	assert.equal(chordOfCanvas("chords/X.md"), null);
-	assert.equal(canvasSummary({ differs: false, changes: [] }), "The canvas shows the saved order.");
-	assert.equal(canvasSummary({ differs: true, changes: ["put B after A"] }), "1 change not saved: put B after A");
-	assert.equal(canvasSummary({ differs: true, changes: ["a", "b", "c"] }), "3 changes not saved: a; b; …");
+	assert.equal(canvasSummary({ differs: false, threads: [] }), "Saved");
+	assert.equal(canvasSummary({ differs: true, threads: ["Annotate"] }), "1 thread moves: Annotate");
+	assert.equal(canvasSummary({ differs: true, threads: ["A", "B", "C", "D"] }), "4 threads move: A, B, +2");
+	assert.equal(canvasSummary({ differs: true, threads: null }), "Not saved");
 });

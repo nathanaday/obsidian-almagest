@@ -1,5 +1,5 @@
 import { App, Component, FileView, Notice, debounce } from "obsidian";
-import { CanvasState, canvasSummary, chordOfCanvas } from "./helpers";
+import { CARD_LEGEND, CanvasState, canvasSummary, chordOfCanvas } from "./helpers";
 import type AtlasPlugin from "./main";
 
 const BAR = "atlas-canvas-bar";
@@ -85,7 +85,12 @@ export class CanvasBar extends Component {
 		bar.toggleClass("is-changed", state.differs);
 		bar.createSpan({ cls: "atlas-canvas-bar-label", text: "Chord" });
 		const text = bar.createSpan({ cls: "atlas-canvas-bar-status", text: canvasSummary(state) });
-		if (state.differs) text.setAttr("title", (state.changes ?? []).join("\n"));
+		if (state.differs) text.setAttr("title", (state.threads ?? []).join("\n"));
+		const legend = bar.createDiv({ cls: "atlas-canvas-legend" });
+		for (const { color, label } of CARD_LEGEND) {
+			const item = legend.createSpan({ cls: "atlas-canvas-legend-item", text: label });
+			item.dataset.color = color;
+		}
 		const buttons = bar.createDiv({ cls: "atlas-canvas-bar-buttons" });
 		const add = (label: string, cls: string, args: string[], done: string) => {
 			const b = buttons.createEl("button", { text: label, cls });
