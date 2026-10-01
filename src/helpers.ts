@@ -3,7 +3,7 @@
 export interface Synced {
 	moved?: string[] | null;
 	lost?: string[] | null;
-	work?: string[] | null;
+	threads?: string[] | null;
 	knowledge?: string[] | null;
 	sessions?: string[] | null;
 	settings?: boolean;
@@ -63,7 +63,7 @@ export function syncSummary(s: Synced): string {
 		const n = list?.length ?? 0;
 		if (n) parts.push(plural(n, one, many));
 	};
-	add(s.work, "work document", "work documents");
+	add(s.threads, "thread document", "thread documents");
 	add(s.knowledge, "knowledge document", "knowledge documents");
 	add(s.moved, "document moved back", "documents moved back");
 	add(s.lost, "lost session", "lost sessions");
@@ -76,7 +76,7 @@ export function syncSummary(s: Synced): string {
 
 /** Every path a sync wrote. */
 export function syncedPaths(s: Synced): string[] {
-	return [...(s.work ?? []), ...(s.knowledge ?? []), ...(s.moved ?? []), ...(s.lost ?? []), ...(s.sessions ?? [])];
+	return [...(s.threads ?? []), ...(s.knowledge ?? []), ...(s.moved ?? []), ...(s.lost ?? []), ...(s.sessions ?? [])];
 }
 
 /**
@@ -333,16 +333,17 @@ export function topTags(docs: TagDoc[]): Facet[] {
 	return [...counts.entries()].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
 }
 
-/** The order the navigator groups documents in: open work first. */
-const CLOSED = new Set(["done", "dropped", "resolved"]);
+/** The order the navigator groups documents in: open chords and threads first. */
+const ENDED_STATUS = new Set(["closed", "dropped", "resolved"]);
 
 export const NAV_GROUPS: { name: string; test: (d: TagDoc) => boolean }[] = [
-	{ name: "Open work", test: (d) => (d.type === "stub" || (d.type === "spec" && d.kind === "plan")) && !CLOSED.has(d.status) },
+	{ name: "Open chords", test: (d) => d.type === "chord" && !ENDED_STATUS.has(d.status) },
+	{ name: "Open threads", test: (d) => d.type === "stub" && !ENDED_STATUS.has(d.status) },
 	{ name: "Topics", test: (d) => d.type === "topic" },
-	{ name: "Designs", test: (d) => d.type === "spec" && d.kind === "design" },
 	{ name: "Sources", test: (d) => d.type === "source" },
 	{ name: "Repositories", test: (d) => d.type === "repository" },
-	{ name: "Closed work", test: (d) => d.type === "stub" || d.type === "spec" },
+	{ name: "Specs, tasks, and verifications", test: (d) => d.type === "spec" || d.type === "tasks" || d.type === "verification" },
+	{ name: "Ended threads and chords", test: (d) => d.type === "stub" || d.type === "chord" },
 	{ name: "Events", test: (d) => d.type === "event" },
 ];
 
@@ -373,4 +374,79 @@ export function repoBlock(source: string): { id: string; path: string } {
 export function layoutOf(fields: Record<string, unknown> | undefined): number {
 	const n = Number(fields?.layout ?? 0);
 	return Number.isFinite(n) ? n : 0;
+}
+
+/** The layout this plugin reads: the threads and chords of 8.0. */
+export const LAYOUT = 4;
+
+/** What a layout version is called. */
+export function layoutName(layout: number): string {
+	if (layout >= LAYOUT) return "8.0";
+	return layout === 3 ? "7.x" : "6.x";
+}
+
+/** A stub or a chord, as the bar over it needs it. */
+export interface BarDoc {
+	id: string;
+	type: "stub" | "chord";
+	title: string;
+	status: string;
+	blocked: boolean;
+	tasks: string;
+	threads: string;
+}
+
+/** The line a user gives an agent to take up a thread or a chord. */
+export function handoffLine(type: "stub" | "chord", id: string): string {
+	return `Resume Atlas ${type === "chord" ? "chord" : "thread"} ${id}`;
+}
+
+const ENDED = ["closed", "dropped", "resolved"];
+
+/** The status a bar shows: the status, a block, and the count of tasks or threads. */
+export function barStatus(d: BarDoc): string {
+	const parts = [d.blocked ? `${d.status}, blocked` : d.status];
+	if (d.type === "stub" && d.tasks) parts.push(`${d.tasks} tasks`);
+	if (d.type === "chord" && d.threads) parts.push(`${d.threads} threads closed`);
+	return parts.join(" · ");
+}
+
+/**
+ * The buttons of the bar over a stub or a chord. No button closes a thread: code closes
+ * it when it is verified and the change that absorbs it is applied.
+ */
+export function barButtons(d: BarDoc): { id: string; label: string }[] {
+	const out: { id: string; label: string }[] = [];
+	const ended = ENDED.includes(d.status);
+	if (!ended) out.push({ id: "handoff", label: "Copy hand-off" });
+	if (d.type === "chord") out.push({ id: "canvas", label: "Canvas" });
+	if (d.status === "dropped" || (d.type === "stub" && d.status === "resolved")) {
+		out.push({ id: "reopen", label: "Reopen" });
+		return out;
+	}
+	if (ended) return out;
+	if (d.type === "stub") out.push(d.blocked ? { id: "unblock", label: "Unblock" } : { id: "block", label: "Block" });
+	out.push({ id: "drop", label: "Drop" });
+	return out;
+}
+
+/** What the binary says of a chord's canvas against its stubs. */
+export interface CanvasState {
+	path?: string;
+	exists?: boolean;
+	differs: boolean;
+	changes?: string[] | null;
+}
+
+/** The chord a canvas path shows, or null: chords/<title>.canvas. */
+export function chordOfCanvas(path: string): string | null {
+	const m = /^chords\/([^/]+)\.canvas$/.exec(path);
+	return m ? m[1] : null;
+}
+
+/** One line for a canvas against its stubs. */
+export function canvasSummary(s: CanvasState): string {
+	const n = s.changes?.length ?? 0;
+	if (!s.differs || n === 0) return "The canvas shows the saved order.";
+	return `${plural(n, "change", "changes")} not saved: ${(s.changes ?? []).slice(0, 2).join("; ")}${n > 2 ? "; …" : ""}`;
 }

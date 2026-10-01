@@ -23,11 +23,12 @@ const vault: GraphDoc[] = [
 	doc("wiki/documents/p3-edge.md", { type: "repository", created: "2026-01-05", tags: ["work/p3"] }),
 	doc("wiki/documents/Rules.md", { type: "topic", kind: "policy", created: "2026-03-01", tags: ["work"] }),
 	doc("wiki/documents/Paper.md", { type: "source", created: "2026-02-10", tags: ["cs513"] }),
-	doc("wiki/documents/Filter.md", { type: "spec", kind: "plan", status: "started", blocked: "data", tags: ["work/p3"] }, ["wiki/documents/p3-edge.md"]),
+	doc("wiki/documents/Filter.md", { type: "stub", status: "started", blocked: "data", tags: ["work/p3"] }),
+	doc("wiki/documents/Filter · Spec.md", { type: "spec", thread: "[[Filter]]", tags: ["work/p3"] }, ["wiki/documents/Filter.md", "wiki/documents/p3-edge.md"]),
 	doc("wiki/documents/Idea.md", { type: "stub", status: "resolved", tags: ["cs513"] }, ["wiki/documents/Lidar.md"]),
-	doc("wiki/documents/Design.md", { type: "spec", kind: "design", tags: ["work/p3"] }),
+	doc("wiki/documents/Goal.md", { type: "chord", status: "closed", tags: ["work/p3"] }),
 	doc("wiki/documents/Filter · started.md", { type: "event", kind: "started", subject: "[[Filter]]", tags: ["work/p3"] }, ["wiki/documents/Filter.md"]),
-	doc("sessions/2026-09/s1.md", { type: "session", specs: ["[[Filter]]"] }),
+	doc("sessions/2026-09/s1.md", { type: "session", threads: ["[[Filter]]"] }),
 	doc("changes/2026-09/c1.md", { type: "change" }),
 	doc("Notes.md", {}, ["wiki/documents/Lidar.md"]),
 ];
@@ -44,9 +45,10 @@ test("tag mode: a query per top tag, oldest tag first; records join by path", ()
 	assert.deepEqual(names(groups), {
 		"#work": [
 			"sessions/2026-09/s1.md",
-			"wiki/documents/Design.md",
+			"wiki/documents/Filter · Spec.md",
 			"wiki/documents/Filter · started.md",
 			"wiki/documents/Filter.md",
+			"wiki/documents/Goal.md",
 			"wiki/documents/P3.md",
 			"wiki/documents/Rules.md",
 			"wiki/documents/p3-edge.md",
@@ -80,7 +82,7 @@ test("focus mode colors only the documents that hold every chosen tag", () => {
 		groups.map((g) => [g.name, g.query, g.paths]),
 		[["#cs513 + #self-driving", "(tag:#cs513 OR [defines:/^cs513(\\/|$)/]) (tag:#self-driving OR [defines:/^self-driving(\\/|$)/])", ["wiki/documents/Lidar.md"]]],
 	);
-	assert.equal(graphGroups("focus", vault, resolve, "light", ["work"])[0].paths.length, 6, "a tag holds the tags below it");
+	assert.equal(graphGroups("focus", vault, resolve, "light", ["work"])[0].paths.length, 7, "a tag holds the tags below it");
 	assert.deepEqual(graphGroups("focus", vault, resolve, "light", []), []);
 	assert.deepEqual(graphGroups("focus", vault, resolve, "light", ["cs513", "work"]), [], "no overlap, no group");
 	assert.equal(allTagsQuery(["x"]), tagQuery("x"));
@@ -88,23 +90,24 @@ test("focus mode colors only the documents that hold every chosen tag", () => {
 
 test("type mode splits topics by kind and leaves empty groups out", () => {
 	const groups = names(graphGroups("type", vault, resolve, "light"));
-	assert.deepEqual(Object.keys(groups), ["Events", "Sources", "Repositories", "Concepts", "Policies", "Overviews", "Stubs and specs", "Sessions and changes"]);
+	assert.deepEqual(Object.keys(groups), ["Events", "Sources", "Repositories", "Concepts", "Policies", "Overviews", "Threads and chords", "Sessions and changes"]);
 	const queries = graphGroups("type", vault, resolve, "light").map((g) => g.query);
 	assert.deepEqual(queries.slice(0, 3), ["[type:event]", "[type:source]", "[type:repository]"]);
-	assert.equal(groups["Stubs and specs"].length, 3);
+	assert.equal(groups["Threads and chords"].length, 4);
 	assert.deepEqual(groups["Sessions and changes"], ["changes/2026-09/c1.md", "sessions/2026-09/s1.md"]);
 });
 
-test("work mode: started work is open, an event takes its subject's state, the rest is gray", () => {
+test("threads mode: a started thread is open with its spec and its event; the rest is gray", () => {
 	const groups = names(graphGroups("work", vault, resolve, "light"));
-	assert.deepEqual(groups["Open work"], [
+	assert.deepEqual(groups["Open threads"], [
+		"wiki/documents/Filter · Spec.md",
 		"wiki/documents/Filter · started.md",
 		"wiki/documents/Filter.md",
 		"wiki/documents/p3-edge.md",
 	]);
-	assert.deepEqual(groups["Done work"], ["wiki/documents/Idea.md", "wiki/documents/Lidar.md"]);
-	assert.ok(groups["No work"].includes("Notes.md"));
-	assert.ok(groups["No work"].includes("wiki/documents/Design.md"), "a design has no state");
+	assert.deepEqual(groups["Ended threads"], ["wiki/documents/Goal.md", "wiki/documents/Idea.md", "wiki/documents/Lidar.md"]);
+	assert.ok(groups["No thread"].includes("Notes.md"));
+	assert.ok(groups["No thread"].includes("wiki/documents/Paper.md"), "a source no thread links has no state");
 });
 
 test("activity mode splits by the day of the update, then the modification time", () => {

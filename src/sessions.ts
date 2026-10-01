@@ -18,7 +18,7 @@ export interface ActiveSession {
 	status: string;
 	description: string;
 	work: string;
-	specs: string[];
+	threads: string[];
 	updated: string;
 	harness: string;
 	harness_id: string;
@@ -39,7 +39,7 @@ export function activeSessions(app: App): ActiveSession[] {
 			status: fm.status,
 			description: typeof fm.description === "string" && fm.description.trim() ? fm.description : file.basename,
 			work: linkTitle(work[work.length - 1]),
-			specs: asList(fm.specs),
+			threads: [...asList(fm.specs), ...asList(fm.threads)],
 			updated: String(fm.updated ?? ""),
 			harness: String(fm.harness ?? "claude"),
 			harness_id: String(fm.harness_id ?? ""),
@@ -49,11 +49,11 @@ export function activeSessions(app: App): ActiveSession[] {
 	return out.sort(compareSessions);
 }
 
-/** The plan the session started last that is still started, else the last it started. */
-function currentPlan(app: App, s: ActiveSession): { title: string; file: TFile | null } | null {
+/** The thread the session started last that is still started, else the last it started. */
+function currentThread(app: App, s: ActiveSession): { title: string; file: TFile | null } | null {
 	let fallback: { title: string; file: TFile | null } | null = null;
-	for (let i = s.specs.length - 1; i >= 0; i--) {
-		const title = linkTitle(s.specs[i]);
+	for (let i = s.threads.length - 1; i >= 0; i--) {
+		const title = linkTitle(s.threads[i]);
 		if (!title) continue;
 		const file = app.metadataCache.getFirstLinkpathDest(title, s.file.path);
 		const entry = { title, file };
@@ -133,16 +133,15 @@ export class SessionsView extends ItemView {
 			head.createSpan({ cls: "atlas-session-status", text: s.status });
 			head.createSpan({ cls: "atlas-session-title", text: s.description });
 
-			const task = currentPlan(this.app, s);
-			const where = (task?.title ?? s.work) || "";
+			const thread = currentThread(this.app, s);
+			const where = (thread?.title ?? s.work) || "";
 			if (where) card.createDiv({ cls: "atlas-session-where", text: where });
 
+			// The story of the work is in the session's own Progress.
 			const progress = card.createDiv({ cls: "atlas-session-progress" });
-			if (task?.file) {
-				void this.app.vault.cachedRead(task.file).then((text) => {
-					if (generation === this.generation) progress.setText(lastProgressLine(text));
-				});
-			}
+			void this.app.vault.cachedRead(s.file).then((text) => {
+				if (generation === this.generation) progress.setText(lastProgressLine(text));
+			});
 
 			const foot = card.createDiv({ cls: "atlas-session-foot" });
 			const ago = foot.createSpan({ cls: "atlas-session-ago", text: formatAgo(s.updated, now) });

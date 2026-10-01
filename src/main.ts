@@ -4,14 +4,15 @@ import { ChangeBar } from "./changebar";
 import { AtlasError, findBinary, runAtlas } from "./cli";
 import { GraphColors } from "./graphcolors";
 import { GRAPH_MODES, isGraphMode } from "./graphgroups";
-import { Synced, isWatchedPath, layoutOf, normalTag, syncSummary, syncedPaths, waitingLabel } from "./helpers";
+import { CanvasBar } from "./canvasbar";
+import { LAYOUT, Synced, isWatchedPath, layoutName, layoutOf, normalTag, syncSummary, syncedPaths, waitingLabel } from "./helpers";
 import { mentionEditor, mentionReading } from "./mentions";
 import { repoProcessor } from "./repo";
 import { SESSIONS_VIEW, SessionsView, activeSessions } from "./sessions";
 import { AtlasSettingTab, AtlasSettings, DEFAULT_SETTINGS } from "./settings";
 import { NAV_ICON, TAG_NAV_VIEW, TagNavigator } from "./tagnav";
 import { ViewFolders } from "./viewfolders";
-import { WorkBar } from "./workbar";
+import { ThreadBar } from "./threadbar";
 
 const SYNC_DELAY = 2000;
 // A change to a path the last sync wrote, this soon after it, is that sync's own write.
@@ -19,6 +20,14 @@ const ECHO_WINDOW = 5000;
 
 interface MigrationReport {
 	vault: string;
+	from?: string;
+	threads?: number;
+	specs?: number;
+	task_lists?: number;
+	verifications?: number;
+	chords?: number;
+	topics?: number;
+	notes?: number;
 	documents: number;
 	events: number;
 	assets: number;
@@ -54,7 +63,19 @@ export default class AtlasPlugin extends Plugin {
 		this.badges = this.addChild(new Badges(this.app));
 		this.badges.setEnabled(this.settings.badges);
 		this.addChild(new ChangeBar(this));
-		this.addChild(new WorkBar(this));
+		const threadBar = this.addChild(new ThreadBar(this));
+		this.addChild(new CanvasBar(this));
+		this.addCommand({
+			id: "copy-handoff",
+			name: "Copy the hand-off line of this thread or chord",
+			checkCallback: (checking) => {
+				const file = this.app.workspace.getActiveFile();
+				const fm = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : undefined;
+				if (fm?.type !== "stub" && fm?.type !== "chord") return false;
+				if (!checking) threadBar.copyActive();
+				return true;
+			},
+		});
 		this.viewFolders = this.addChild(new ViewFolders(this.app));
 		this.viewFolders.setEnabled(this.settings.viewFolders);
 		this.registerMarkdownCodeBlockProcessor("atlas-repo", repoProcessor(this));
@@ -93,7 +114,7 @@ export default class AtlasPlugin extends Plugin {
 		this.statusItem.addClass("atlas-status-waiting");
 		this.statusItem.onClickEvent(() => void this.openSessions());
 
-		this.addCommand({ id: "migrate", name: "Migrate this vault to the 7.0 layout", callback: () => void this.migrate() });
+		this.addCommand({ id: "migrate", name: "Migrate this vault to the 8.0 layout", callback: () => void this.migrate() });
 
 		this.registerEditorExtension(mentionEditor);
 		this.registerMarkdownPostProcessor(mentionReading);
@@ -231,18 +252,23 @@ export default class AtlasPlugin extends Plugin {
 
 	// Layout
 
-	/** Whether the vault has the 7.0 layout, by its vault document. */
-	private migrated(): boolean {
+	/** The layout the vault document records; this plugin's when there is none to read. */
+	private layout(): number {
 		const atlas = this.app.vault.getFileByPath("Atlas.md");
-		if (!atlas) return true;
-		return layoutOf(this.app.metadataCache.getFileCache(atlas)?.frontmatter) >= 3;
+		if (!atlas) return LAYOUT;
+		return layoutOf(this.app.metadataCache.getFileCache(atlas)?.frontmatter);
+	}
+
+	/** Whether the vault has the 8.0 layout. */
+	private migrated(): boolean {
+		return this.layout() >= LAYOUT;
 	}
 
 	private checkLayout(): void {
 		if (this.migrated()) return;
 		const notice = new Notice("", 0);
 		const el = notice.messageEl;
-		el.createDiv({ text: "Atlas: this vault has the 6.x layout. The 7.0 plugin needs the flat layout." });
+		el.createDiv({ text: `Atlas: this vault has the ${layoutName(this.layout())} layout. This plugin needs the 8.0 layout: threads and chords.` });
 		const button = el.createEl("button", { text: "Show the migration", cls: "mod-cta atlas-notice-button" });
 		button.onclick = () => {
 			notice.hide();
@@ -346,10 +372,14 @@ class MigrationModal extends Modal {
 
 	onOpen(): void {
 		const r = this.report;
-		this.setTitle("Migrate to the 7.0 layout");
+		this.setTitle("Migrate to the 8.0 layout");
 		const el = this.contentEl;
 		el.addClass("atlas-migration");
-		el.createEl("p", { text: `The migration of ${r.vault} moves ${r.documents} documents into wiki/documents, writes ${r.events} events, and moves ${r.assets} files into wiki/assets, in one commit. git revert takes it back.` });
+		if (r.from === "6.x") {
+			el.createEl("p", { text: `The migration of ${r.vault} moves ${r.documents} documents into wiki/documents, writes ${r.events} events, and moves ${r.assets} files into wiki/assets. Then it makes each plan a thread: a stub, a spec, a task list, and a verification. It is one commit; git revert takes it back.` });
+		} else {
+			el.createEl("p", { text: `The migration of ${r.vault} makes each plan a thread, in one commit: ${r.threads ?? 0} threads, ${r.specs ?? 0} specs, ${r.task_lists ?? 0} task lists, ${r.verifications ?? 0} verifications, ${r.chords ?? 0} chords. Each plan keeps its id, its title, and its file, as the stub. ${r.notes ?? 0} notes keep the sections a spec does not hold. git revert takes it back.` });
+		}
 		const list = (title: string, rows: string[]) => {
 			if (rows.length === 0) return;
 			const d = el.createEl("details");

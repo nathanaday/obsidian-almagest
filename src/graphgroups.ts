@@ -9,7 +9,7 @@ export const GRAPH_MODES: { mode: GraphMode; label: string }[] = [
 	{ mode: "tag", label: "Tag" },
 	{ mode: "focus", label: "Focus" },
 	{ mode: "type", label: "Type" },
-	{ mode: "work", label: "Work" },
+	{ mode: "work", label: "Threads" },
 	{ mode: "activity", label: "Activity" },
 ];
 
@@ -60,7 +60,8 @@ const RECENCY: Record<Theme, string[]> = {
 };
 const MUTED = "#898781";
 
-const WORK_TYPES = ["stub", "spec"];
+const THREAD_TYPES = ["stub", "spec", "tasks", "verification", "chord"];
+const THREAD_PARTS = ["spec", "tasks", "verification"];
 
 // Obsidian matches a property's name as a substring, so [type:spec] also reads an event's
 // to_type. Events come first: the first group that matches colors a node.
@@ -72,7 +73,11 @@ const TYPE_GROUPS: { name: string; query: string; test: (fields: Record<string, 
 	{ name: "Entities", query: "[type:topic] [kind:entity]", test: (f) => f.type === "topic" && f.kind === "entity" },
 	{ name: "Policies", query: "[type:topic] [kind:policy]", test: (f) => f.type === "topic" && f.kind === "policy" },
 	{ name: "Overviews", query: "[type:topic] [kind:overview]", test: (f) => f.type === "topic" && f.kind === "overview" },
-	{ name: "Stubs and specs", query: "[type:stub] OR [type:spec]", test: (f) => f.type === "stub" || f.type === "spec" },
+	{
+		name: "Threads and chords",
+		query: THREAD_TYPES.map((t) => `[type:${t}]`).join(" OR "),
+		test: (f) => THREAD_TYPES.includes(String(f.type)),
+	},
 ];
 
 
@@ -171,7 +176,7 @@ class Vault {
 			case "event":
 				return via("subject");
 			case "session":
-				return via("specs") ?? via("work");
+				return via("threads") ?? via("specs") ?? via("work");
 			case "change":
 				return via("absorbs") ?? via("work");
 		}
@@ -253,27 +258,36 @@ class Vault {
 		}
 		const palette = CATEGORICAL[theme];
 		return [
-			{ name: "Open work", color: palette[1], paths: open },
-			{ name: "Done work", color: palette[0], paths: done },
-			{ name: "No work", color: MUTED, paths: none },
+			{ name: "Open threads", color: palette[1], paths: open },
+			{ name: "Ended threads", color: palette[0], paths: done },
+			{ name: "No thread", color: MUTED, paths: none },
 		];
 	}
 
-	/** A stub's or a plan's own state, or null for any other document. */
+	/**
+	 * The state of a thread or a chord: open, or done when it is closed, dropped, or
+	 * resolved. A spec, a task list, and a verification take their thread's. Null for any
+	 * other document.
+	 */
 	private stateOf(path: string): string | null {
 		const d = this.byPath.get(path);
 		if (!d) return null;
 		const t = this.type(path);
-		if (t === "stub" || (t === "spec" && d.fields.kind === "plan")) {
-			const s = String(d.fields.status ?? "open");
-			return s === "done" || s === "dropped" || s === "resolved" ? "done" : "open";
+		if (t === "stub" || t === "chord") {
+			const s = String(d.fields.status ?? "");
+			return s === "closed" || s === "dropped" || s === "resolved" ? "done" : "open";
+		}
+		if (THREAD_PARTS.includes(t)) {
+			for (const p of this.links(d, "thread")) {
+				if (this.type(p) === "stub") return this.stateOf(p);
+			}
 		}
 		return null;
 	}
 
 	/**
-	 * The states of the work a document belongs to or shares a link with. A stub or a plan
-	 * takes only its own state; an event takes its subject's.
+	 * The states of the threads a document belongs to or shares a link with. A thread
+	 * document takes only its own state; an event takes its subject's.
 	 */
 	private workStates(doc: GraphDoc): Set<string> {
 		const states = new Set<string>();
@@ -291,7 +305,7 @@ class Vault {
 		}
 		const near = [...doc.links, ...(this.backlinks.get(doc.path) ?? [])];
 		for (const p of near) {
-			if (!WORK_TYPES.includes(this.type(p))) continue;
+			if (!THREAD_TYPES.includes(this.type(p))) continue;
 			const s = this.stateOf(p);
 			if (s) states.add(s);
 		}
