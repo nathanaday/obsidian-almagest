@@ -133,7 +133,7 @@
 	padding: var(--size-4-2);
 }
 .atlas-session {
-	--atlas-session: var(--color-green-rgb);
+	--atlas-session: var(--mono-rgb-100);
 	padding: var(--size-4-2) var(--size-4-3);
 	border: 1px solid var(--background-modifier-border);
 	border-inline-start: 3px solid rgb(var(--atlas-session));
@@ -141,8 +141,53 @@
 	cursor: pointer;
 	font-size: var(--font-ui-small);
 }
-.atlas-session[data-status="waiting"] {
+/* Working: green, with a pulse on the status. Needs you: orange. Idle: the accent, at rest. Ended: gray. */
+.atlas-session[data-state="working"] {
+	--atlas-session: var(--color-green-rgb);
+}
+.atlas-session[data-state="working"] .atlas-session-status {
+	animation: atlas-pulse 1.6s ease-in-out infinite;
+}
+.atlas-session[data-state="waiting"] {
 	--atlas-session: var(--color-orange-rgb);
+	background-color: rgba(var(--color-orange-rgb), 0.06);
+}
+.atlas-session[data-state="idle"] {
+	--atlas-session: var(--color-blue-rgb);
+}
+.atlas-session[data-state="ended"] {
+	--atlas-session: var(--mono-rgb-100);
+	opacity: 0.65;
+}
+.atlas-session[data-state="ended"]:hover {
+	opacity: 1;
+}
+@keyframes atlas-pulse {
+	50% { background-color: rgba(var(--atlas-session), 0.32); }
+}
+.atlas-sessions-heading {
+	margin-top: var(--size-4-3);
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+.atlas-sessions-more {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	cursor: pointer;
+}
+.atlas-sessions-more:hover {
+	color: var(--text-muted);
+}
+.atlas-session-sub {
+	margin-inline-start: var(--size-4-2);
+}
+.atlas-session-foot button {
+	margin-inline-start: auto;
+}
+.atlas-idea-input {
+	width: 100%;
 }
 .atlas-session:hover {
 	background-color: var(--background-modifier-hover);
@@ -175,7 +220,6 @@
 .atlas-session-foot {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
 	margin-top: var(--size-4-2);
 	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
@@ -335,35 +379,6 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-.atlas-canvas-legend {
-	order: 10;
-	flex-basis: 100%;
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--size-2-2) var(--size-4-3);
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-}
-.atlas-canvas-legend-item::before {
-	content: "";
-	display: inline-block;
-	width: 0.75em;
-	height: 0.75em;
-	margin-inline-end: var(--size-2-2);
-	border-radius: 2px;
-	vertical-align: -0.05em;
-	border: 1px solid rgba(var(--atlas-card), 0.9);
-	background-color: rgba(var(--atlas-card), 0.35);
-}
-/* Obsidian's canvas presets: 1 red, 2 orange, 3 yellow, 4 green, 5 cyan, 6 purple. */
-.atlas-canvas-legend-item { --atlas-card: var(--mono-rgb-100); }
-.atlas-canvas-legend-item[data-color=""]::before { border-color: var(--background-modifier-border); background-color: var(--background-secondary); }
-.atlas-canvas-legend-item[data-color="1"] { --atlas-card: var(--color-red-rgb); }
-.atlas-canvas-legend-item[data-color="2"] { --atlas-card: var(--color-orange-rgb); }
-.atlas-canvas-legend-item[data-color="3"] { --atlas-card: var(--color-yellow-rgb); }
-.atlas-canvas-legend-item[data-color="4"] { --atlas-card: var(--color-green-rgb); }
-.atlas-canvas-legend-item[data-color="5"] { --atlas-card: var(--color-cyan-rgb); }
-.atlas-canvas-legend-item[data-color="6"] { --atlas-card: var(--color-purple-rgb); }
 .atlas-thread-bar-buttons,
 .atlas-canvas-bar-buttons {
 	display: flex;

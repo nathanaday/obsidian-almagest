@@ -9,11 +9,9 @@ import {
 	chordOfCanvas,
 	handoffLine,
 	layoutName,
-	appleScriptString,
 	asList,
 	binaryCandidates,
 	chooseBinary,
-	compareSessions,
 	countsLine,
 	cssString,
 	errorMessage,
@@ -36,11 +34,8 @@ import {
 	lastProgressLine,
 	linkTitle,
 	mentionRanges,
-	resumeCommand,
-	shellQuote,
 	syncSummary,
 	syncedPaths,
-	terminalArgs,
 	textMentions,
 	waitingLabel,
 } from "../src/helpers";
@@ -114,37 +109,6 @@ test("lastProgressLine reads only the Progress section", () => {
 	].join("\n");
 	assert.equal(lastProgressLine(doc), "2026-09-27 The filter passes.");
 	assert.equal(lastProgressLine("## Plan\n- a"), "");
-});
-
-test("compareSessions puts waiting first, then the newest", () => {
-	const rows = [
-		{ status: "running", updated: "2026-09-27T10:00:00" },
-		{ status: "waiting", updated: "2026-09-27T09:00:00" },
-		{ status: "running", updated: "2026-09-27T11:00:00" },
-	].sort(compareSessions);
-	assert.deepEqual(
-		rows.map((r) => r.updated),
-		["2026-09-27T09:00:00", "2026-09-27T11:00:00", "2026-09-27T10:00:00"],
-	);
-});
-
-test("resumeCommand quotes the folder and the id", () => {
-	const home = "/Users/a";
-	assert.equal(
-		resumeCommand({ harness: "claude", harness_id: "abc-1", cwd: "~/work/it's here" }, home),
-		`cd '/Users/a/work/it'\\''s here' && claude --resume 'abc-1'`,
-	);
-	assert.equal(resumeCommand({ harness: "codex", harness_id: "x", cwd: "/w" }, home), `cd '/w' && codex resume 'x'`);
-	assert.equal(resumeCommand({ harness: "claude", harness_id: "x" }, home), `claude --resume 'x'`);
-	assert.equal(resumeCommand({ harness: "claude", harness_id: "" }, home), null);
-});
-
-test("terminalArgs escapes the command for AppleScript", () => {
-	assert.equal(shellQuote("a'b"), `'a'\\''b'`);
-	assert.equal(appleScriptString(`say "hi" \\ bye`), `"say \\"hi\\" \\\\ bye"`);
-	const args = terminalArgs(`cd '/a "b"' && claude --resume 'x'`);
-	assert.equal(args[0], "-e");
-	assert.equal(args[1], `tell application "Terminal" to do script "cd '/a \\"b\\"' && claude --resume 'x'"`);
 });
 
 test("mentionRanges marks @atlas in task lines only", () => {
@@ -233,15 +197,15 @@ test("the bar over a thread or a chord offers only the user's moves", () => {
 	assert.equal(handoffLine("chord", "doc-k2m8xq"), "Resume Atlas chord doc-k2m8xq");
 	assert.equal(barStatus(stub), "started · 7/12 tasks");
 	assert.equal(barStatus({ ...stub, blocked: true, tasks: "" }), "started, blocked");
-	assert.equal(ids(stub), "handoff,block,drop");
-	assert.equal(ids({ ...stub, blocked: true }), "handoff,unblock,drop");
-	assert.equal(ids({ ...stub, status: "verified" }), "handoff,block,drop", "no button closes a thread");
+	assert.equal(ids(stub), "agent,handoff,block,drop");
+	assert.equal(ids({ ...stub, blocked: true }), "agent,handoff,unblock,drop");
+	assert.equal(ids({ ...stub, status: "verified" }), "agent,handoff,block,drop", "no button closes a thread");
 	assert.equal(ids({ ...stub, status: "closed" }), "");
 	assert.equal(ids({ ...stub, status: "dropped" }), "reopen");
 	assert.equal(ids({ ...stub, status: "resolved" }), "reopen");
 	const chord: BarDoc = { id: "doc-k2m8xq", type: "chord", title: "Vehicle model", status: "started", blocked: false, tasks: "", threads: "4/11" };
 	assert.equal(barStatus(chord), "started · 4/11 threads closed");
-	assert.equal(ids(chord), "handoff,canvas,drop");
+	assert.equal(ids(chord), "agent,new,handoff,canvas,drop");
 	assert.equal(ids({ ...chord, status: "dropped" }), "canvas,reopen");
 	assert.equal(ids({ ...chord, status: "closed" }), "canvas");
 });

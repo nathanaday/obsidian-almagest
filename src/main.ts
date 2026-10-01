@@ -8,7 +8,10 @@ import { CanvasBar } from "./canvasbar";
 import { LAYOUT, Synced, isWatchedPath, layoutName, layoutOf, normalTag, syncSummary, syncedPaths, waitingLabel } from "./helpers";
 import { mentionEditor, mentionReading } from "./mentions";
 import { repoProcessor } from "./repo";
-import { SESSIONS_VIEW, SessionsView, activeSessions } from "./sessions";
+import { SESSIONS_VIEW, SessionsView, sessionGroups } from "./sessions";
+import { startCommand } from "./agents";
+import { openTerminal } from "./launcher";
+import { NewThreadModal } from "./newthread";
 import { AtlasSettingTab, AtlasSettings, DEFAULT_SETTINGS } from "./settings";
 import { NAV_ICON, TAG_NAV_VIEW, TagNavigator } from "./tagnav";
 import { ViewFolders } from "./viewfolders";
@@ -106,7 +109,28 @@ export default class AtlasPlugin extends Plugin {
 		// A click on a #tag opens the navigator at it, when the setting asks.
 		this.registerDomEvent(document, "click", (evt) => this.onTagClick(evt), { capture: true });
 
-		this.registerView(SESSIONS_VIEW, (leaf) => new SessionsView(leaf));
+		this.addCommand({
+			id: "start-agent",
+			name: "Start an agent on this thread or chord",
+			checkCallback: (checking) => {
+				const target = this.activeWork();
+				if (!target) return false;
+				if (!checking) void this.startAgent(target.type, target.id);
+				return true;
+			},
+		});
+		this.addCommand({
+			id: "new-thread-in-chord",
+			name: "New thread in this chord",
+			checkCallback: (checking) => {
+				const chord = this.activeChord();
+				if (!chord) return false;
+				if (!checking) this.newThread(chord);
+				return true;
+			},
+		});
+
+		this.registerView(SESSIONS_VIEW, (leaf) => new SessionsView(leaf, this));
 		this.sessionsRibbon = this.addRibbonIcon("bot", "Atlas: open the sessions", () => void this.openSessions());
 		this.sessionsRibbon.addClass("atlas-sessions-ribbon");
 		this.addCommand({ id: "open-sessions", name: "Open the sessions", callback: () => void this.openSessions() });
@@ -338,18 +362,88 @@ export default class AtlasPlugin extends Plugin {
 
 	private refreshSessions = debounce(
 		() => {
-			const waiting = activeSessions(this.app).filter((s) => s.status === "waiting").length;
-			this.statusItem?.setText(waiting > 0 ? waitingLabel(waiting) : "");
-			this.statusItem?.toggleClass("is-hidden", waiting === 0);
-			if (this.sessionsRibbon) {
-				if (waiting > 0) this.sessionsRibbon.dataset.atlasCount = String(waiting);
-				else delete this.sessionsRibbon.dataset.atlasCount;
-			}
-			this.sessionViews().forEach((v) => v.render());
+			void sessionGroups(this.app, this.staleHours()).then(({ groups }) => {
+				const waiting = groups.open.filter((s) => s.state === "needs you").length;
+				this.statusItem?.setText(waiting > 0 ? waitingLabel(waiting) : "");
+				this.statusItem?.toggleClass("is-hidden", waiting === 0);
+				if (this.sessionsRibbon) {
+					if (waiting > 0) this.sessionsRibbon.dataset.atlasCount = String(waiting);
+					else delete this.sessionsRibbon.dataset.atlasCount;
+				}
+			});
+			this.sessionViews().forEach((v) => void v.render());
 		},
 		500,
 		true,
 	);
+
+	/** How long a session with no recorded process may go quiet before it counts as gone. */
+	staleHours(): number {
+		const atlas = this.app.vault.getFileByPath("Atlas.md");
+		const n = Number(atlas ? this.app.metadataCache.getFileCache(atlas)?.frontmatter?.stale_hours : 0);
+		return n > 0 ? n : 12;
+	}
+
+	// Agents
+
+	/** Runs a command in a new terminal; off macOS, or when that fails, copies it. */
+	async runInTerminal(command: string, what: string): Promise<void> {
+		if (process.platform === "darwin") {
+			try {
+				await openTerminal(this.settings.terminal, command, this.settings.terminalCommand);
+				return;
+			} catch (e) {
+				new Notice(`Atlas: cannot open the terminal (${(e as Error).message}). The Atlas settings choose it.`, 8000);
+			}
+		}
+		await navigator.clipboard.writeText(command);
+		new Notice(`Atlas: copied ${what}. Run it in a terminal.`);
+	}
+
+	/** Starts an agent in the vault, with the hand-off line of a thread or a chord as its first prompt. */
+	async startAgent(type: "stub" | "chord", id: string): Promise<void> {
+		const adapter = this.app.vault.adapter;
+		if (!(adapter instanceof FileSystemAdapter)) return;
+		const prompt = `Resume Atlas ${type === "chord" ? "chord" : "thread"} ${id}`;
+		await this.runInTerminal(startCommand(adapter.getBasePath(), this.settings.agentCommand, prompt), "the agent command");
+	}
+
+	/** The stub or chord open in the active view, or the chord of an open canvas. */
+	activeWork(): { type: "stub" | "chord"; id: string; title: string } | null {
+		const file = this.app.workspace.getActiveFile();
+		if (!file) return null;
+		if (file.extension === "canvas") {
+			const chord = this.activeChord();
+			return chord ? { type: "chord", ...chord } : null;
+		}
+		const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		if ((fm?.type === "stub" || fm?.type === "chord") && fm.id) return { type: fm.type, id: String(fm.id), title: file.basename };
+		return null;
+	}
+
+	/** The chord of the active note or canvas, or null. */
+	activeChord(): { id: string; title: string } | null {
+		const file = this.app.workspace.getActiveFile();
+		if (!file) return null;
+		const title = file.basename;
+		// A chord's canvas is chords/<title>.canvas; its note holds the id.
+		const note = file.extension === "canvas" ? this.app.metadataCache.getFirstLinkpathDest(title, "") : file;
+		const fm = note ? this.app.metadataCache.getFileCache(note)?.frontmatter : undefined;
+		if (fm?.type !== "chord" || !fm.id) return null;
+		return { id: String(fm.id), title };
+	}
+
+	/** Asks for a new thread's title and idea, and plants it in a chord. */
+	newThread(chord: { id: string; title: string }): void {
+		new NewThreadModal(this.app, chord.title, async (title, idea) => {
+			try {
+				await this.atlas<unknown>(["thread", "stub", idea || title, "--title", title, "--chord", chord.id]);
+				new Notice(`Atlas: planted ${title} in ${chord.title}.`);
+			} catch (e) {
+				new Notice(`Atlas: ${(e as Error).message}`, 8000);
+			}
+		}).open();
+	}
 
 	private async openSessions(): Promise<void> {
 		const { workspace } = this.app;

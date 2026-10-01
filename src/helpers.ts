@@ -10,12 +10,6 @@ export interface Synced {
 	views?: number;
 }
 
-export interface SessionFields {
-	harness?: string;
-	harness_id?: string;
-	cwd?: string;
-}
-
 /**
  * The places to look for the binary, in order, after the setting: the ones the agent
  * plugin's wrapper uses. PATH and the system folders are left out, so another tool's
@@ -155,51 +149,6 @@ export function lastProgressLine(markdown: string): string {
 		if (inside && line !== "") last = line.replace(/^[-*+]\s+(\[.\]\s+)?/, "");
 	}
 	return last;
-}
-
-export interface SessionRow {
-	status: string;
-	updated: string;
-}
-
-/** Waiting first, then the most recently updated. */
-export function compareSessions(a: SessionRow, b: SessionRow): number {
-	const rank = (s: string) => (s === "waiting" ? 0 : 1);
-	if (rank(a.status) !== rank(b.status)) return rank(a.status) - rank(b.status);
-	return String(b.updated).localeCompare(String(a.updated));
-}
-
-/** A string as one POSIX shell word. */
-export function shellQuote(s: string): string {
-	return `'${s.replace(/'/g, `'\\''`)}'`;
-}
-
-/** A string as an AppleScript string literal. */
-export function appleScriptString(s: string): string {
-	return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
-/** The shell command that resumes a session in its folder, or null without an id. */
-export function resumeCommand(session: SessionFields, home: string): string | null {
-	const id = session.harness_id?.trim();
-	if (!id) return null;
-	const resume =
-		session.harness === "codex"
-			? `codex resume ${shellQuote(id)}`
-			: `claude --resume ${shellQuote(id)}`;
-	const cwd = session.cwd?.trim();
-	if (!cwd) return resume;
-	return `cd ${shellQuote(expandHome(cwd, home))} && ${resume}`;
-}
-
-/** The osascript arguments that run a command in a new Terminal window. */
-export function terminalArgs(command: string): string[] {
-	return [
-		"-e",
-		`tell application "Terminal" to do script ${appleScriptString(command)}`,
-		"-e",
-		'tell application "Terminal" to activate',
-	];
 }
 
 const TASK_LINE = /^\s*(?:[-*+]|\d+[.)])\s+\[.\]\s/;
@@ -418,7 +367,11 @@ export function barStatus(d: BarDoc): string {
 export function barButtons(d: BarDoc): { id: string; label: string }[] {
 	const out: { id: string; label: string }[] = [];
 	const ended = ENDED.includes(d.status);
-	if (!ended) out.push({ id: "handoff", label: "Copy hand-off" });
+	if (!ended) {
+		out.push({ id: "agent", label: "Start agent" });
+		if (d.type === "chord") out.push({ id: "new", label: "New thread" });
+		out.push({ id: "handoff", label: "Copy hand-off" });
+	}
 	if (d.type === "chord") out.push({ id: "canvas", label: "Canvas" });
 	if (d.status === "dropped" || (d.type === "stub" && d.status === "resolved")) {
 		out.push({ id: "reopen", label: "Reopen" });
@@ -439,15 +392,6 @@ export interface CanvasState {
 	changes?: string[] | null;
 }
 
-/** The colors of a chord's cards, as code paints them: Obsidian's canvas presets. */
-export const CARD_LEGEND: { color: string; label: string }[] = [
-	{ color: "4", label: "verified" },
-	{ color: "5", label: "ready" },
-	{ color: "6", label: "started" },
-	{ color: "2", label: "to verify" },
-	{ color: "3", label: "blocked" },
-	{ color: "", label: "waiting" },
-];
 
 /** The chord a canvas path shows, or null: chords/<title>.canvas. */
 export function chordOfCanvas(path: string): string | null {

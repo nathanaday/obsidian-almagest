@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import { binaryVersion, findBinary } from "./cli";
 import { GRAPH_MODES, GraphMode } from "./graphgroups";
+import { TERMINALS, TERMINAL_NAMES, TerminalApp } from "./agents";
 import type AtlasPlugin from "./main";
 
 export interface AtlasSettings {
@@ -14,6 +15,12 @@ export interface AtlasSettings {
 	graphOwned: string[];
 	/** The tags Focus mode crosses: the Atlas navigator's last choice. */
 	focusTags: string[];
+	/** The terminal that Start agent and Resume open. */
+	terminal: TerminalApp;
+	/** The terminal command for the custom choice, with {command} for the agent's command. */
+	terminalCommand: string;
+	/** The command that starts the agent, as typed in a shell: claude, or a shell function. */
+	agentCommand: string;
 }
 
 export const DEFAULT_SETTINGS: AtlasSettings = {
@@ -25,6 +32,9 @@ export const DEFAULT_SETTINGS: AtlasSettings = {
 	graphColors: "tag",
 	graphOwned: [],
 	focusTags: [],
+	terminal: "terminal",
+	terminalCommand: "",
+	agentCommand: "claude",
 };
 
 export class AtlasSettingTab extends PluginSettingTab {
@@ -106,6 +116,46 @@ export class AtlasSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}),
 			);
+
+		new Setting(containerEl).setName("Agents").setHeading();
+
+		new Setting(containerEl)
+			.setName("Agent command")
+			.setDesc("What Start agent runs in the vault, with the hand-off line as its first prompt. Type it as you would in a shell: claude, or a shell function such as one that picks an account. This setting is per vault.")
+			.addText((text) =>
+				text
+					.setPlaceholder("claude")
+					.setValue(this.plugin.settings.agentCommand)
+					.onChange(async (value) => {
+						this.plugin.settings.agentCommand = value.trim() || "claude";
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		let custom: Setting | null = null;
+		new Setting(containerEl)
+			.setName("Terminal")
+			.setDesc("The terminal that Start agent and Resume open. It runs the command in your login shell, so your PATH and shell functions apply.")
+			.addDropdown((dropdown) => {
+				for (const t of TERMINALS) dropdown.addOption(t, TERMINAL_NAMES[t]);
+				dropdown.setValue(this.plugin.settings.terminal).onChange(async (value) => {
+					this.plugin.settings.terminal = value as TerminalApp;
+					await this.plugin.saveSettings();
+					custom?.settingEl.toggle(value === "custom");
+				});
+			});
+		custom = new Setting(containerEl)
+			.setName("Custom terminal command")
+			.setDesc("Runs with /bin/sh. {command} stands for the agent's command, quoted. Example: kitty sh -lic {command}")
+			.addText((text) =>
+				text.setValue(this.plugin.settings.terminalCommand).onChange(async (value) => {
+					this.plugin.settings.terminalCommand = value;
+					await this.plugin.saveSettings();
+				}),
+			);
+		custom.settingEl.toggle(this.plugin.settings.terminal === "custom");
+
+		new Setting(containerEl).setName("Graph").setHeading();
 
 		new Setting(containerEl)
 			.setName("Graph colors")

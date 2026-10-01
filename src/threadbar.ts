@@ -109,9 +109,13 @@ export class ThreadBar extends Component {
 		const noun = d.type === "stub" ? "thread" : "chord";
 		for (const b of barButtons(d)) {
 			const el = buttons.createEl("button", { text: b.label });
-			if (b.id === "handoff") el.addClass("mod-cta");
+			if (b.id === "agent") el.addClass("mod-cta");
 			el.onclick = () => {
 				switch (b.id) {
+					case "agent":
+						return void this.plugin.startAgent(d.type, d.id);
+					case "new":
+						return this.plugin.newThread({ id: d.id, title: d.title });
 					case "handoff":
 						return void this.copy(d);
 					case "canvas":
