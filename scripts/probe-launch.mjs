@@ -5,7 +5,7 @@
 // Usage: node scripts/probe-launch.mjs TERMINAL [AGENT_COMMAND] [CUSTOM_TEMPLATE]
 //   TERMINAL is terminal, iterm, wezterm, ghostty, or custom.
 //   AGENT_COMMAND is what the config gives, such as claude or claude-work.
-// Record the result in COVERAGE.md.
+// Record the result in TESTED.md.
 import esbuild from "esbuild";
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
