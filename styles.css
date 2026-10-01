@@ -180,48 +180,73 @@
 .atlas-sessions-more:hover {
 	color: var(--text-muted);
 }
-.atlas-session-sub {
-	margin-inline-start: var(--size-4-2);
-}
-.atlas-session-foot button {
-	margin-inline-start: auto;
-}
 .atlas-idea-input {
 	width: 100%;
 }
 .atlas-session:hover {
 	background-color: var(--background-modifier-hover);
 }
-.atlas-session-head {
+.atlas-session-top {
 	display: flex;
-	align-items: baseline;
+	align-items: center;
 	gap: var(--size-4-2);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
 }
 .atlas-session-status {
 	flex-shrink: 0;
 	padding: 0 6px;
 	border-radius: var(--radius-s);
-	font-size: var(--font-ui-smaller);
 	color: rgb(var(--atlas-session));
 	background-color: rgba(var(--atlas-session), 0.14);
 }
+.atlas-session-ago {
+	margin-inline-start: auto;
+	white-space: nowrap;
+}
+.atlas-session-title,
+.atlas-session-thread-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
 .atlas-session-title {
+	margin-top: var(--size-4-1);
 	font-weight: var(--font-semibold);
 	color: var(--text-normal);
 }
-.atlas-session-where,
-.atlas-session-progress {
-	margin-top: var(--size-4-1);
-	color: var(--text-muted);
-}
-.atlas-session-progress:empty {
-	display: none;
-}
-.atlas-session-foot {
+.atlas-session-thread {
 	display: flex;
 	align-items: center;
-	margin-top: var(--size-4-2);
-	color: var(--text-faint);
+	gap: var(--size-4-2);
+	margin-top: var(--size-2-2);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+.atlas-session-stage {
+	flex-shrink: 0;
+	margin-inline-start: auto;
+	padding: 0 6px;
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-hover);
+}
+.atlas-session-stage[data-stage="started"] { color: rgb(var(--color-purple-rgb)); }
+.atlas-session-stage[data-stage="unverified"] { color: rgb(var(--color-orange-rgb)); }
+.atlas-session-stage[data-stage="verified"],
+.atlas-session-stage[data-stage="closed"] { color: rgb(var(--color-green-rgb)); }
+.atlas-session-stage[data-stage="blocked"] { color: rgb(var(--color-yellow-rgb)); }
+.atlas-session-id {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-family: var(--font-monospace);
+	white-space: nowrap;
+}
+.atlas-session-resume {
+	flex-shrink: 0;
+	height: auto;
+	padding: 1px 8px;
 	font-size: var(--font-ui-smaller);
 }
 

@@ -145,6 +145,72 @@ export const TERMINAL_NAMES: Record<TerminalApp, string> = {
 	custom: "Custom command",
 };
 
+/** The agents Atlas starts. */
+export const AGENTS = ["claude", "codex"] as const;
+export type Agent = (typeof AGENTS)[number];
+
+export const AGENT_NAMES: Record<Agent, string> = { claude: "Claude Code", codex: "Codex" };
+
+/** The preferences one config file sets; a key it leaves out is not set. */
+export interface Preferences {
+	agent?: Agent;
+	agent_commands?: Partial<Record<Agent, string>>;
+	terminal?: TerminalApp;
+	terminal_command?: string;
+}
+
+/** What atlas-obsidian config prints: the preferences in effect, and each file's own. */
+export interface AgentConfig {
+	preferences: {
+		agent: Agent;
+		agent_command: string;
+		agent_commands: Record<Agent, string>;
+		terminal: TerminalApp;
+		terminal_command: string;
+		sources: Record<string, "default" | "global" | "vault">;
+	};
+	global: Preferences;
+	vault: Preferences | null;
+	files: { global: string; vault?: string };
+}
+
+/** One key of a config file, as config set names it: agent, agent_commands.claude, terminal, terminal_command. */
+export function preference(p: Preferences | null, key: string): string {
+	if (!p) return "";
+	if (key.startsWith("agent_commands.")) return p.agent_commands?.[key.slice("agent_commands.".length) as Agent] ?? "";
+	return String((p as Record<string, unknown>)[key] ?? "");
+}
+
+/** What a vault gets for a key it does not set: the global file's value, else the default. */
+export function inherited(config: AgentConfig, key: string): string {
+	const g = preference(config.global, key);
+	if (g) return g;
+	if (key === "agent") return "claude";
+	if (key === "terminal") return "terminal";
+	if (key.startsWith("agent_commands.")) return key.slice("agent_commands.".length);
+	return "";
+}
+
+/**
+ * The keys to move from the plugin settings of 8.0.2 and 8.0.3 into the vault's config
+ * file: the values that differ from the old defaults, for keys the file does not set.
+ */
+export function legacyPreferences(saved: Record<string, unknown> | null, vault: Preferences | null): [string, string][] {
+	if (!saved) return [];
+	const out: [string, string][] = [];
+	const take = (key: string, value: unknown, old: string) => {
+		const v = typeof value === "string" ? value.trim() : "";
+		if (v && v !== old && !preference(vault, key)) out.push([key, v]);
+	};
+	take("agent_commands.claude", saved.agentCommand, "claude");
+	if ((TERMINALS as readonly string[]).includes(String(saved.terminal))) take("terminal", saved.terminal, "terminal");
+	if (String(saved.terminalCommand ?? "").includes("{command}")) take("terminal_command", saved.terminalCommand, "");
+	return out;
+}
+
+/** The app bundle a terminal needs, by name; Terminal comes with macOS, and custom names its own program. */
+export const TERMINAL_APPS: Partial<Record<TerminalApp, string>> = { iterm: "iTerm.app", wezterm: "WezTerm.app", ghostty: "Ghostty.app" };
+
 /** One program to run, with its arguments. */
 export interface Launch {
 	program: string;
@@ -183,5 +249,38 @@ export function terminalLaunch(app: TerminalApp, command: string, shell: string,
 					"-e", 'tell application "Terminal" to activate',
 				],
 			};
+	}
+}
+
+/** Text with its wikilinks as plain titles: "[[A|b]]" reads "b", "[[A]]" reads "A". */
+export function plainLinks(text: string): string {
+	return text.replace(/\[\[([^\]|]*)(?:\|([^\]]*))?\]\]/g, (_m, target: string, alias?: string) => (alias ?? target).split("#")[0]);
+}
+
+/** A thread's fields, as its stub holds them. */
+export interface ThreadFields {
+	status: string;
+	tasks: string;
+	blocked: string;
+}
+
+/** Where a thread stands, in a word or two, for a session's card. */
+export function threadStage(t: ThreadFields): string {
+	if (t.blocked) return "blocked";
+	switch (t.status) {
+		case "stub":
+			return "needs spec";
+		case "specified":
+			return "writing tasks";
+		case "planned":
+			return "ready";
+		case "started":
+			return t.tasks ? `tasks ${t.tasks}` : "started";
+		case "unverified":
+			return "verifying";
+		case "verified":
+			return "to close";
+		default:
+			return t.status;
 	}
 }

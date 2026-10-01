@@ -1,8 +1,11 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import { binaryVersion, findBinary } from "./cli";
 import { GRAPH_MODES, GraphMode } from "./graphgroups";
-import { TERMINALS, TERMINAL_NAMES, TerminalApp } from "./agents";
+import { AGENTS, AGENT_NAMES, AgentConfig, TERMINALS, TERMINAL_NAMES, inherited, preference } from "./agents";
 import type AtlasPlugin from "./main";
+import { homedir } from "os";
+
+const shortHome = (p: string) => (p.startsWith(homedir() + "/") ? "~" + p.slice(homedir().length) : p);
 
 export interface AtlasSettings {
 	binaryPath: string;
@@ -15,12 +18,6 @@ export interface AtlasSettings {
 	graphOwned: string[];
 	/** The tags Focus mode crosses: the Atlas navigator's last choice. */
 	focusTags: string[];
-	/** The terminal that Start agent and Resume open. */
-	terminal: TerminalApp;
-	/** The terminal command for the custom choice, with {command} for the agent's command. */
-	terminalCommand: string;
-	/** The command that starts the agent, as typed in a shell: claude, or a shell function. */
-	agentCommand: string;
 }
 
 export const DEFAULT_SETTINGS: AtlasSettings = {
@@ -32,9 +29,6 @@ export const DEFAULT_SETTINGS: AtlasSettings = {
 	graphColors: "tag",
 	graphOwned: [],
 	focusTags: [],
-	terminal: "terminal",
-	terminalCommand: "",
-	agentCommand: "claude",
 };
 
 export class AtlasSettingTab extends PluginSettingTab {
@@ -118,42 +112,8 @@ export class AtlasSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl).setName("Agents").setHeading();
-
-		new Setting(containerEl)
-			.setName("Agent command")
-			.setDesc("What Start agent runs in the vault, with the hand-off line as its first prompt. Type it as you would in a shell: claude, or a shell function such as one that picks an account. This setting is per vault.")
-			.addText((text) =>
-				text
-					.setPlaceholder("claude")
-					.setValue(this.plugin.settings.agentCommand)
-					.onChange(async (value) => {
-						this.plugin.settings.agentCommand = value.trim() || "claude";
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		let custom: Setting | null = null;
-		new Setting(containerEl)
-			.setName("Terminal")
-			.setDesc("The terminal that Start agent and Resume open. It runs the command in your login shell, so your PATH and shell functions apply.")
-			.addDropdown((dropdown) => {
-				for (const t of TERMINALS) dropdown.addOption(t, TERMINAL_NAMES[t]);
-				dropdown.setValue(this.plugin.settings.terminal).onChange(async (value) => {
-					this.plugin.settings.terminal = value as TerminalApp;
-					await this.plugin.saveSettings();
-					custom?.settingEl.toggle(value === "custom");
-				});
-			});
-		custom = new Setting(containerEl)
-			.setName("Custom terminal command")
-			.setDesc("Runs with /bin/sh. {command} stands for the agent's command, quoted. Example: kitty sh -lic {command}")
-			.addText((text) =>
-				text.setValue(this.plugin.settings.terminalCommand).onChange(async (value) => {
-					this.plugin.settings.terminalCommand = value;
-					await this.plugin.saveSettings();
-				}),
-			);
-		custom.settingEl.toggle(this.plugin.settings.terminal === "custom");
+		const agents = containerEl.createDiv();
+		void this.agents(agents);
 
 		new Setting(containerEl).setName("Graph").setHeading();
 
@@ -166,5 +126,73 @@ export class AtlasSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.graphColors)
 					.onChange((value) => void this.plugin.graphColors.setMode(value as GraphMode));
 			});
+	}
+
+	/**
+	 * The agent preferences, from the binary: one group for every vault, one for this vault.
+	 * A vault key left empty takes the global value, shown as its placeholder.
+	 */
+	private async agents(el: HTMLElement): Promise<void> {
+		let config: AgentConfig;
+		try {
+			config = await this.plugin.agentConfig();
+		} catch (e) {
+			el.empty();
+			el.createDiv({ cls: "setting-item-description", text: `Atlas cannot read the agent preferences: ${(e as Error).message}` });
+			return;
+		}
+		el.empty();
+		const intro = el.createDiv({ cls: "setting-item-description atlas-setting-intro" });
+		intro.setText(`Start agent and Resume read these. ${shortHome(config.files.global)} holds them for every vault; .atlas/config.json in this vault overrides them, key by key. atlas-obsidian config shows the result.`);
+
+		const set = async (key: string, value: string, global: boolean) => {
+			try {
+				await this.plugin.setPreference(key, value, global);
+			} catch (e) {
+				new Notice(`Atlas: ${(e as Error).message}`, 8000);
+			}
+			void this.agents(el);
+		};
+		const group = (name: string, global: boolean) => {
+			new Setting(el).setName(name).setHeading();
+			const own = global ? config.global : config.vault;
+			const same = (key: string, label: string) => (global ? "" : `Same as all vaults (${label || inherited(config, key)})`);
+
+			new Setting(el).setName("Agent").addDropdown((d) => {
+				if (!global) d.addOption("", same("agent", AGENT_NAMES[inherited(config, "agent") as keyof typeof AGENT_NAMES]));
+				for (const a of AGENTS) d.addOption(a, AGENT_NAMES[a]);
+				d.setValue(preference(own, "agent") || (global ? "claude" : "")).onChange((v) => void set("agent", v, global));
+			});
+			for (const a of AGENTS) {
+				const key = `agent_commands.${a}`;
+				new Setting(el)
+					.setName(`${AGENT_NAMES[a]} command`)
+					.setDesc(global ? `As typed in a shell: ${a}, or a shell function that picks an account.` : "Empty takes the value for all vaults.")
+					.addText((t) => {
+						t.setPlaceholder(global ? a : inherited(config, key)).setValue(preference(own, key));
+						t.inputEl.addEventListener("change", () => void set(key, t.getValue(), global));
+					});
+			}
+			new Setting(el)
+				.setName("Terminal")
+				.setDesc(global ? "Runs the command in your login shell, so your PATH and shell functions apply." : "")
+				.addDropdown((d) => {
+					if (!global) d.addOption("", same("terminal", TERMINAL_NAMES[inherited(config, "terminal") as keyof typeof TERMINAL_NAMES]));
+					for (const t of TERMINALS) d.addOption(t, TERMINAL_NAMES[t]);
+					d.setValue(preference(own, "terminal") || (global ? "terminal" : "")).onChange((v) => void set("terminal", v, global));
+				});
+			const terminal = preference(own, "terminal") || inherited(config, "terminal");
+			if (terminal === "custom") {
+				new Setting(el)
+					.setName("Custom terminal command")
+					.setDesc("Runs with /bin/sh. {command} stands for the agent's command, quoted. Example: kitty sh -lic {command}")
+					.addText((t) => {
+						t.setPlaceholder(global ? "" : inherited(config, "terminal_command")).setValue(preference(own, "terminal_command"));
+						t.inputEl.addEventListener("change", () => void set("terminal_command", t.getValue(), global));
+					});
+			}
+		};
+		group("All vaults", true);
+		group("This vault", false);
 	}
 }

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+	AgentConfig,
 	SessionRow,
+	inherited,
+	legacyPreferences,
+	preference,
 	appleScriptString,
 	configDirOf,
 	firstCwd,
@@ -10,6 +14,8 @@ import {
 	shellQuote,
 	startCommand,
 	terminalLaunch,
+	threadStage,
+	plainLinks,
 } from "../src/agents";
 
 const now = new Date("2026-10-01T12:00:00");
@@ -69,4 +75,42 @@ test("each terminal runs the command in an interactive shell", () => {
 	assert.deepEqual(wez.args, ["start", "--", "/bin/zsh", "-lic", `${cmd}; exec /bin/zsh -l`]);
 	assert.deepEqual(terminalLaunch("ghostty", cmd, "", "").args.slice(0, 5), ["-na", "Ghostty", "--args", "-e", "/bin/zsh"]);
 	assert.deepEqual(terminalLaunch("custom", "echo 'hi'", "", "kitty sh -c {command}").args, ["-c", `kitty sh -c 'echo '\\''hi'\\'''`]);
+});
+
+test("a card names the thread's stage in a word or two, and shows links as titles", () => {
+	const stage = (status: string, tasks = "", blocked = "") => threadStage({ status, tasks, blocked });
+	assert.deepEqual(
+		["stub", "specified", "planned", "started", "unverified", "verified", "closed"].map((s) => stage(s, "7/8")),
+		["needs spec", "writing tasks", "ready", "tasks 7/8", "verifying", "to close", "closed"],
+	);
+	assert.equal(stage("started"), "started");
+	assert.equal(stage("started", "1/2", "no GPU"), "blocked");
+	assert.equal(plainLinks("Write the spec of [[Raw U16 format]]: then [[A#h|the a]]."), "Write the spec of Raw U16 format: then the a.");
+});
+
+test("inherited: the global value, else the default", () => {
+	const config = {
+		preferences: {} as AgentConfig["preferences"],
+		global: { terminal: "wezterm", agent_commands: { codex: "codex --full-auto" } },
+		vault: { agent_commands: { claude: "claude-work" } },
+		files: { global: "~/.atlas/config.json" },
+	} as AgentConfig;
+	assert.equal(inherited(config, "terminal"), "wezterm");
+	assert.equal(inherited(config, "agent"), "claude");
+	assert.equal(inherited(config, "agent_commands.claude"), "claude", "the vault's own value is not inherited");
+	assert.equal(inherited(config, "agent_commands.codex"), "codex --full-auto");
+	assert.equal(preference(config.vault, "agent_commands.claude"), "claude-work");
+	assert.equal(preference(null, "terminal"), "");
+});
+
+test("legacyPreferences moves only the changed settings the vault file lacks", () => {
+	assert.deepEqual(legacyPreferences({ agentCommand: "claude", terminal: "terminal", terminalCommand: "" }, null), []);
+	assert.deepEqual(legacyPreferences({ agentCommand: "claude-work", terminal: "wezterm", terminalCommand: "kitty {command}" }, null), [
+		["agent_commands.claude", "claude-work"],
+		["terminal", "wezterm"],
+		["terminal_command", "kitty {command}"],
+	]);
+	assert.deepEqual(legacyPreferences({ agentCommand: "claude-work", terminal: "wezterm" }, { terminal: "iterm" }), [["agent_commands.claude", "claude-work"]]);
+	assert.deepEqual(legacyPreferences({ terminal: "kitty", terminalCommand: "kitty" }, null), [], "bad values stay behind");
+	assert.deepEqual(legacyPreferences(null, null), []);
 });

@@ -2,11 +2,19 @@ import { execFile, spawn } from "child_process";
 import { closeSync, existsSync, openSync, readSync, readdirSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
-import { Launch, TerminalApp, configDirOf, firstCwd, terminalLaunch } from "./agents";
+import { Launch, TERMINAL_APPS, TERMINAL_NAMES, TerminalApp, configDirOf, firstCwd, terminalLaunch } from "./agents";
 
 /** Opens a terminal that runs a command. Off macOS, the caller copies the command. */
 export function openTerminal(app: TerminalApp, command: string, custom: string): Promise<void> {
+	// osascript and open fail after they start, where no one sees it; a missing app is caught here.
+	const bundle = TERMINAL_APPS[app];
+	const found = bundle ? ["/Applications", join(homedir(), "Applications")].map((d) => join(d, bundle)).find((p) => existsSync(p)) : undefined;
+	if (bundle && !found) return Promise.reject(new Error(`${TERMINAL_NAMES[app]} is not in /Applications`));
+	if (app === "custom" && !custom.includes("{command}")) {
+		return Promise.reject(new Error("the custom terminal command has no {command}"));
+	}
 	const launch: Launch = terminalLaunch(app, command, process.env.SHELL ?? "/bin/zsh", custom);
+	if (app === "wezterm" && found) launch.program = join(found, "Contents/MacOS/wezterm");
 	return new Promise((resolve, reject) => {
 		const child = spawn(launch.program, launch.args, { detached: true, stdio: "ignore" });
 		child.once("error", reject);

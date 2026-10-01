@@ -1,6 +1,6 @@
 import { App, ItemView, Notice, TFile, WorkspaceLeaf } from "obsidian";
 import { homedir } from "os";
-import { SessionRow, SessionState, groupSessions, resumeCommand } from "./agents";
+import { SessionRow, SessionState, groupSessions, plainLinks, resumeCommand, threadStage } from "./agents";
 import { asList, expandHome, formatAgo, lastProgressLine, linkTitle } from "./helpers";
 import { findTranscript, liveAgents, resumePlace } from "./launcher";
 import type AtlasPlugin from "./main";
@@ -11,7 +11,7 @@ export const SESSIONS_VIEW = "atlas-sessions";
 export interface Session extends SessionRow {
 	file: TFile;
 	description: string;
-	work: string;
+	work: string[];
 	threads: string[];
 	harness: string;
 	harness_id: string;
@@ -26,7 +26,7 @@ export function readSessions(app: App): Session[] {
 		if (!file.path.startsWith("sessions/")) continue;
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
 		if (!fm || fm.type !== "session") continue;
-		const work = asList(fm.work);
+		const work = asList(fm.work).map(linkTitle);
 		out.push({
 			file,
 			path: file.path,
@@ -36,7 +36,7 @@ export function readSessions(app: App): Session[] {
 			pid: Number(fm.pid ?? 0) || 0,
 			parent: String(fm.parent ?? ""),
 			description: typeof fm.description === "string" && fm.description.trim() ? fm.description : file.basename,
-			work: linkTitle(work[work.length - 1]),
+			work,
 			threads: [...asList(fm.specs), ...asList(fm.threads)],
 			harness: String(fm.harness ?? "claude"),
 			harness_id: String(fm.harness_id ?? ""),
@@ -54,18 +54,42 @@ export async function sessionGroups(app: App, staleHours: number) {
 	return { rows, groups: groupSessions(rows, (pid) => live.has(pid), new Date(), staleHours) };
 }
 
-/** The thread the session started last that is still started, else the last it started. */
-function currentThread(app: App, s: Session): { title: string; file: TFile | null } | null {
-	let fallback: { title: string; file: TFile | null } | null = null;
+/** A thread a session works on: its stub, with the stub's fields. */
+interface SessionThread {
+	file: TFile;
+	id: string;
+	status: string;
+	tasks: string;
+	blocked: string;
+}
+
+/**
+ * The thread a session works on: the one it started last that is still started, else the
+ * last it started, else the thread of the last document it wrote (a spec or a task list
+ * names its thread).
+ */
+function sessionThread(app: App, s: Session): SessionThread | null {
+	const stubOf = (title: string): SessionThread | null => {
+		const file = title ? app.metadataCache.getFirstLinkpathDest(title, s.file.path) : null;
+		const fm = file ? app.metadataCache.getFileCache(file)?.frontmatter : undefined;
+		if (!file || !fm) return null;
+		if (fm.type === "spec" || fm.type === "tasks" || fm.type === "verification") return stubOf(linkTitle(fm.thread));
+		if (fm.type !== "stub") return null;
+		return { file, id: String(fm.id ?? ""), status: String(fm.status ?? ""), tasks: String(fm.tasks ?? ""), blocked: String(fm.blocked ?? "") };
+	};
+	let fallback: SessionThread | null = null;
 	for (let i = s.threads.length - 1; i >= 0; i--) {
-		const title = linkTitle(s.threads[i]);
-		if (!title) continue;
-		const file = app.metadataCache.getFirstLinkpathDest(title, s.file.path);
-		const entry = { title, file };
-		fallback ??= entry;
-		if (file && app.metadataCache.getFileCache(file)?.frontmatter?.status === "started") return entry;
+		const t = stubOf(linkTitle(s.threads[i]));
+		if (!t) continue;
+		fallback ??= t;
+		if (t.status === "started") return t;
 	}
-	return fallback;
+	if (fallback) return fallback;
+	for (let i = s.work.length - 1; i >= 0; i--) {
+		const t = stubOf(s.work[i]);
+		if (t) return t;
+	}
+	return null;
 }
 
 /**
@@ -157,30 +181,35 @@ export class SessionsView extends ItemView {
 		card.dataset.state = STATE_CLASS[state];
 		card.onclick = () => void this.app.workspace.getLeaf(false).openFile(s.file);
 
-		const head = card.createDiv({ cls: "atlas-session-head" });
-		head.createSpan({ cls: "atlas-session-status", text: state });
-		head.createSpan({ cls: "atlas-session-title", text: s.description });
-
-		const thread = currentThread(this.app, s);
-		const where = (thread?.title ?? s.work) || "";
-		if (where) card.createDiv({ cls: "atlas-session-where", text: where });
-
-		const progress = card.createDiv({ cls: "atlas-session-progress" });
-		void this.app.vault.cachedRead(s.file).then((text) => {
-			if (generation === this.generation) progress.setText(lastProgressLine(text));
-		});
-
-		const foot = card.createDiv({ cls: "atlas-session-foot" });
+		const thread = sessionThread(this.app, s);
+		const top = card.createDiv({ cls: "atlas-session-top" });
+		top.createSpan({ cls: "atlas-session-status", text: state });
+		if (thread?.id) top.createSpan({ cls: "atlas-session-id", text: thread.id });
+		if (subagents > 0) top.createSpan({ cls: "atlas-session-sub", text: `+${subagents} ${subagents === 1 ? "subagent" : "subagents"}` });
 		const closed = state === "ended" || state === "lost";
-		foot.createSpan({ cls: "atlas-session-ago", text: formatAgo(closed ? s.ended || s.updated : s.updated, now) });
-		if (subagents > 0) foot.createSpan({ cls: "atlas-session-sub", text: `${subagents} ${subagents === 1 ? "subagent" : "subagents"}` });
+		top.createSpan({ cls: "atlas-session-ago", text: formatAgo(closed ? s.ended || s.updated : s.updated, now) });
 		// An open session runs in its terminal already; resuming it would open it twice.
 		if (closed) {
-			const button = foot.createEl("button", { text: "Resume" });
+			const button = top.createEl("button", { cls: "atlas-session-resume", text: "Resume" });
 			button.onclick = (e) => {
 				e.stopPropagation();
 				void resume(this.plugin, s);
 			};
 		}
+
+		const title = plainLinks(s.description);
+		card.createDiv({ cls: "atlas-session-title", text: title }).setAttr("title", title);
+
+		if (thread) {
+			const line = card.createDiv({ cls: "atlas-session-thread" });
+			line.createSpan({ cls: "atlas-session-thread-name", text: thread.file.basename });
+			line.createSpan({ cls: "atlas-session-stage", text: threadStage(thread) }).dataset.stage = thread.blocked ? "blocked" : thread.status;
+		}
+		// The last progress line is the card's hover text, so the card stays short.
+		void this.app.vault.cachedRead(s.file).then((text) => {
+			const last = lastProgressLine(text);
+			if (generation === this.generation && last) card.setAttr("title", plainLinks(last));
+		});
+
 	}
 }

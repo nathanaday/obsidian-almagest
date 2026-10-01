@@ -9,7 +9,7 @@ import { LAYOUT, Synced, isWatchedPath, layoutName, layoutOf, normalTag, syncSum
 import { mentionEditor, mentionReading } from "./mentions";
 import { repoProcessor } from "./repo";
 import { SESSIONS_VIEW, SessionsView, sessionGroups } from "./sessions";
-import { startCommand } from "./agents";
+import { AgentConfig, legacyPreferences, startCommand } from "./agents";
 import { openTerminal } from "./launcher";
 import { NewThreadModal } from "./newthread";
 import { AtlasSettingTab, AtlasSettings, DEFAULT_SETTINGS } from "./settings";
@@ -18,6 +18,7 @@ import { ViewFolders } from "./viewfolders";
 import { ThreadBar } from "./threadbar";
 
 const SYNC_DELAY = 2000;
+const LEGACY_KEYS = ["agentCommand", "terminal", "terminalCommand"];
 // A change to a path the last sync wrote, this soon after it, is that sync's own write.
 const ECHO_WINDOW = 5000;
 
@@ -45,6 +46,8 @@ interface MigrationReport {
 
 export default class AtlasPlugin extends Plugin {
 	settings: AtlasSettings = { ...DEFAULT_SETTINGS };
+	/** The agent settings of 8.0.2 and 8.0.3, kept in data.json until they move to the vault's config file. */
+	private legacy: Record<string, unknown> | null = null;
 	badges!: Badges;
 	viewFolders!: ViewFolders;
 	graphColors!: GraphColors;
@@ -166,6 +169,7 @@ export default class AtlasPlugin extends Plugin {
 		this.app.workspace.onLayoutReady(() => {
 			this.refreshSessions();
 			this.checkLayout();
+			void this.moveLegacyPreferences();
 		});
 		// The cache may finish its first read after the layout is ready.
 		const first = this.app.metadataCache.on("resolved", () => {
@@ -189,6 +193,8 @@ export default class AtlasPlugin extends Plugin {
 
 	async loadSettings(): Promise<void> {
 		const saved = (await this.loadData()) as (Partial<AtlasSettings> & { folderPages?: boolean }) | null;
+		const old = Object.entries(saved ?? {}).filter(([k]) => LEGACY_KEYS.includes(k));
+		this.legacy = old.length > 0 ? Object.fromEntries(old) : null;
 		this.settings = { ...DEFAULT_SETTINGS };
 		// Only the keys this version knows; a 6.x key goes at the next save.
 		for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof AtlasSettings)[]) {
@@ -203,7 +209,7 @@ export default class AtlasPlugin extends Plugin {
 	}
 
 	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
+		await this.saveData({ ...this.legacy, ...this.settings });
 	}
 
 	/** Runs one atlas command in this vault and returns its JSON. */
@@ -386,11 +392,37 @@ export default class AtlasPlugin extends Plugin {
 
 	// Agents
 
+	/** The agent preferences: the vault's config file over ~/.atlas/config.json. */
+	agentConfig(): Promise<AgentConfig> {
+		return this.atlas<AgentConfig>(["config"]);
+	}
+
+	/** Sets or unsets (value "") one agent preference, in the vault's file or the global one. */
+	async setPreference(key: string, value: string, global: boolean): Promise<AgentConfig> {
+		const args = value ? ["config", "set", key, value] : ["config", "unset", key];
+		return this.atlas<AgentConfig>(global ? [...args, "--global"] : args);
+	}
+
+	/** Moves the agent settings of 8.0.2 and 8.0.3 into the vault's config file, once. */
+	private async moveLegacyPreferences(): Promise<void> {
+		const saved = this.legacy;
+		if (!saved) return;
+		try {
+			const config = await this.agentConfig();
+			for (const [key, value] of legacyPreferences(saved, config.vault)) await this.setPreference(key, value, false);
+			this.legacy = null;
+			await this.saveSettings();
+		} catch (e) {
+			console.warn("Atlas: the agent settings did not move to .atlas/config.json", e);
+		}
+	}
+
 	/** Runs a command in a new terminal; off macOS, or when that fails, copies it. */
-	async runInTerminal(command: string, what: string): Promise<void> {
+	async runInTerminal(command: string, what: string, config?: AgentConfig): Promise<void> {
 		if (process.platform === "darwin") {
 			try {
-				await openTerminal(this.settings.terminal, command, this.settings.terminalCommand);
+				const prefs = (config ?? (await this.agentConfig())).preferences;
+				await openTerminal(prefs.terminal, command, prefs.terminal_command);
 				return;
 			} catch (e) {
 				new Notice(`Atlas: cannot open the terminal (${(e as Error).message}). The Atlas settings choose it.`, 8000);
@@ -405,7 +437,14 @@ export default class AtlasPlugin extends Plugin {
 		const adapter = this.app.vault.adapter;
 		if (!(adapter instanceof FileSystemAdapter)) return;
 		const prompt = `Resume Atlas ${type === "chord" ? "chord" : "thread"} ${id}`;
-		await this.runInTerminal(startCommand(adapter.getBasePath(), this.settings.agentCommand, prompt), "the agent command");
+		let config: AgentConfig;
+		try {
+			config = await this.agentConfig();
+		} catch (e) {
+			new Notice(`Atlas: cannot read the agent preferences: ${(e as Error).message}`, 8000);
+			return;
+		}
+		await this.runInTerminal(startCommand(adapter.getBasePath(), config.preferences.agent_command, prompt), "the agent command", config);
 	}
 
 	/** The stub or chord open in the active view, or the chord of an open canvas. */
