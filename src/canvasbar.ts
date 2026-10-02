@@ -4,6 +4,16 @@ import type AtlasPlugin from "./main";
 
 const BAR = "atlas-canvas-bar";
 
+/** What each card color means, in the colors code paints. */
+const LEGEND = [
+	{ color: "green", label: "Verified" },
+	{ color: "cyan", label: "Ready" },
+	{ color: "purple", label: "Started" },
+	{ color: "orange", label: "To verify" },
+	{ color: "yellow", label: "Blocked" },
+	{ color: "gray", label: "Waiting" },
+];
+
 /**
  * The bar over a chord's canvas. Code writes the canvas from the stubs: a card per
  * thread, an arrow per "comes after". When the user redraws it, the canvas differs from
@@ -86,6 +96,10 @@ export class CanvasBar extends Component {
 		bar.createSpan({ cls: "atlas-canvas-bar-label", text: "Chord" });
 		const text = bar.createSpan({ cls: "atlas-canvas-bar-status", text: canvasSummary(state) });
 		if (state.differs) text.setAttr("title", (state.threads ?? []).join("\n"));
+		const legend = bar.createDiv({ cls: "atlas-canvas-legend" });
+		for (const { color, label } of LEGEND) {
+			legend.createSpan({ cls: "atlas-canvas-legend-item", text: label }).dataset.color = color;
+		}
 		const buttons = bar.createDiv({ cls: "atlas-canvas-bar-buttons" });
 		const add = (label: string, cls: string, args: string[], done: string) => {
 			const b = buttons.createEl("button", { text: label, cls });

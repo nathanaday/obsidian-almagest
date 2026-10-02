@@ -404,6 +404,36 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+/* The legend has its own row under the status and the buttons. */
+.atlas-canvas-legend {
+	order: 1;
+	flex-basis: 100%;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-2-1) var(--size-4-3);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+.atlas-canvas-legend-item {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	white-space: nowrap;
+}
+.atlas-canvas-legend-item::before {
+	content: "";
+	width: 8px;
+	height: 8px;
+	border-radius: 2px;
+	background-color: rgb(var(--legend-rgb));
+}
+/* Obsidian's canvas presets that code paints: 2 orange, 3 yellow, 4 green, 5 cyan, 6 purple; none is gray. */
+.atlas-canvas-legend-item[data-color="green"] { --legend-rgb: var(--color-green-rgb); }
+.atlas-canvas-legend-item[data-color="cyan"] { --legend-rgb: var(--color-cyan-rgb); }
+.atlas-canvas-legend-item[data-color="purple"] { --legend-rgb: var(--color-purple-rgb); }
+.atlas-canvas-legend-item[data-color="orange"] { --legend-rgb: var(--color-orange-rgb); }
+.atlas-canvas-legend-item[data-color="yellow"] { --legend-rgb: var(--color-yellow-rgb); }
+.atlas-canvas-legend-item[data-color="gray"]::before { background-color: var(--text-faint); }
 .atlas-thread-bar-buttons,
 .atlas-canvas-bar-buttons {
 	display: flex;
