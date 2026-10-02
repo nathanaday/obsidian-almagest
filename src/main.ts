@@ -223,7 +223,7 @@ export default class AtlasPlugin extends Plugin {
 
 	// Sync
 
-	/** A manual sync heals everything; an automatic one runs the steps that read no git. */
+	/** A manual sync runs every step; an automatic one runs the steps that read no git. */
 	async sync(manual: boolean): Promise<void> {
 		if (this.syncing) {
 			if (manual) new Notice("Atlas: a sync is running.");
