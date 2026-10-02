@@ -58,7 +58,7 @@ test("errorMessage takes the atlas line of stderr", () => {
 });
 
 test("syncSummary says what changed in one line", () => {
-	assert.equal(syncSummary({ threads: [], lost: null, sessions: [], settings: false, views: 0 }), "Nothing to heal.");
+	assert.equal(syncSummary({ threads: [], lost: null, sessions: [], settings: false, views: 0 }), "Generated files are up to date.");
 	assert.equal(
 		syncSummary({ threads: ["a", "b"], knowledge: ["k"], lost: ["c"], sessions: null, settings: true, views: 3 }),
 		"Synced 2 thread documents, 1 knowledge document, 1 lost session, the harness settings, 3 views.",

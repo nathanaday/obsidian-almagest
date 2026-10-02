@@ -64,7 +64,7 @@ export function syncSummary(s: Synced): string {
 	add(s.sessions, "session callout", "session callouts");
 	if (s.settings) parts.push("the harness settings");
 	if (s.views) parts.push(plural(s.views, "view", "views"));
-	if (parts.length === 0) return "Nothing to heal.";
+	if (parts.length === 0) return "Generated files are up to date.";
 	return `Synced ${parts.join(", ")}.`;
 }
 
