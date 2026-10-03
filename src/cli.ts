@@ -29,7 +29,7 @@ function exec(bin: string, args: string[], cwd: string | undefined): Promise<str
 				if (!err) return resolve(stdout);
 				const code = (err as NodeJS.ErrnoException).code;
 				if (code === "ENOENT") {
-					return reject(new AtlasError(`the atlas binary was not found at ${bin}`));
+					return reject(new AtlasError(`the atlas-obsidian binary was not found at ${bin}`));
 				}
 				reject(new AtlasError(errorMessage(String(stderr)) || err.message));
 			},
@@ -39,7 +39,7 @@ function exec(bin: string, args: string[], cwd: string | undefined): Promise<str
 
 /** Runs one atlas command in the vault and returns its JSON output. */
 export async function runAtlas<T>(bin: string | null, vault: string, args: string[]): Promise<T> {
-	if (!bin) throw new AtlasError("the atlas binary was not found; set its path in the Atlas settings");
+	if (!bin) throw new AtlasError("the atlas-obsidian binary was not found; set its path in the Atlas settings");
 	const out = await exec(bin, [...args, "--vault", vault, "--json"], vault);
 	let parsed: T;
 	try {
@@ -53,7 +53,7 @@ export async function runAtlas<T>(bin: string | null, vault: string, args: strin
 	return parsed;
 }
 
-/** The version line the binary prints, such as "atlas-obsidian 6.5.0". */
+/** The version line the binary prints, such as "atlas-obsidian 8.1.1". */
 export async function binaryVersion(bin: string): Promise<string> {
 	return (await exec(bin, ["version"], undefined)).trim();
 }

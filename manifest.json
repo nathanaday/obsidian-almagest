@@ -3,7 +3,7 @@
   "name": "Atlas",
   "version": "8.1.1",
   "minAppVersion": "1.9.0",
-  "description": "Colors and icons for Atlas documents, a sessions pane, and buttons that apply a change or refresh the vault through the atlas binary.",
+  "description": "Colors and icons for Atlas documents, a sessions pane, and buttons that apply a change or refresh the vault through the atlas-obsidian binary.",
   "author": "nathanaday",
   "isDesktopOnly": true
 }

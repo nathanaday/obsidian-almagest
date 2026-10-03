@@ -81,7 +81,7 @@ export class AtlasSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Badges in the file explorer")
-			.setDesc("Shows the status of each stub, plan, and session, and the kind of each event.")
+			.setDesc("Shows the status of each thread, chord, and session, and the kind of each event.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.badges).onChange(async (value) => {
 					this.plugin.settings.badges = value;

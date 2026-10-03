@@ -58,7 +58,7 @@
 	color: rgb(var(--atlas-folder));
 }
 
-/* Badges: the status of a stub, a plan, or a session; the kind of an event. */
+/* Badges: the status of a thread, a chord, or a session; the kind of an event. */
 .atlas-badge {
 	--atlas-badge: var(--mono-rgb-100);
 	margin-inline-start: auto;
