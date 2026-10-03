@@ -34,6 +34,7 @@ import {
 	lastProgressLine,
 	linkTitle,
 	mentionRanges,
+	movedNotices,
 	strayNotices,
 	syncSummary,
 	syncedPaths,
@@ -228,4 +229,13 @@ test("a sync that moved a note out of views/ says where it went", () => {
 	assert.equal(syncSummary(s), "Synced 1 document left as saved.");
 	assert.deepEqual(syncedPaths(s), ["views/Draft.md", "inbox/Draft.md"]);
 	assert.deepEqual(strayNotices({}), []);
+});
+
+test("any result that moved a note out of views/ says where it went", () => {
+	assert.deepEqual(movedNotices({ commit: "abc", moved_from_views: [{ from: "views/Plan.md", to: "inbox/Plan.md" }] }), [
+		"Moved views/Plan.md to inbox/Plan.md: code writes every file in views/, so your note waits in the inbox.",
+	]);
+	assert.deepEqual(movedNotices({ commit: "abc" }), []);
+	assert.deepEqual(movedNotices(null), []);
+	assert.deepEqual(movedNotices({ moved_from_views: [{ from: 1 }] }), []);
 });

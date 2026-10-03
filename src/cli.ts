@@ -1,7 +1,8 @@
 import { execFile } from "child_process";
 import { existsSync } from "fs";
 import { homedir } from "os";
-import { binaryCandidates, chooseBinary, errorMessage } from "./helpers";
+import { Notice } from "obsidian";
+import { binaryCandidates, chooseBinary, errorMessage, movedNotices } from "./helpers";
 
 export class AtlasError extends Error {}
 
@@ -40,11 +41,16 @@ function exec(bin: string, args: string[], cwd: string | undefined): Promise<str
 export async function runAtlas<T>(bin: string | null, vault: string, args: string[]): Promise<T> {
 	if (!bin) throw new AtlasError("the atlas binary was not found; set its path in the Atlas settings");
 	const out = await exec(bin, [...args, "--vault", vault, "--json"], vault);
+	let parsed: T;
 	try {
-		return JSON.parse(out) as T;
+		parsed = JSON.parse(out) as T;
 	} catch {
 		throw new AtlasError(`atlas-obsidian ${args[0]} did not print JSON`);
 	}
+	// A write that moved a note of the user's out of views/ says where it went, whichever
+	// button ran it.
+	for (const line of movedNotices(parsed)) new Notice(`Atlas: ${line}`, 0);
+	return parsed;
 }
 
 /** The version line the binary prints, such as "atlas-obsidian 6.5.0". */

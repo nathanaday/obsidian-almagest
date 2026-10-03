@@ -79,7 +79,22 @@ export function syncedPaths(s: Synced): string[] {
 
 /** One notice per note of the user's that a sync moved out of views/. */
 export function strayNotices(s: Synced): string[] {
-	return (s.strays ?? []).map((m) => `Moved ${m.from} to ${m.to}: code writes every file in views/, so your note waits in the inbox.`);
+	return (s.strays ?? []).map(movedLine);
+}
+
+/** One notice per note of the user's that a write moved out of views/: any JSON result
+ * of the binary may hold them under moved_from_views. */
+export function movedNotices(out: unknown): string[] {
+	if (typeof out !== "object" || out === null) return [];
+	const moved = (out as { moved_from_views?: unknown }).moved_from_views;
+	if (!Array.isArray(moved)) return [];
+	return moved
+		.filter((m): m is { from: string; to: string } => typeof m?.from === "string" && typeof m?.to === "string")
+		.map(movedLine);
+}
+
+function movedLine(m: { from: string; to: string }): string {
+	return `Moved ${m.from} to ${m.to}: code writes every file in views/, so your note waits in the inbox.`;
 }
 
 /**
