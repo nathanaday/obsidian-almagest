@@ -8,6 +8,8 @@ export interface Synced {
 	sessions?: string[] | null;
 	settings?: boolean;
 	views?: number;
+	strays?: { from: string; to: string }[] | null;
+	skipped?: string[] | null;
 }
 
 /**
@@ -64,13 +66,20 @@ export function syncSummary(s: Synced): string {
 	add(s.sessions, "session callout", "session callouts");
 	if (s.settings) parts.push("the harness settings");
 	if (s.views) parts.push(plural(s.views, "view", "views"));
+	add(s.skipped, "document left as saved", "documents left as saved");
 	if (parts.length === 0) return "Generated files are up to date.";
 	return `Synced ${parts.join(", ")}.`;
 }
 
 /** Every path a sync wrote. */
 export function syncedPaths(s: Synced): string[] {
-	return [...(s.threads ?? []), ...(s.knowledge ?? []), ...(s.moved ?? []), ...(s.lost ?? []), ...(s.sessions ?? [])];
+	const strays = (s.strays ?? []).flatMap((m) => [m.from, m.to]);
+	return [...(s.threads ?? []), ...(s.knowledge ?? []), ...(s.moved ?? []), ...(s.lost ?? []), ...(s.sessions ?? []), ...strays];
+}
+
+/** One notice per note of the user's that a sync moved out of views/. */
+export function strayNotices(s: Synced): string[] {
+	return (s.strays ?? []).map((m) => `Moved ${m.from} to ${m.to}: code writes every file in views/, so your note waits in the inbox.`);
 }
 
 /**

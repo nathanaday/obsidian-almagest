@@ -5,7 +5,7 @@ import { AtlasError, findBinary, runAtlas } from "./cli";
 import { GraphColors } from "./graphcolors";
 import { GRAPH_MODES, isGraphMode } from "./graphgroups";
 import { CanvasBar } from "./canvasbar";
-import { LAYOUT, Synced, isWatchedPath, layoutName, layoutOf, normalTag, syncSummary, syncedPaths, waitingLabel } from "./helpers";
+import { LAYOUT, Synced, isWatchedPath, layoutName, layoutOf, normalTag, strayNotices, syncSummary, syncedPaths, waitingLabel } from "./helpers";
 import { mentionEditor, mentionReading } from "./mentions";
 import { repoProcessor } from "./repo";
 import { SESSIONS_VIEW, SessionsView, sessionGroups } from "./sessions";
@@ -240,6 +240,7 @@ export default class AtlasPlugin extends Plugin {
 			wrote = syncedPaths(out.synced);
 			this.lastAutoError = "";
 			if (manual) new Notice(`Atlas: ${syncSummary(out.synced)}`);
+			for (const line of strayNotices(out.synced)) new Notice(`Atlas: ${line}`, 0);
 		} catch (e) {
 			const message = (e as Error).message;
 			// A background sync that fails the same way again stays quiet.

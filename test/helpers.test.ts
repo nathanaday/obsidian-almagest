@@ -34,6 +34,7 @@ import {
 	lastProgressLine,
 	linkTitle,
 	mentionRanges,
+	strayNotices,
 	syncSummary,
 	syncedPaths,
 	textMentions,
@@ -219,4 +220,12 @@ test("a chord's canvas lies in chords/, and its bar says what is not saved", () 
 	assert.equal(canvasSummary({ differs: true, threads: ["Annotate"] }), "1 thread moves: Annotate");
 	assert.equal(canvasSummary({ differs: true, threads: ["A", "B", "C", "D"] }), "4 threads move: A, B, +2");
 	assert.equal(canvasSummary({ differs: true, threads: null }), "Not saved");
+});
+
+test("a sync that moved a note out of views/ says where it went", () => {
+	const s = { strays: [{ from: "views/Draft.md", to: "inbox/Draft.md" }], skipped: ["wiki/documents/Paper.md"] };
+	assert.deepEqual(strayNotices(s), ["Moved views/Draft.md to inbox/Draft.md: code writes every file in views/, so your note waits in the inbox."]);
+	assert.equal(syncSummary(s), "Synced 1 document left as saved.");
+	assert.deepEqual(syncedPaths(s), ["views/Draft.md", "inbox/Draft.md"]);
+	assert.deepEqual(strayNotices({}), []);
 });
