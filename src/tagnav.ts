@@ -1,11 +1,10 @@
 import { App, ItemView, TFile, WorkspaceLeaf, debounce } from "obsidian";
-import { TagDoc, asList, groupDocs, narrow, normalTag, relativeTag, tagViewPath, topTags } from "./helpers";
+import { TagDoc, asList, groupDocs, isDocumentType, narrow, normalTag, relativeTag, tagViewPath, topTags } from "./helpers";
 
 export const TAG_NAV_VIEW = "atlas-tag-navigator";
 /** Not "tags", which is the icon of Obsidian's own Tags pane. */
 export const NAV_ICON = "compass";
 
-const DOC_TYPES = new Set(["source", "repository", "topic", "stub", "spec", "event"]);
 const MAX_WITH = 30;
 
 /** Every document of wiki/documents, as the navigator reads it from the metadata cache. */
@@ -14,7 +13,7 @@ export function tagDocs(app: App): TagDoc[] {
 	for (const file of app.vault.getMarkdownFiles()) {
 		if (!file.path.startsWith("wiki/documents/")) continue;
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-		if (!fm || !DOC_TYPES.has(String(fm.type))) continue;
+		if (!fm || !isDocumentType(fm.type)) continue;
 		const own = asList(fm.tags).map(normalTag);
 		if (typeof fm.defines === "string" && fm.defines) own.push(normalTag(fm.defines));
 		out.push({

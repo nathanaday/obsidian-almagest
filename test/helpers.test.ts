@@ -18,6 +18,7 @@ import {
 	expandTags,
 	groupDocs,
 	holds,
+	isDocumentType,
 	isTagView,
 	isWatchedPath,
 	layoutOf,
@@ -238,4 +239,9 @@ test("any result that moved a note out of views/ says where it went", () => {
 	assert.deepEqual(movedNotices({ commit: "abc" }), []);
 	assert.deepEqual(movedNotices(null), []);
 	assert.deepEqual(movedNotices({ moved_from_views: [{ from: 1 }] }), []);
+});
+
+test("the navigator lists every document type and nothing else", () => {
+	for (const type of ["chord", "tasks", "verification", "stub", "topic"]) assert.ok(isDocumentType(type), type);
+	for (const type of ["session", "change", undefined]) assert.ok(!isDocumentType(type), String(type));
 });

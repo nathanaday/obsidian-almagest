@@ -153,6 +153,14 @@ export function linkTitle(value: unknown): string {
 }
 
 /** A list property as strings; a single string is a list of one. */
+/** The nine types of wiki/documents, as schema.DocumentTypes lists them. */
+export const DOCUMENT_TYPES = ["source", "repository", "topic", "stub", "spec", "tasks", "verification", "chord", "event"];
+
+/** Whether a frontmatter type is one of the document types the navigator lists. */
+export function isDocumentType(type: unknown): boolean {
+	return DOCUMENT_TYPES.includes(String(type));
+}
+
 export function asList(value: unknown): string[] {
 	if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
 	if (typeof value === "string" && value !== "") return [value];
