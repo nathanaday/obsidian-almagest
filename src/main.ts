@@ -46,7 +46,7 @@ interface MigrationReport {
 
 export default class AtlasPlugin extends Plugin {
 	settings: AtlasSettings = { ...DEFAULT_SETTINGS };
-	/** The agent settings of 8.0.2 and 8.0.3, kept in data.json until they move to the vault's config file. */
+	/** The agent settings of 8.0.2, kept in data.json until they move to the vault's config file. */
 	private legacy: Record<string, unknown> | null = null;
 	badges!: Badges;
 	viewFolders!: ViewFolders;
@@ -404,7 +404,7 @@ export default class AtlasPlugin extends Plugin {
 		return this.atlas<AgentConfig>(global ? [...args, "--global"] : args);
 	}
 
-	/** Moves the agent settings of 8.0.2 and 8.0.3 into the vault's config file, once. */
+	/** Moves the agent settings of 8.0.2 into the vault's config file, once. */
 	private async moveLegacyPreferences(): Promise<void> {
 		const saved = this.legacy;
 		if (!saved) return;

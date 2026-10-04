@@ -192,7 +192,7 @@ export function inherited(config: AgentConfig, key: string): string {
 }
 
 /**
- * The keys to move from the plugin settings of 8.0.2 and 8.0.3 into the vault's config
+ * The keys to move from the plugin settings of 8.0.2 into the vault's config
  * file: the values that differ from the old defaults, for keys the file does not set.
  */
 export function legacyPreferences(saved: Record<string, unknown> | null, vault: Preferences | null): [string, string][] {
