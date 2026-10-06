@@ -51,8 +51,8 @@ export interface GraphColorsHost {
 
 /**
  * Color groups for the graph, one mode at a time. Tag, Focus, and Type groups are search
- * queries; Work and Activity groups name their paths, so they follow every change to the
- * vault. The user's own groups stay after ours.
+ * queries; Activity groups name their paths, so they follow every change to the vault.
+ * The user's own groups stay after ours.
  */
 export class GraphColors extends Component {
 	private groups: Group[] = [];
@@ -114,7 +114,6 @@ export class GraphColors extends Component {
 			path: file.path,
 			fields: cache.getFileCache(file)?.frontmatter ?? {},
 			mtime: file.stat.mtime,
-			links: Object.keys(cache.resolvedLinks[file.path] ?? {}),
 		}));
 	}
 

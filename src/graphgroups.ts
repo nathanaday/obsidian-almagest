@@ -2,14 +2,13 @@
 
 import { asList, holds, linkTitle, normalTag } from "./helpers";
 
-export type GraphMode = "off" | "tag" | "focus" | "type" | "work" | "activity";
+export type GraphMode = "off" | "tag" | "focus" | "type" | "activity";
 
 export const GRAPH_MODES: { mode: GraphMode; label: string }[] = [
 	{ mode: "off", label: "Off" },
 	{ mode: "tag", label: "Tag" },
 	{ mode: "focus", label: "Focus" },
 	{ mode: "type", label: "Type" },
-	{ mode: "work", label: "Threads" },
 	{ mode: "activity", label: "Activity" },
 ];
 
@@ -25,8 +24,6 @@ export interface GraphDoc {
 	fields: Record<string, unknown>;
 	/** Modification time in milliseconds. */
 	mtime: number;
-	/** The paths this file links to, frontmatter links included. */
-	links: string[];
 }
 
 /** The path a link from a file names, or null. */
@@ -60,26 +57,14 @@ const RECENCY: Record<Theme, string[]> = {
 };
 const MUTED = "#898781";
 
-const THREAD_TYPES = ["stub", "spec", "tasks", "verification", "chord"];
-const THREAD_PARTS = ["spec", "tasks", "verification"];
-
-// Obsidian matches a property's name as a substring, so [type:spec] also reads an event's
-// to_type. Events come first: the first group that matches colors a node.
 const TYPE_GROUPS: { name: string; query: string; test: (fields: Record<string, unknown>) => boolean }[] = [
-	{ name: "Events", query: "[type:event]", test: (f) => f.type === "event" },
 	{ name: "Sources", query: "[type:source]", test: (f) => f.type === "source" },
 	{ name: "Repositories", query: "[type:repository]", test: (f) => f.type === "repository" },
 	{ name: "Concepts", query: "[type:topic] [kind:concept]", test: (f) => f.type === "topic" && f.kind === "concept" },
 	{ name: "Entities", query: "[type:topic] [kind:entity]", test: (f) => f.type === "topic" && f.kind === "entity" },
 	{ name: "Policies", query: "[type:topic] [kind:policy]", test: (f) => f.type === "topic" && f.kind === "policy" },
 	{ name: "Overviews", query: "[type:topic] [kind:overview]", test: (f) => f.type === "topic" && f.kind === "overview" },
-	{
-		name: "Threads and chords",
-		query: THREAD_TYPES.map((t) => `[type:${t}]`).join(" OR "),
-		test: (f) => THREAD_TYPES.includes(String(f.type)),
-	},
 ];
-
 
 const QUARTERS = ["Newest 25%", "25–50%", "50–75%", "Oldest 25%"];
 
@@ -96,9 +81,6 @@ export function graphGroups(mode: GraphMode, docs: GraphDoc[], resolve: Resolve,
 			break;
 		case "type":
 			groups = vault.byType(theme);
-			break;
-		case "work":
-			groups = vault.byWork(theme);
 			break;
 		case "activity":
 			groups = byActivity(docs, theme);
@@ -136,17 +118,9 @@ export function allTagsQuery(tags: string[]): string {
 
 class Vault {
 	private byPath = new Map<string, GraphDoc>();
-	private backlinks = new Map<string, string[]>();
 
 	constructor(private docs: GraphDoc[], private resolve: Resolve) {
 		for (const d of docs) this.byPath.set(d.path, d);
-		for (const d of docs) {
-			for (const to of d.links) {
-				const from = this.backlinks.get(to) ?? [];
-				from.push(d.path);
-				this.backlinks.set(to, from);
-			}
-		}
 	}
 
 	private type(path: string | null): string {
@@ -160,7 +134,7 @@ class Vault {
 			.filter((p): p is string => p !== null && this.byPath.has(p));
 	}
 
-	/** The top tag a document belongs to: its own; an event's subject's; a session's or a change's first document's. */
+	/** The top tag a document belongs to: its own, or a session's or a change's first document's. */
 	tagOf(doc: GraphDoc, depth = 0): string | null {
 		if (depth > 3) return null;
 		const own = topTags(doc.fields)[0];
@@ -173,12 +147,10 @@ class Vault {
 			return null;
 		};
 		switch (this.type(doc.path)) {
-			case "event":
-				return via("subject");
 			case "session":
-				return via("threads") ?? via("specs") ?? via("work");
+				return via("repositories") ?? via("changes");
 			case "change":
-				return via("absorbs") ?? via("work");
+				return via("absorbs");
 		}
 		return null;
 	}
@@ -244,72 +216,6 @@ class Vault {
 			query: "[type:session] OR [type:change]",
 		});
 		return groups;
-	}
-
-	byWork(theme: Theme): Group[] {
-		const open: string[] = [];
-		const done: string[] = [];
-		const none: string[] = [];
-		for (const d of this.docs) {
-			const states = this.workStates(d);
-			if (states.has("open")) open.push(d.path);
-			else if (states.has("done")) done.push(d.path);
-			else none.push(d.path);
-		}
-		const palette = CATEGORICAL[theme];
-		return [
-			{ name: "Open threads", color: palette[1], paths: open },
-			{ name: "Ended threads", color: palette[0], paths: done },
-			{ name: "No thread", color: MUTED, paths: none },
-		];
-	}
-
-	/**
-	 * The state of a thread or a chord: open, or done when it is closed, dropped, or
-	 * resolved. A spec, a task list, and a verification take their thread's. Null for any
-	 * other document.
-	 */
-	private stateOf(path: string): string | null {
-		const d = this.byPath.get(path);
-		if (!d) return null;
-		const t = this.type(path);
-		if (t === "stub" || t === "chord") {
-			const s = String(d.fields.status ?? "");
-			return s === "closed" || s === "dropped" || s === "resolved" ? "done" : "open";
-		}
-		if (THREAD_PARTS.includes(t)) {
-			for (const p of this.links(d, "thread")) {
-				if (this.type(p) === "stub") return this.stateOf(p);
-			}
-		}
-		return null;
-	}
-
-	/**
-	 * The states of the threads a document belongs to or shares a link with. A thread
-	 * document takes only its own state; an event takes its subject's.
-	 */
-	private workStates(doc: GraphDoc): Set<string> {
-		const states = new Set<string>();
-		const own = this.stateOf(doc.path);
-		if (own) {
-			states.add(own);
-			return states;
-		}
-		if (this.type(doc.path) === "event") {
-			for (const p of this.links(doc, "subject")) {
-				const s = this.stateOf(p);
-				if (s) states.add(s);
-			}
-			return states;
-		}
-		const near = [...doc.links, ...(this.backlinks.get(doc.path) ?? [])];
-		for (const p of near) {
-			if (!THREAD_TYPES.includes(this.type(p))) continue;
-			const s = this.stateOf(p);
-			if (s) states.add(s);
-		}
-		return states;
 	}
 }
 

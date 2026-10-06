@@ -14,7 +14,6 @@ import {
 	shellQuote,
 	startCommand,
 	terminalLaunch,
-	threadStage,
 	plainLinks,
 } from "../src/agents";
 
@@ -59,10 +58,10 @@ test("resume runs in the conversation's folder and account", () => {
 	assert.equal(resumeCommand({ harness: "claude", id: "x", cwd: "", configDir: "" }), `claude --resume 'x'`);
 });
 
-test("start runs the user's agent command in the vault with the hand-off line", () => {
-	assert.equal(startCommand("/v/My vault", "claude", "Resume Atlas thread doc-a"), `cd '/v/My vault' && claude 'Resume Atlas thread doc-a'`);
-	assert.equal(startCommand("/v", " ", "x"), `cd '/v' && claude 'x'`);
-	assert.equal(startCommand("/v", "my-claude --model x", "x"), `cd '/v' && my-claude --model x 'x'`);
+test("start runs the user's agent command in the vault", () => {
+	assert.equal(startCommand("/v/My vault", "claude"), `cd '/v/My vault' && claude`);
+	assert.equal(startCommand("/v", " "), `cd '/v' && claude`);
+	assert.equal(startCommand("/v", " my-claude --model x "), `cd '/v' && my-claude --model x`);
 });
 
 test("each terminal runs the command in an interactive shell", () => {
@@ -77,14 +76,7 @@ test("each terminal runs the command in an interactive shell", () => {
 	assert.deepEqual(terminalLaunch("custom", "echo 'hi'", "", "kitty sh -c {command}").args, ["-c", `kitty sh -c 'echo '\\''hi'\\'''`]);
 });
 
-test("a card names the thread's stage in a word or two, and shows links as titles", () => {
-	const stage = (status: string, tasks = "", blocked = "") => threadStage({ status, tasks, blocked });
-	assert.deepEqual(
-		["stub", "specified", "planned", "started", "unverified", "verified", "closed"].map((s) => stage(s, "7/8")),
-		["needs spec", "writing tasks", "ready", "tasks 7/8", "verifying", "to close", "closed"],
-	);
-	assert.equal(stage("started"), "started");
-	assert.equal(stage("started", "1/2", "no GPU"), "blocked");
+test("a card shows links as titles", () => {
 	assert.equal(plainLinks("Write the spec of [[Raw U16 format]]: then [[A#h|the a]]."), "Write the spec of Raw U16 format: then the a.");
 });
 

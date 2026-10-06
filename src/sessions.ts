@@ -1,7 +1,7 @@
 import { App, ItemView, Notice, TFile, WorkspaceLeaf } from "obsidian";
 import { homedir } from "os";
-import { SessionRow, SessionState, groupSessions, plainLinks, resumeCommand, threadStage } from "./agents";
-import { asList, expandHome, formatAgo, lastProgressLine, linkTitle } from "./helpers";
+import { SessionRow, SessionState, groupSessions, plainLinks, resumeCommand } from "./agents";
+import { expandHome, formatAgo, lastProgressLine, linkTitle } from "./helpers";
 import { findTranscript, liveAgents, resumePlace } from "./launcher";
 import type AtlasPlugin from "./main";
 
@@ -11,8 +11,6 @@ export const SESSIONS_VIEW = "atlas-sessions";
 export interface Session extends SessionRow {
 	file: TFile;
 	description: string;
-	work: string[];
-	threads: string[];
 	harness: string;
 	harness_id: string;
 	cwd: string;
@@ -26,7 +24,6 @@ export function readSessions(app: App): Session[] {
 		if (!file.path.startsWith("sessions/")) continue;
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
 		if (!fm || fm.type !== "session") continue;
-		const work = asList(fm.work).map(linkTitle);
 		out.push({
 			file,
 			path: file.path,
@@ -36,8 +33,6 @@ export function readSessions(app: App): Session[] {
 			pid: Number(fm.pid ?? 0) || 0,
 			parent: String(fm.parent ?? ""),
 			description: typeof fm.description === "string" && fm.description.trim() ? fm.description : file.basename,
-			work,
-			threads: [...asList(fm.specs), ...asList(fm.threads)],
 			harness: String(fm.harness ?? "claude"),
 			harness_id: String(fm.harness_id ?? ""),
 			cwd: String(fm.cwd ?? ""),
@@ -52,44 +47,6 @@ export async function sessionGroups(app: App, staleHours: number) {
 	const rows = readSessions(app);
 	const live = await liveAgents(rows.map((r) => r.pid));
 	return { rows, groups: groupSessions(rows, (pid) => live.has(pid), new Date(), staleHours) };
-}
-
-/** A thread a session works on: its stub, with the stub's fields. */
-interface SessionThread {
-	file: TFile;
-	id: string;
-	status: string;
-	tasks: string;
-	blocked: string;
-}
-
-/**
- * The thread a session works on: the one it started last that is still started, else the
- * last it started, else the thread of the last document it wrote (a spec or a task list
- * names its thread).
- */
-function sessionThread(app: App, s: Session): SessionThread | null {
-	const stubOf = (title: string): SessionThread | null => {
-		const file = title ? app.metadataCache.getFirstLinkpathDest(title, s.file.path) : null;
-		const fm = file ? app.metadataCache.getFileCache(file)?.frontmatter : undefined;
-		if (!file || !fm) return null;
-		if (fm.type === "spec" || fm.type === "tasks" || fm.type === "verification") return stubOf(linkTitle(fm.thread));
-		if (fm.type !== "stub") return null;
-		return { file, id: String(fm.id ?? ""), status: String(fm.status ?? ""), tasks: String(fm.tasks ?? ""), blocked: String(fm.blocked ?? "") };
-	};
-	let fallback: SessionThread | null = null;
-	for (let i = s.threads.length - 1; i >= 0; i--) {
-		const t = stubOf(linkTitle(s.threads[i]));
-		if (!t) continue;
-		fallback ??= t;
-		if (t.status === "started") return t;
-	}
-	if (fallback) return fallback;
-	for (let i = s.work.length - 1; i >= 0; i--) {
-		const t = stubOf(s.work[i]);
-		if (t) return t;
-	}
-	return null;
 }
 
 /**
@@ -181,10 +138,8 @@ export class SessionsView extends ItemView {
 		card.dataset.state = STATE_CLASS[state];
 		card.onclick = () => void this.app.workspace.getLeaf(false).openFile(s.file);
 
-		const thread = sessionThread(this.app, s);
 		const top = card.createDiv({ cls: "atlas-session-top" });
 		top.createSpan({ cls: "atlas-session-status", text: state });
-		if (thread?.id) top.createSpan({ cls: "atlas-session-id", text: thread.id });
 		if (subagents > 0) top.createSpan({ cls: "atlas-session-sub", text: `+${subagents} ${subagents === 1 ? "subagent" : "subagents"}` });
 		const closed = state === "ended" || state === "lost";
 		top.createSpan({ cls: "atlas-session-ago", text: formatAgo(closed ? s.ended || s.updated : s.updated, now) });
@@ -200,16 +155,10 @@ export class SessionsView extends ItemView {
 		const title = plainLinks(s.description);
 		card.createDiv({ cls: "atlas-session-title", text: title }).setAttr("title", title);
 
-		if (thread) {
-			const line = card.createDiv({ cls: "atlas-session-thread" });
-			line.createSpan({ cls: "atlas-session-thread-name", text: thread.file.basename });
-			line.createSpan({ cls: "atlas-session-stage", text: threadStage(thread) }).dataset.stage = thread.blocked ? "blocked" : thread.status;
-		}
 		// The last progress line is the card's hover text, so the card stays short.
 		void this.app.vault.cachedRead(s.file).then((text) => {
 			const last = lastProgressLine(text);
 			if (generation === this.generation && last) card.setAttr("title", plainLinks(last));
 		});
-
 	}
 }

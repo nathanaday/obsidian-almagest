@@ -25,9 +25,9 @@ const { startCommand, terminalLaunch } = await import(url);
 const dir = mkdtempSync(join(tmpdir(), "atlas-probe-"));
 const out = join(dir, "probe.txt");
 const program = agent.split(/\s+/)[0];
-// The probe stands where the agent command goes; startCommand appends the prompt as an argument it ignores.
-const probe = `{ print agent=$(whence -w ${program} || type ${program}); ${agent} --version; print cwd=$PWD; } >${out} 2>&1; exit; :`;
-const launch = terminalLaunch(terminal, startCommand(dir, probe, "Resume Atlas thread doc-probe1"), process.env.SHELL ?? "/bin/zsh", custom);
+// The probe stands where the agent command goes.
+const probe = `{ print agent=$(whence -w ${program} || type ${program}); ${agent} --version; print cwd=$PWD; } >${out} 2>&1; exit`;
+const launch = terminalLaunch(terminal, startCommand(dir, probe), process.env.SHELL ?? "/bin/zsh", custom);
 spawn(launch.program, launch.args, { detached: true, stdio: "ignore" }).unref();
 
 for (let i = 0; i < 30 && !existsSync(out); i++) await new Promise((r) => setTimeout(r, 1000));

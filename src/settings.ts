@@ -81,7 +81,7 @@ export class AtlasSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Badges in the file explorer")
-			.setDesc("Shows the status of each thread, chord, and session, and the kind of each event.")
+			.setDesc("Shows the status of each session.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.badges).onChange(async (value) => {
 					this.plugin.settings.badges = value;
@@ -119,7 +119,7 @@ export class AtlasSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Graph colors")
-			.setDesc("Colors the nodes of the graph by top tag, by type, by the state of their work, or by how recently they changed. The graph view has the same buttons.")
+			.setDesc("Colors the nodes of the graph by top tag, by the navigator's tags, by type, or by how recently they changed. The graph view has the same buttons.")
 			.addDropdown((dropdown) => {
 				for (const { mode, label } of GRAPH_MODES) dropdown.addOption(mode, label);
 				dropdown

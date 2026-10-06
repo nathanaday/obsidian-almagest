@@ -4,18 +4,15 @@ import { ChangeBar } from "./changebar";
 import { AtlasError, findBinary, runAtlas } from "./cli";
 import { GraphColors } from "./graphcolors";
 import { GRAPH_MODES, isGraphMode } from "./graphgroups";
-import { CanvasBar } from "./canvasbar";
 import { LAYOUT, Synced, isWatchedPath, layoutName, layoutOf, normalTag, strayNotices, syncSummary, syncedPaths, waitingLabel } from "./helpers";
 import { mentionEditor, mentionReading } from "./mentions";
 import { repoProcessor } from "./repo";
 import { SESSIONS_VIEW, SessionsView, sessionGroups } from "./sessions";
 import { AgentConfig, legacyPreferences, startCommand } from "./agents";
 import { openTerminal } from "./launcher";
-import { NewThreadModal } from "./newthread";
 import { AtlasSettingTab, AtlasSettings, DEFAULT_SETTINGS } from "./settings";
 import { NAV_ICON, TAG_NAV_VIEW, TagNavigator } from "./tagnav";
 import { ViewFolders } from "./viewfolders";
-import { ThreadBar } from "./threadbar";
 
 const SYNC_DELAY = 2000;
 const LEGACY_KEYS = ["agentCommand", "terminal", "terminalCommand"];
@@ -24,21 +21,6 @@ const ECHO_WINDOW = 5000;
 
 interface MigrationReport {
 	vault: string;
-	from?: string;
-	threads?: number;
-	specs?: number;
-	task_lists?: number;
-	verifications?: number;
-	chords?: number;
-	topics?: number;
-	notes?: number;
-	documents: number;
-	events: number;
-	assets: number;
-	tags?: { scope: string; tag: string }[] | null;
-	retitles?: { old: string; new: string }[] | null;
-	inbox?: string[] | null;
-	scratchpad?: string[] | null;
 	warnings?: string[] | null;
 	commit?: string;
 	problems?: number;
@@ -69,19 +51,6 @@ export default class AtlasPlugin extends Plugin {
 		this.badges = this.addChild(new Badges(this.app));
 		this.badges.setEnabled(this.settings.badges);
 		this.addChild(new ChangeBar(this));
-		const threadBar = this.addChild(new ThreadBar(this));
-		this.addChild(new CanvasBar(this));
-		this.addCommand({
-			id: "copy-handoff",
-			name: "Copy the hand-off line of this thread or chord",
-			checkCallback: (checking) => {
-				const file = this.app.workspace.getActiveFile();
-				const fm = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : undefined;
-				if (fm?.type !== "stub" && fm?.type !== "chord") return false;
-				if (!checking) threadBar.copyActive();
-				return true;
-			},
-		});
 		this.viewFolders = this.addChild(new ViewFolders(this.app));
 		this.viewFolders.setEnabled(this.settings.viewFolders);
 		this.registerMarkdownCodeBlockProcessor("atlas-repo", repoProcessor(this));
@@ -112,26 +81,7 @@ export default class AtlasPlugin extends Plugin {
 		// A click on a #tag opens the navigator at it, when the setting asks.
 		this.registerDomEvent(document, "click", (evt) => this.onTagClick(evt), { capture: true });
 
-		this.addCommand({
-			id: "start-agent",
-			name: "Start an agent on this thread or chord",
-			checkCallback: (checking) => {
-				const target = this.activeWork();
-				if (!target) return false;
-				if (!checking) void this.startAgent(target.type, target.id);
-				return true;
-			},
-		});
-		this.addCommand({
-			id: "new-thread-in-chord",
-			name: "New thread in this chord",
-			checkCallback: (checking) => {
-				const chord = this.activeChord();
-				if (!chord) return false;
-				if (!checking) this.newThread(chord);
-				return true;
-			},
-		});
+		this.addCommand({ id: "start-agent", name: "Start agent", callback: () => void this.startAgent() });
 
 		this.registerView(SESSIONS_VIEW, (leaf) => new SessionsView(leaf, this));
 		this.sessionsRibbon = this.addRibbonIcon("bot", "Atlas: open the sessions", () => void this.openSessions());
@@ -141,7 +91,7 @@ export default class AtlasPlugin extends Plugin {
 		this.statusItem.addClass("atlas-status-waiting");
 		this.statusItem.onClickEvent(() => void this.openSessions());
 
-		this.addCommand({ id: "migrate", name: "Migrate this vault to the 8.0 layout", callback: () => void this.migrate() });
+		this.addCommand({ id: "migrate", name: "Migrate this vault to the 9.0 layout", callback: () => void this.migrate() });
 
 		this.registerEditorExtension(mentionEditor);
 		this.registerMarkdownPostProcessor(mentionReading);
@@ -290,7 +240,7 @@ export default class AtlasPlugin extends Plugin {
 		return layoutOf(this.app.metadataCache.getFileCache(atlas)?.frontmatter);
 	}
 
-	/** Whether the vault has the 8.0 layout. */
+	/** Whether the vault has the 9.0 layout. */
 	private migrated(): boolean {
 		return this.layout() >= LAYOUT;
 	}
@@ -299,7 +249,12 @@ export default class AtlasPlugin extends Plugin {
 		if (this.migrated()) return;
 		const notice = new Notice("", 0);
 		const el = notice.messageEl;
-		el.createDiv({ text: `Atlas: this vault has the ${layoutName(this.layout())} layout. This plugin needs the 8.0 layout: threads and chords.` });
+		const layout = this.layout();
+		if (layout < 4) {
+			el.createDiv({ text: `Atlas: this vault has the ${layoutName(layout)} layout. This plugin needs the 9.0 layout. Migrate the vault to 8.x with Atlas 8.1.1 first.` });
+			return;
+		}
+		el.createDiv({ text: `Atlas: this vault has the ${layoutName(layout)} layout. This plugin needs the 9.0 layout.` });
 		const button = el.createEl("button", { text: "Show the migration", cls: "mod-cta atlas-notice-button" });
 		button.onclick = () => {
 			notice.hide();
@@ -433,11 +388,10 @@ export default class AtlasPlugin extends Plugin {
 		new Notice(`Atlas: copied ${what}. Run it in a terminal.`);
 	}
 
-	/** Starts an agent in the vault, with the hand-off line of a thread or a chord as its first prompt. */
-	async startAgent(type: "stub" | "chord", id: string): Promise<void> {
+	/** Starts the agent in the vault. */
+	private async startAgent(): Promise<void> {
 		const adapter = this.app.vault.adapter;
 		if (!(adapter instanceof FileSystemAdapter)) return;
-		const prompt = `Resume Atlas ${type === "chord" ? "chord" : "thread"} ${id}`;
 		let config: AgentConfig;
 		try {
 			config = await this.agentConfig();
@@ -445,44 +399,7 @@ export default class AtlasPlugin extends Plugin {
 			new Notice(`Atlas: cannot read the agent preferences: ${(e as Error).message}`, 8000);
 			return;
 		}
-		await this.runInTerminal(startCommand(adapter.getBasePath(), config.preferences.agent_command, prompt), "the agent command", config);
-	}
-
-	/** The stub or chord open in the active view, or the chord of an open canvas. */
-	activeWork(): { type: "stub" | "chord"; id: string; title: string } | null {
-		const file = this.app.workspace.getActiveFile();
-		if (!file) return null;
-		if (file.extension === "canvas") {
-			const chord = this.activeChord();
-			return chord ? { type: "chord", ...chord } : null;
-		}
-		const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-		if ((fm?.type === "stub" || fm?.type === "chord") && fm.id) return { type: fm.type, id: String(fm.id), title: file.basename };
-		return null;
-	}
-
-	/** The chord of the active note or canvas, or null. */
-	activeChord(): { id: string; title: string } | null {
-		const file = this.app.workspace.getActiveFile();
-		if (!file) return null;
-		const title = file.basename;
-		// A chord's canvas is chords/<title>.canvas; its note holds the id.
-		const note = file.extension === "canvas" ? this.app.metadataCache.getFirstLinkpathDest(title, "") : file;
-		const fm = note ? this.app.metadataCache.getFileCache(note)?.frontmatter : undefined;
-		if (fm?.type !== "chord" || !fm.id) return null;
-		return { id: String(fm.id), title };
-	}
-
-	/** Asks for a new thread's title and idea, and plants it in a chord. */
-	newThread(chord: { id: string; title: string }): void {
-		new NewThreadModal(this.app, chord.title, async (title, idea) => {
-			try {
-				await this.atlas<unknown>(["thread", "stub", idea || title, "--title", title, "--chord", chord.id]);
-				new Notice(`Atlas: planted ${title} in ${chord.title}.`);
-			} catch (e) {
-				new Notice(`Atlas: ${(e as Error).message}`, 8000);
-			}
-		}).open();
+		await this.runInTerminal(startCommand(adapter.getBasePath(), config.preferences.agent_command), "the agent command", config);
 	}
 
 	private async openSessions(): Promise<void> {
@@ -506,26 +423,17 @@ class MigrationModal extends Modal {
 
 	onOpen(): void {
 		const r = this.report;
-		this.setTitle("Migrate to the 8.0 layout");
+		this.setTitle("Migrate to the 9.0 layout");
 		const el = this.contentEl;
 		el.addClass("atlas-migration");
-		if (r.from === "6.x") {
-			el.createEl("p", { text: `The migration of ${r.vault} moves ${r.documents} documents into wiki/documents, writes ${r.events} events, and moves ${r.assets} files into wiki/assets. Then it makes each plan a thread: a stub, a spec, a task list, and a verification. It is one commit; git revert takes it back.` });
-		} else {
-			el.createEl("p", { text: `The migration of ${r.vault} makes each plan a thread, in one commit: ${r.threads ?? 0} threads, ${r.specs ?? 0} specs, ${r.task_lists ?? 0} task lists, ${r.verifications ?? 0} verifications, ${r.chords ?? 0} chords. Each plan keeps its id, its title, and its file, as the stub. ${r.notes ?? 0} notes keep the sections a spec does not hold. git revert takes it back.` });
-		}
-		const list = (title: string, rows: string[]) => {
-			if (rows.length === 0) return;
+		el.createEl("p", { text: `The migration of ${r.vault} moves the thread documents of 8.x (stubs, specs, task lists, verifications, chords, and events) and the chord canvases to threads/, an archive that Atlas does not own. It is one commit; git revert takes it back.` });
+		const warnings = r.warnings ?? [];
+		if (warnings.length > 0) {
 			const d = el.createEl("details");
-			d.createEl("summary", { text: `${title} (${rows.length})` });
+			d.createEl("summary", { text: `Warnings (${warnings.length})` });
 			const ul = d.createEl("ul");
-			for (const row of rows) ul.createEl("li", { text: row });
-		};
-		list("Tags from the scope tree", (r.tags ?? []).map((t) => `${t.scope} → #${t.tag}`));
-		list("Titles that change; links follow", (r.retitles ?? []).map((t) => `${t.old} → ${t.new}`));
-		list("Notes with no type, to the inbox", r.inbox ?? []);
-		list("Files to the scratchpad", r.scratchpad ?? []);
-		list("Warnings", r.warnings ?? []);
+			for (const w of warnings) ul.createEl("li", { text: w });
+		}
 		const buttons = el.createDiv({ cls: "atlas-migration-buttons" });
 		buttons.createEl("button", { text: "Cancel" }).onclick = () => this.close();
 		const go = buttons.createEl("button", { text: "Migrate", cls: "mod-cta" });

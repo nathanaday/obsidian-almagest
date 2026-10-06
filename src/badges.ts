@@ -2,18 +2,13 @@ import { App, Component, TFile, debounce } from "obsidian";
 
 const BADGE = "atlas-badge";
 
-/** The badge for a document: a thread's or a chord's status, an event's kind, a session's status. */
-function badgeFor(app: App, path: string): { kind: string; value: string } | null {
+/** The badge for a document: a session's status. */
+function badgeFor(app: App, path: string): string | null {
 	const file = app.vault.getAbstractFileByPath(path);
 	if (!(file instanceof TFile) || file.extension !== "md") return null;
 	const fm = app.metadataCache.getFileCache(file)?.frontmatter;
 	if (!fm) return null;
-	if ((fm.type === "stub" || fm.type === "chord") && typeof fm.status === "string") {
-		return { kind: "status", value: fm.blocked ? "blocked" : fm.status };
-	}
-	if (fm.type === "event" && typeof fm.kind === "string") return { kind: "event", value: fm.kind };
-	if (fm.type === "session" && typeof fm.status === "string") return { kind: "status", value: fm.status };
-	return null;
+	return fm.type === "session" && typeof fm.status === "string" ? fm.status : null;
 }
 
 function ownMutation(m: MutationRecord): boolean {
@@ -76,9 +71,8 @@ export class Badges extends Component {
 					return;
 				}
 				if (!span) span = title.createSpan({ cls: BADGE });
-				if (span.dataset.kind !== badge.kind) span.dataset.kind = badge.kind;
-				if (span.dataset.value !== badge.value) span.dataset.value = badge.value;
-				if (span.textContent !== badge.value) span.textContent = badge.value;
+				if (span.dataset.value !== badge) span.dataset.value = badge;
+				if (span.textContent !== badge) span.textContent = badge;
 			});
 		}
 	}

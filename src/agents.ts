@@ -125,12 +125,11 @@ export function resumeCommand(t: ResumeTarget): string {
 }
 
 /**
- * The shell command that starts an agent in a folder with a first prompt. agent is the
- * user's command, as they would type it: "claude", or a shell function of their own.
+ * The shell command that starts an agent in a folder. agent is the user's command, as
+ * they would type it: "claude", or a shell function of their own.
  */
-export function startCommand(dir: string, agent: string, prompt: string): string {
-	const program = agent.trim() || "claude";
-	return `cd ${shellQuote(dir)} && ${program} ${shellQuote(prompt)}`;
+export function startCommand(dir: string, agent: string): string {
+	return `cd ${shellQuote(dir)} && ${agent.trim() || "claude"}`;
 }
 
 /** The terminals Atlas opens a command in. */
@@ -255,32 +254,4 @@ export function terminalLaunch(app: TerminalApp, command: string, shell: string,
 /** Text with its wikilinks as plain titles: "[[A|b]]" reads "b", "[[A]]" reads "A". */
 export function plainLinks(text: string): string {
 	return text.replace(/\[\[([^\]|]*)(?:\|([^\]]*))?\]\]/g, (_m, target: string, alias?: string) => (alias ?? target).split("#")[0]);
-}
-
-/** A thread's fields, as its stub holds them. */
-export interface ThreadFields {
-	status: string;
-	tasks: string;
-	blocked: string;
-}
-
-/** Where a thread stands, in a word or two, for a session's card. */
-export function threadStage(t: ThreadFields): string {
-	if (t.blocked) return "blocked";
-	switch (t.status) {
-		case "stub":
-			return "needs spec";
-		case "specified":
-			return "writing tasks";
-		case "planned":
-			return "ready";
-		case "started":
-			return t.tasks ? `tasks ${t.tasks}` : "started";
-		case "unverified":
-			return "verifying";
-		case "verified":
-			return "to close";
-		default:
-			return t.status;
-	}
 }

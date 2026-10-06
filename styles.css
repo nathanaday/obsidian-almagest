@@ -1,4 +1,4 @@
-/* Atlas: callouts, folder colors, badges, the change, thread, and canvas bars, the tag navigator, the repository panel, the sessions pane, mentions, graph colors. */
+/* Atlas: callouts, folder colors, badges, the change bar, the tag navigator, the repository panel, the sessions pane, mentions, graph colors. */
 
 /* Callouts: the lead callout of each document type and kind, and of the views. */
 .callout[data-callout="source"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-file-image; }
@@ -8,30 +8,6 @@
 .callout[data-callout="entity"] { --callout-color: var(--color-blue-rgb); --callout-icon: lucide-box; }
 .callout[data-callout="policy"] { --callout-color: var(--color-purple-rgb); --callout-icon: lucide-scale; }
 .callout[data-callout="overview"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-map; }
-.callout[data-callout="thread"] { --callout-color: var(--color-yellow-rgb); --callout-icon: lucide-spool; }
-.callout[data-callout="thread-closed"] { --callout-color: var(--color-green-rgb); --callout-icon: lucide-check-circle-2; }
-.callout[data-callout="thread-resolved"] { --callout-color: var(--color-green-rgb); --callout-icon: lucide-git-merge; }
-.callout[data-callout="thread-dropped"] { --callout-color: var(--mono-rgb-100); --callout-icon: lucide-ban; }
-.callout[data-callout="spec"] { --callout-color: var(--color-blue-rgb); --callout-icon: lucide-file-text; }
-.callout[data-callout="tasks"] { --callout-color: var(--color-blue-rgb); --callout-icon: lucide-list-checks; }
-.callout[data-callout="verification"] { --callout-color: var(--color-orange-rgb); --callout-icon: lucide-clipboard-check; }
-.callout[data-callout="verification-pass"] { --callout-color: var(--color-green-rgb); --callout-icon: lucide-clipboard-check; }
-.callout[data-callout="verification-fail"] { --callout-color: var(--color-red-rgb); --callout-icon: lucide-clipboard-x; }
-.callout[data-callout="chord"] { --callout-color: var(--color-purple-rgb); --callout-icon: lucide-waypoints; }
-.callout[data-callout="chord-closed"] { --callout-color: var(--color-green-rgb); --callout-icon: lucide-waypoints; }
-.callout[data-callout="chord-dropped"] { --callout-color: var(--mono-rgb-100); --callout-icon: lucide-ban; }
-.callout[data-callout="handoff"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-bot; }
-.callout[data-callout="handoff"] pre { margin-block: var(--size-4-1) 0; }
-.callout[data-callout^="event-"] { --callout-color: var(--mono-rgb-100); --callout-icon: lucide-history; }
-.callout[data-callout="event-started"],
-.callout[data-callout="event-continued"] { --callout-color: var(--color-blue-rgb); --callout-icon: lucide-play; }
-.callout[data-callout="event-dropped"] { --callout-icon: lucide-ban; }
-.callout[data-callout="event-reopened"] { --callout-color: var(--color-yellow-rgb); --callout-icon: lucide-rotate-ccw; }
-.callout[data-callout="event-blocked"] { --callout-color: var(--color-orange-rgb); --callout-icon: lucide-octagon-pause; }
-.callout[data-callout="event-unblocked"] { --callout-color: var(--color-green-rgb); --callout-icon: lucide-circle-play; }
-.callout[data-callout="event-promoted"] { --callout-color: var(--color-purple-rgb); --callout-icon: lucide-arrow-up-circle; }
-.callout[data-callout="event-resolved"] { --callout-color: var(--color-green-rgb); --callout-icon: lucide-git-merge; }
-.callout[data-callout="event-note"] { --callout-color: var(--color-yellow-rgb); --callout-icon: lucide-sticky-note; }
 .callout[data-callout="session"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-bot; }
 .callout[data-callout="change"] { --callout-color: var(--color-orange-rgb); --callout-icon: lucide-git-pull-request; }
 .callout[data-callout="atlas"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-map; }
@@ -58,7 +34,7 @@
 	color: rgb(var(--atlas-folder));
 }
 
-/* Badges: the status of a thread, a chord, or a session; the kind of an event. */
+/* Badges: the status of a session. */
 .atlas-badge {
 	--atlas-badge: var(--mono-rgb-100);
 	margin-inline-start: auto;
@@ -70,24 +46,11 @@
 	color: rgb(var(--atlas-badge));
 	background-color: rgba(var(--atlas-badge), 0.14);
 }
-.atlas-badge[data-kind="status"][data-value="stub"],
-.atlas-badge[data-kind="status"][data-value="open"] { --atlas-badge: var(--color-yellow-rgb); }
-.atlas-badge[data-kind="status"][data-value="specified"],
-.atlas-badge[data-kind="status"][data-value="planned"],
-.atlas-badge[data-kind="status"][data-value="started"] { --atlas-badge: var(--color-blue-rgb); }
-.atlas-badge[data-kind="status"][data-value="unverified"],
-.atlas-badge[data-kind="status"][data-value="blocked"] { --atlas-badge: var(--color-orange-rgb); }
-.atlas-badge[data-kind="status"][data-value="verified"] { --atlas-badge: var(--color-purple-rgb); }
-.atlas-badge[data-kind="status"][data-value="done"],
-.atlas-badge[data-kind="status"][data-value="closed"],
-.atlas-badge[data-kind="status"][data-value="resolved"] { --atlas-badge: var(--color-green-rgb); }
-.atlas-badge[data-kind="status"][data-value="running"] { --atlas-badge: var(--color-green-rgb); }
-.atlas-badge[data-kind="status"][data-value="waiting"] { --atlas-badge: var(--color-orange-rgb); }
-.atlas-badge[data-kind="status"][data-value="lost"] { --atlas-badge: var(--color-red-rgb); }
-.atlas-badge[data-kind="status"][data-value="dropped"],
-.atlas-badge[data-kind="status"][data-value="idle"],
-.atlas-badge[data-kind="status"][data-value="ended"],
-.atlas-badge[data-kind="event"] {
+.atlas-badge[data-value="running"] { --atlas-badge: var(--color-green-rgb); }
+.atlas-badge[data-value="waiting"] { --atlas-badge: var(--color-orange-rgb); }
+.atlas-badge[data-value="lost"] { --atlas-badge: var(--color-red-rgb); }
+.atlas-badge[data-value="idle"],
+.atlas-badge[data-value="ended"] {
 	color: var(--text-faint);
 	background-color: var(--background-modifier-hover);
 }
@@ -180,9 +143,6 @@
 .atlas-sessions-more:hover {
 	color: var(--text-muted);
 }
-.atlas-idea-input {
-	width: 100%;
-}
 .atlas-session:hover {
 	background-color: var(--background-modifier-hover);
 }
@@ -204,44 +164,14 @@
 	margin-inline-start: auto;
 	white-space: nowrap;
 }
-.atlas-session-title,
-.atlas-session-thread-name {
+.atlas-session-title {
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-}
-.atlas-session-title {
 	margin-top: var(--size-4-1);
 	font-weight: var(--font-semibold);
 	color: var(--text-normal);
-}
-.atlas-session-thread {
-	display: flex;
-	align-items: center;
-	gap: var(--size-4-2);
-	margin-top: var(--size-2-2);
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-}
-.atlas-session-stage {
-	flex-shrink: 0;
-	margin-inline-start: auto;
-	padding: 0 6px;
-	border-radius: var(--radius-s);
-	background-color: var(--background-modifier-hover);
-}
-.atlas-session-stage[data-stage="started"] { color: rgb(var(--color-purple-rgb)); }
-.atlas-session-stage[data-stage="unverified"] { color: rgb(var(--color-orange-rgb)); }
-.atlas-session-stage[data-stage="verified"],
-.atlas-session-stage[data-stage="closed"] { color: rgb(var(--color-green-rgb)); }
-.atlas-session-stage[data-stage="blocked"] { color: rgb(var(--color-yellow-rgb)); }
-.atlas-session-id {
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	font-family: var(--font-monospace);
-	white-space: nowrap;
 }
 .atlas-session-resume {
 	flex-shrink: 0;
@@ -363,86 +293,6 @@
 	color: var(--text-muted);
 	font-variant-numeric: tabular-nums;
 	text-align: right;
-}
-
-/* The bar over a stub or a chord, and over a chord's canvas. */
-.workspace-leaf-content:has(> .atlas-thread-bar) > .view-content,
-.workspace-leaf-content:has(> .atlas-canvas-bar) > .view-content {
-	height: auto;
-	flex: 1 1 0;
-	min-height: 0;
-}
-.atlas-thread-bar,
-.atlas-canvas-bar {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--size-4-2) var(--size-4-3);
-	padding: var(--size-2-3) var(--size-4-4);
-	border-bottom: 1px solid var(--background-modifier-border);
-	font-size: var(--font-ui-small);
-}
-.atlas-canvas-bar.is-changed {
-	background-color: rgba(var(--color-orange-rgb), 0.1);
-}
-.atlas-thread-bar-label,
-.atlas-canvas-bar-label {
-	font-weight: var(--font-semibold);
-}
-.atlas-thread-bar-status,
-.atlas-canvas-bar-status {
-	color: var(--text-muted);
-}
-.atlas-thread-bar[data-status="verified"] .atlas-thread-bar-status { color: rgb(var(--color-purple-rgb)); }
-.atlas-thread-bar[data-status="closed"] .atlas-thread-bar-status { color: rgb(var(--color-green-rgb)); }
-.atlas-thread-bar[data-status="blocked"] .atlas-thread-bar-status { color: rgb(var(--color-orange-rgb)); }
-.atlas-canvas-bar.is-changed .atlas-canvas-bar-status { color: rgb(var(--color-orange-rgb)); }
-.atlas-canvas-bar-status {
-	flex: 1 1 0;
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-/* The legend has its own row under the status and the buttons. */
-.atlas-canvas-legend {
-	order: 1;
-	flex-basis: 100%;
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--size-2-1) var(--size-4-3);
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-}
-.atlas-canvas-legend-item {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--size-2-2);
-	white-space: nowrap;
-}
-.atlas-canvas-legend-item::before {
-	content: "";
-	width: 8px;
-	height: 8px;
-	border-radius: 2px;
-	background-color: rgb(var(--legend-rgb));
-}
-/* Obsidian's canvas presets that code paints: 2 orange, 3 yellow, 4 green, 5 cyan, 6 purple; none is gray. */
-.atlas-canvas-legend-item[data-color="green"] { --legend-rgb: var(--color-green-rgb); }
-.atlas-canvas-legend-item[data-color="cyan"] { --legend-rgb: var(--color-cyan-rgb); }
-.atlas-canvas-legend-item[data-color="purple"] { --legend-rgb: var(--color-purple-rgb); }
-.atlas-canvas-legend-item[data-color="orange"] { --legend-rgb: var(--color-orange-rgb); }
-.atlas-canvas-legend-item[data-color="yellow"] { --legend-rgb: var(--color-yellow-rgb); }
-.atlas-canvas-legend-item[data-color="gray"]::before { background-color: var(--text-faint); }
-.atlas-thread-bar-buttons,
-.atlas-canvas-bar-buttons {
-	display: flex;
-	gap: var(--size-4-2);
-	margin-inline-start: auto;
-}
-.atlas-thread-bar-buttons button,
-.atlas-canvas-bar-buttons button {
-	font-size: var(--font-ui-smaller);
 }
 
 /* The tag navigator. */

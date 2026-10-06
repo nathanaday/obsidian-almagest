@@ -3,7 +3,6 @@
 export interface Synced {
 	moved?: string[] | null;
 	lost?: string[] | null;
-	threads?: string[] | null;
 	knowledge?: string[] | null;
 	sessions?: string[] | null;
 	settings?: boolean;
@@ -59,7 +58,6 @@ export function syncSummary(s: Synced): string {
 		const n = list?.length ?? 0;
 		if (n) parts.push(plural(n, one, many));
 	};
-	add(s.threads, "thread document", "thread documents");
 	add(s.knowledge, "knowledge document", "knowledge documents");
 	add(s.moved, "document moved back", "documents moved back");
 	add(s.lost, "lost session", "lost sessions");
@@ -74,7 +72,7 @@ export function syncSummary(s: Synced): string {
 /** Every path a sync wrote. */
 export function syncedPaths(s: Synced): string[] {
 	const strays = (s.strays ?? []).flatMap((m) => [m.from, m.to]);
-	return [...(s.threads ?? []), ...(s.knowledge ?? []), ...(s.moved ?? []), ...(s.lost ?? []), ...(s.sessions ?? []), ...strays];
+	return [...(s.knowledge ?? []), ...(s.moved ?? []), ...(s.lost ?? []), ...(s.sessions ?? []), ...strays];
 }
 
 /** One notice per note of the user's that a sync moved out of views/. */
@@ -99,7 +97,7 @@ function movedLine(m: { from: string; to: string }): string {
 
 /**
  * The counts of a change without the zeros. The frontmatter holds a string such as
- * "3 create, 1 modify, 0 promote, …, 2 link rewrites"; a Preview holds an object.
+ * "3 create, 1 modify, 0 rename, …, 2 link rewrites"; a Preview holds an object.
  */
 export function countsLine(counts: unknown): string {
 	if (typeof counts === "string") {
@@ -113,7 +111,6 @@ export function countsLine(counts: unknown): string {
 		const names: Record<string, string> = {
 			create: "create",
 			modify: "modify",
-			promote: "promote",
 			rename: "rename",
 			remove: "remove",
 			confirm: "confirm",
@@ -152,8 +149,8 @@ export function linkTitle(value: unknown): string {
 	return (m ? m[1] : value).trim();
 }
 
-/** The nine types of wiki/documents, as schema.DocumentTypes lists them. */
-export const DOCUMENT_TYPES = ["source", "repository", "topic", "stub", "spec", "tasks", "verification", "chord", "event"];
+/** The three types of wiki/documents, as schema.DocumentTypes lists them. */
+export const DOCUMENT_TYPES = ["source", "repository", "topic"];
 
 /** Whether a frontmatter type is one of the document types the navigator lists. */
 export function isDocumentType(type: unknown): boolean {
@@ -314,18 +311,11 @@ export function topTags(docs: TagDoc[]): Facet[] {
 	return [...counts.entries()].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
 }
 
-/** The order the navigator groups documents in: open chords and threads first. */
-const ENDED_STATUS = new Set(["closed", "dropped", "resolved"]);
-
+/** The order the navigator groups documents in. */
 export const NAV_GROUPS: { name: string; test: (d: TagDoc) => boolean }[] = [
-	{ name: "Open chords", test: (d) => d.type === "chord" && !ENDED_STATUS.has(d.status) },
-	{ name: "Open threads", test: (d) => d.type === "stub" && !ENDED_STATUS.has(d.status) },
 	{ name: "Topics", test: (d) => d.type === "topic" },
 	{ name: "Sources", test: (d) => d.type === "source" },
 	{ name: "Repositories", test: (d) => d.type === "repository" },
-	{ name: "Specs, tasks, and verifications", test: (d) => d.type === "spec" || d.type === "tasks" || d.type === "verification" },
-	{ name: "Ended threads and chords", test: (d) => d.type === "stub" || d.type === "chord" },
-	{ name: "Events", test: (d) => d.type === "event" },
 ];
 
 /** Documents in the navigator's groups; a document goes in the first group that takes it. */
@@ -357,86 +347,12 @@ export function layoutOf(fields: Record<string, unknown> | undefined): number {
 	return Number.isFinite(n) ? n : 0;
 }
 
-/** The layout this plugin reads: the threads and chords of 8.0. */
-export const LAYOUT = 4;
+/** The layout this plugin reads: the knowledge base of 9.0. */
+export const LAYOUT = 5;
 
 /** What a layout version is called. */
 export function layoutName(layout: number): string {
-	if (layout >= LAYOUT) return "8.0";
+	if (layout >= LAYOUT) return "9.0";
+	if (layout === 4) return "8.x";
 	return layout === 3 ? "7.x" : "6.x";
-}
-
-/** A stub or a chord, as the bar over it needs it. */
-export interface BarDoc {
-	id: string;
-	type: "stub" | "chord";
-	title: string;
-	status: string;
-	blocked: boolean;
-	tasks: string;
-	threads: string;
-}
-
-/** The line a user gives an agent to take up a thread or a chord. */
-export function handoffLine(type: "stub" | "chord", id: string): string {
-	return `Resume Atlas ${type === "chord" ? "chord" : "thread"} ${id}`;
-}
-
-const ENDED = ["closed", "dropped", "resolved"];
-
-/** The status a bar shows: the status, a block, and the count of tasks or threads. */
-export function barStatus(d: BarDoc): string {
-	const parts = [d.blocked ? `${d.status}, blocked` : d.status];
-	if (d.type === "stub" && d.tasks) parts.push(`${d.tasks} tasks`);
-	if (d.type === "chord" && d.threads) parts.push(`${d.threads} threads closed`);
-	return parts.join(" · ");
-}
-
-/**
- * The buttons of the bar over a stub or a chord. No button closes a thread: code closes
- * it when it is verified and the change that absorbs it is applied.
- */
-export function barButtons(d: BarDoc): { id: string; label: string }[] {
-	const out: { id: string; label: string }[] = [];
-	const ended = ENDED.includes(d.status);
-	if (!ended) {
-		out.push({ id: "agent", label: "Start agent" });
-		if (d.type === "chord") out.push({ id: "new", label: "New thread" });
-		out.push({ id: "handoff", label: "Copy hand-off" });
-	}
-	if (d.type === "chord") out.push({ id: "canvas", label: "Canvas" });
-	if (d.status === "dropped" || (d.type === "stub" && d.status === "resolved")) {
-		out.push({ id: "reopen", label: "Reopen" });
-		return out;
-	}
-	if (ended) return out;
-	if (d.type === "stub") out.push(d.blocked ? { id: "unblock", label: "Unblock" } : { id: "block", label: "Block" });
-	out.push({ id: "drop", label: "Drop" });
-	return out;
-}
-
-/** What the binary says of a chord's canvas against its stubs. */
-export interface CanvasState {
-	path?: string;
-	exists?: boolean;
-	differs: boolean;
-	threads?: string[] | null;
-	changes?: string[] | null;
-}
-
-
-/** The chord a canvas path shows, or null: chords/<title>.canvas. */
-export function chordOfCanvas(path: string): string | null {
-	const m = /^chords\/([^/]+)\.canvas$/.exec(path);
-	return m ? m[1] : null;
-}
-
-/** One short line for a canvas against its stubs: the threads that move, at most two by name. */
-export function canvasSummary(s: CanvasState): string {
-	if (!s.differs) return "Saved";
-	const names = s.threads ?? [];
-	const n = names.length;
-	if (n === 0) return "Not saved";
-	const shown = names.slice(0, 2).join(", ");
-	return `${plural(n, "thread moves", "threads move")}: ${shown}${n > 2 ? `, +${n - 2}` : ""}`;
 }
