@@ -1,5 +1,5 @@
 import { App, ItemView, TFile, WorkspaceLeaf, debounce } from "obsidian";
-import { TagDoc, asList, groupDocs, isDocumentType, narrow, normalTag, relativeTag, tagViewPath, topTags } from "./helpers";
+import { TagDoc, asList, groupDocs, isDocumentPath, isDocumentType, narrow, normalTag, relativeTag, tagViewPath, topTags } from "./helpers";
 
 export const TAG_NAV_VIEW = "atlas-tag-navigator";
 /** Not "tags", which is the icon of Obsidian's own Tags pane. */
@@ -7,11 +7,11 @@ export const NAV_ICON = "compass";
 
 const MAX_WITH = 30;
 
-/** Every document of wiki/documents, as the navigator reads it from the metadata cache. */
+/** Every document of source-core/documents, as the navigator reads it from the metadata cache. */
 export function tagDocs(app: App): TagDoc[] {
 	const out: TagDoc[] = [];
 	for (const file of app.vault.getMarkdownFiles()) {
-		if (!file.path.startsWith("wiki/documents/")) continue;
+		if (!isDocumentPath(file.path)) continue;
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
 		if (!fm || !isDocumentType(fm.type)) continue;
 		const own = asList(fm.tags).map(normalTag);
@@ -38,11 +38,7 @@ export class TagNavigator extends ItemView {
 	private chosen: string[] = [];
 	private readonly rerender = debounce(() => this.render(), 500, true);
 
-	constructor(
-		leaf: WorkspaceLeaf,
-		private onChoose: (tags: string[]) => void = () => {},
-		private onGraph: () => void = () => {},
-	) {
+	constructor(leaf: WorkspaceLeaf) {
 		super(leaf);
 	}
 
@@ -92,7 +88,6 @@ export class TagNavigator extends ItemView {
 	}
 
 	render(): void {
-		this.onChoose([...this.chosen]);
 		const root = this.contentEl;
 		root.empty();
 		root.addClass("atlas-tagnav");
@@ -124,9 +119,6 @@ export class TagNavigator extends ItemView {
 		const search = view.createEl("button", { text: "Search" });
 		search.setAttr("aria-label", "Find these documents in Obsidian's search");
 		search.onclick = () => this.openSearch();
-		const graph = view.createEl("button", { text: "Graph" });
-		graph.setAttr("aria-label", "Color these documents in the graph");
-		graph.onclick = () => this.onGraph();
 		const page = view.createEl("button", { text: "Tag view" });
 		page.setAttr("aria-label", "Open the view of #" + this.chosen[this.chosen.length - 1]);
 		page.onclick = () => void this.openView(this.chosen[this.chosen.length - 1]);

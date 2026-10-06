@@ -47,13 +47,13 @@ export async function runAtlas<T>(bin: string | null, vault: string, args: strin
 	} catch {
 		throw new AtlasError(`atlas-obsidian ${args[0]} did not print JSON`);
 	}
-	// A write that moved a note of the user's out of views/ says where it went, whichever
+	// A write that moved a note of the user's out of wiki-view/ says where it went, whichever
 	// button ran it.
 	for (const line of movedNotices(parsed)) new Notice(`Atlas: ${line}`, 0);
 	return parsed;
 }
 
-/** The version line the binary prints, such as "atlas-obsidian 9.0.0". */
+/** The version line the binary prints, such as "atlas-obsidian 10.0.0". */
 export async function binaryVersion(bin: string): Promise<string> {
 	return (await exec(bin, ["version"], undefined)).trim();
 }

@@ -1,5 +1,16 @@
 // Pure functions: no Obsidian, no Node. The tests cover them.
 
+// The folders of layout 10, as vault.go names them.
+export const DOCUMENTS = "source-core/documents/";
+export const WIKI_VIEW = "wiki-view/";
+export const NAV_FOLDER = "wiki-view/nav/";
+export const INGEST = "ingest/";
+
+/** Whether a path lies in source-core/documents. */
+export function isDocumentPath(path: string): boolean {
+	return path.startsWith(DOCUMENTS);
+}
+
 export interface Synced {
 	moved?: string[] | null;
 	lost?: string[] | null;
@@ -75,16 +86,16 @@ export function syncedPaths(s: Synced): string[] {
 	return [...(s.knowledge ?? []), ...(s.moved ?? []), ...(s.lost ?? []), ...(s.sessions ?? []), ...strays];
 }
 
-/** One notice per note of the user's that a sync moved out of views/. */
-export function strayNotices(s: Synced): string[] {
+/** One notice per note of the user's that a sync moved out of wiki-view/. */
+export function strayNotices(s: { strays?: { from: string; to: string }[] | null }): string[] {
 	return (s.strays ?? []).map(movedLine);
 }
 
-/** One notice per note of the user's that a write moved out of views/: any JSON result
- * of the binary may hold them under moved_from_views. */
+/** One notice per note of the user's that a write moved out of wiki-view/: any JSON
+ * result of the binary may hold them under moved_from_wiki_view. */
 export function movedNotices(out: unknown): string[] {
 	if (typeof out !== "object" || out === null) return [];
-	const moved = (out as { moved_from_views?: unknown }).moved_from_views;
+	const moved = (out as { moved_from_wiki_view?: unknown }).moved_from_wiki_view;
 	if (!Array.isArray(moved)) return [];
 	return moved
 		.filter((m): m is { from: string; to: string } => typeof m?.from === "string" && typeof m?.to === "string")
@@ -92,7 +103,7 @@ export function movedNotices(out: unknown): string[] {
 }
 
 function movedLine(m: { from: string; to: string }): string {
-	return `Moved ${m.from} to ${m.to}: code writes every file in views/, so your note waits in the inbox.`;
+	return `Moved ${m.from} to ${m.to}: code writes every file in ${WIKI_VIEW}, so your note waits in ${INGEST}.`;
 }
 
 /**
@@ -149,7 +160,7 @@ export function linkTitle(value: unknown): string {
 	return (m ? m[1] : value).trim();
 }
 
-/** The three types of wiki/documents, as schema.DocumentTypes lists them. */
+/** The three types of source-core/documents, as schema.DocumentTypes lists them. */
 export const DOCUMENT_TYPES = ["source", "repository", "topic"];
 
 /** Whether a frontmatter type is one of the document types the navigator lists. */
@@ -180,65 +191,48 @@ export function lastProgressLine(markdown: string): string {
 	return last;
 }
 
-const TASK_LINE = /^\s*(?:[-*+]|\d+[.)])\s+\[.\]\s/;
-const MENTION = /@atlas(?![\w-])/g;
-
-/** The [from, to) offsets of each "@atlas" in a task line; none in any other line. */
-export function mentionRanges(line: string): [number, number][] {
-	if (!TASK_LINE.test(line)) return [];
-	return textMentions(line);
-}
-
-/** The [from, to) offsets of each "@atlas" that does not continue a word. */
-export function textMentions(text: string): [number, number][] {
-	const out: [number, number][] = [];
-	for (const m of text.matchAll(MENTION)) {
-		const i = m.index ?? 0;
-		if (i > 0 && /[\w@.]/.test(text[i - 1])) continue;
-		out.push([i, i + m[0].length]);
-	}
-	return out;
-}
-
 /** Whether a change to a file should refresh the views: any markdown file outside them. */
 export function isWatchedPath(path: string): boolean {
-	return path.endsWith(".md") && !path.startsWith("views/") && !path.startsWith(".");
+	return path.endsWith(".md") && !path.startsWith(WIKI_VIEW) && !path.startsWith(".");
+}
+
+/** Whether a file event counts toward a quiet snapshot: any path outside Obsidian's
+ * config folder and wiki-view/. */
+export function isSnapshotPath(path: string, configDir: string): boolean {
+	return path !== "" && !path.startsWith(configDir + "/") && !path.startsWith(WIKI_VIEW);
+}
+
+export const SNAPSHOT_QUIET_DEFAULT = 120;
+/** One day: a longer timeout overflows the browser's timer and fires at once. */
+const SNAPSHOT_QUIET_MAX = 86_400;
+
+/** The quiet period of snapshots in whole seconds, from a setting or a field: empty or
+ * not a number takes the default, and the rest is clamped to 0 (off) through one day. */
+export function quietSeconds(value: unknown): number {
+	const raw = typeof value === "string" ? value.trim() : value;
+	if (raw === "" || raw === null || raw === undefined || typeof raw === "boolean") return SNAPSHOT_QUIET_DEFAULT;
+	const n = Number(raw);
+	if (!Number.isFinite(n)) return SNAPSHOT_QUIET_DEFAULT;
+	return Math.min(SNAPSHOT_QUIET_MAX, Math.max(0, Math.round(n)));
+}
+
+/** Whether an error of the binary says another write holds the vault's lock. */
+export function isLockHeld(message: string): boolean {
+	return /atlas\.lock|holds the lock/.test(message);
 }
 
 export function waitingLabel(n: number): string {
 	return n === 1 ? "Atlas: 1 session waits" : `Atlas: ${n} sessions wait`;
 }
 
-/** A CSS string literal of s. */
-export function cssString(s: string): string {
-	return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\a ")}"`;
-}
-
-const TAG_FOLDER = "views/tags/";
-
 /** The title of a tag's view: "Tag · school › cs513". */
 export function tagTitle(tag: string): string {
 	return "Tag · " + tag.split("/").join(" › ");
 }
 
-/** The tag a folder of views/tags stands for, or null. */
-export function tagOfFolder(folder: string): string | null {
-	if (!folder.startsWith(TAG_FOLDER)) return null;
-	const tag = folder.slice(TAG_FOLDER.length);
-	return tag === "" ? null : tag;
-}
-
-/** The view note inside a tag's folder. */
+/** The view note of a tag, in a folder per tag part under wiki-view/nav. */
 export function tagViewPath(tag: string): string {
-	return `${TAG_FOLDER}${tag}/${tagTitle(tag)}.md`;
-}
-
-/** Whether a path is the view note of its own tag folder. */
-export function isTagView(path: string): boolean {
-	const i = path.lastIndexOf("/");
-	if (i < 0) return false;
-	const tag = tagOfFolder(path.slice(0, i));
-	return tag !== null && tagViewPath(tag) === path;
+	return `${NAV_FOLDER}${tag}/${tagTitle(tag)}.md`;
 }
 
 /** A tag as the property holds it: lower case, without #. */
@@ -347,12 +341,58 @@ export function layoutOf(fields: Record<string, unknown> | undefined): number {
 	return Number.isFinite(n) ? n : 0;
 }
 
-/** The layout this plugin reads: the knowledge base of 9.0. */
-export const LAYOUT = 5;
+/** The layout this plugin reads: the folders of 10.0. */
+export const LAYOUT = 6;
+
+/** The oldest layout the binary migrates from: 8.x. */
+export const MIGRATES_FROM = 4;
+
+/** What vault migrate prints, for its dry run and for the migration. */
+export interface MigrationReport {
+	vault: string;
+	from?: string;
+	moved?: { from: string; to: string }[] | null;
+	edited?: string[] | null;
+	warnings?: string[] | null;
+	commit?: string;
+	plugin?: string;
+	strays?: { from: string; to: string }[] | null;
+	problems?: number;
+}
+
+/** What the migration to 10.0 does to a vault of this layout, one step a line. */
+export function migrationSteps(layout: number): string[] {
+	const steps: string[] = [];
+	if (layout === 4) {
+		steps.push("Moves the thread documents of 8.x (stubs, specs, task lists, verifications, chords, and events) and the chord canvases to threads/, an archive Atlas does not read.");
+	}
+	steps.push(
+		"Moves wiki/documents/ to source-core/documents/.",
+		"Moves wiki/assets/ to source-core/originals/, and any other file of wiki/ to source-core/.",
+		"Moves inbox/ to ingest/.",
+		"Removes views/ and writes the views again in wiki-view/, with the tag views in wiki-view/nav/. A note of yours in views/ goes to ingest/.",
+		"Rewrites each link, embed, and Base that names one of these folders. Prose that names a folder stays as you wrote it.",
+		"Sets origin: ingest on each source that came from the inbox.",
+		"Sends new attachments to source-core/originals/ and keeps wiki-view/ out of Obsidian's search, unless you chose other settings.",
+	);
+	return steps;
+}
+
+/** The notice after a migration. */
+export function migrationSummary(r: MigrationReport): string {
+	const parts = [`Migrated to the ${layoutName(LAYOUT)} layout in one commit${r.commit ? `, ${r.commit.slice(0, 7)}` : ""}.`];
+	const moved = r.moved?.length ?? 0;
+	const edited = r.edited?.length ?? 0;
+	if (moved || edited) parts.push(`${plural(moved, "file", "files")} moved, ${edited} edited.`);
+	if (r.problems) parts.push(`Lint finds ${plural(r.problems, "error", "errors")}.`);
+	if (r.plugin) parts.push(`The Obsidian plugin is now ${r.plugin}; reload Obsidian to use it.`);
+	return parts.join(" ");
+}
 
 /** What a layout version is called. */
 export function layoutName(layout: number): string {
-	if (layout >= LAYOUT) return "9.0";
+	if (layout >= LAYOUT) return "10.0";
+	if (layout === 5) return "9.0";
 	if (layout === 4) return "8.x";
 	return layout === 3 ? "7.x" : "6.x";
 }

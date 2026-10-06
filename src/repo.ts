@@ -1,5 +1,5 @@
 import { MarkdownPostProcessorContext, MarkdownRenderChild } from "obsidian";
-import { formatAgo, repoBlock } from "./helpers";
+import { formatAgo, isDocumentPath, repoBlock } from "./helpers";
 import type AtlasPlugin from "./main";
 
 interface Commit {
@@ -116,7 +116,7 @@ function repoFields(plugin: AtlasPlugin, id: string, sourcePath: string): Record
 	const fm = own ? cache.getFileCache(own)?.frontmatter : undefined;
 	if (fm?.id === id) return fm;
 	for (const f of plugin.app.vault.getMarkdownFiles()) {
-		if (!f.path.startsWith("wiki/documents/")) continue;
+		if (!isDocumentPath(f.path)) continue;
 		const other = cache.getFileCache(f)?.frontmatter;
 		if (other?.id === id) return other;
 	}

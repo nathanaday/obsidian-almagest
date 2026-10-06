@@ -1,4 +1,4 @@
-/* Atlas: callouts, folder colors, badges, the change bar, the tag navigator, the repository panel, the sessions pane, mentions, graph colors. */
+/* Atlas: callouts, the change widget, the tag navigator, the repository panel, the sessions pane. Nothing here styles Obsidian's own panes. */
 
 /* Callouts: the lead callout of each document type and kind, and of the views. */
 .callout[data-callout="source"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-file-image; }
@@ -14,74 +14,73 @@
 .callout[data-callout="tag"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-tag; }
 .callout[data-callout="view"] { --callout-color: var(--mono-rgb-100); --callout-icon: lucide-eye; }
 
-/* Folder colors in the file explorer: the folders Atlas keeps are cyan, the inbox, where
-   you drop work, is warm, and the views, which code writes, are muted. */
-.nav-folder-title[data-path="inbox"] { --atlas-folder: var(--color-orange-rgb); }
-.nav-folder-title[data-path="wiki"] { --atlas-folder: var(--color-cyan-rgb); }
-.nav-folder-title[data-path="wiki/documents"] { --atlas-folder: var(--color-cyan-rgb); }
-.nav-folder-title[data-path="sessions"] { --atlas-folder: var(--color-cyan-rgb); }
-.nav-folder-title[data-path="changes"] { --atlas-folder: var(--color-cyan-rgb); }
-.nav-folder-title[data-path="views"] { --atlas-folder: var(--color-purple-rgb); }
-.nav-folder-title[data-path^="views/tags/"] { --atlas-folder: var(--color-purple-rgb); }
-
-.nav-folder-title[data-path="inbox"],
-.nav-folder-title[data-path="wiki"],
-.nav-folder-title[data-path="wiki/documents"],
-.nav-folder-title[data-path="sessions"],
-.nav-folder-title[data-path="changes"],
-.nav-folder-title[data-path="views"],
-.nav-folder-title[data-path^="views/tags/"] {
-	color: rgb(var(--atlas-folder));
+/* The change widget: the atlas-change block of a change document. */
+.atlas-change {
+	--atlas-change: var(--mono-rgb-100);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	margin: var(--size-4-2) 0;
+	padding: var(--size-4-3) var(--size-4-4);
+	border: 1px solid var(--background-modifier-border);
+	border-inline-start: 3px solid rgb(var(--atlas-change));
+	border-radius: var(--radius-m);
+	background-color: var(--background-primary-alt);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-small);
+	line-height: var(--line-height-normal);
 }
-
-/* Badges: the status of a session. */
-.atlas-badge {
-	--atlas-badge: var(--mono-rgb-100);
-	margin-inline-start: auto;
-	padding: 0 6px;
-	border-radius: var(--radius-s);
-	font-size: var(--font-ui-smaller);
-	line-height: 1.5;
-	flex-shrink: 0;
-	color: rgb(var(--atlas-badge));
-	background-color: rgba(var(--atlas-badge), 0.14);
+.atlas-change[data-state="proposed"] {
+	--atlas-change: var(--color-orange-rgb);
+	background-color: rgba(var(--color-orange-rgb), 0.06);
 }
-.atlas-badge[data-value="running"] { --atlas-badge: var(--color-green-rgb); }
-.atlas-badge[data-value="waiting"] { --atlas-badge: var(--color-orange-rgb); }
-.atlas-badge[data-value="lost"] { --atlas-badge: var(--color-red-rgb); }
-.atlas-badge[data-value="idle"],
-.atlas-badge[data-value="ended"] {
-	color: var(--text-faint);
-	background-color: var(--background-modifier-hover);
-}
-
-/* The bar over a proposed change. */
-.workspace-leaf-content:has(> .atlas-change-bar) > .view-content {
-	height: auto;
-	flex: 1 1 0;
-	min-height: 0;
-}
-.atlas-change-bar {
+.atlas-change[data-state="busy"],
+.atlas-change[data-state="applying"] { --atlas-change: var(--color-blue-rgb); }
+.atlas-change[data-state="applied"] { --atlas-change: var(--color-green-rgb); }
+.atlas-change[data-state="rejected"] { --atlas-change: var(--color-red-rgb); }
+.atlas-change-head {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: var(--size-4-2) var(--size-4-3);
-	padding: var(--size-4-2) var(--size-4-4);
-	border-bottom: 1px solid var(--background-modifier-border);
-	background-color: rgba(var(--color-orange-rgb), 0.1);
-	font-size: var(--font-ui-small);
+	gap: var(--size-4-2);
 }
-.atlas-change-bar-label {
+.atlas-change-label {
+	padding: 0 var(--size-4-2);
+	border-radius: var(--radius-s);
 	font-weight: var(--font-semibold);
-	color: rgb(var(--color-orange-rgb));
+	color: rgb(var(--atlas-change));
+	background-color: rgba(var(--atlas-change), 0.14);
 }
-.atlas-change-bar-counts {
+.atlas-change[data-state="superseded"] .atlas-change-label,
+.atlas-change[data-state="undone"] .atlas-change-label,
+.atlas-change[data-state="none"] .atlas-change-label,
+.atlas-change[data-state="other"] .atlas-change-label {
+	color: var(--text-muted);
+	background-color: var(--background-modifier-hover);
+}
+.atlas-change[data-state="busy"] .atlas-change-label {
+	animation: atlas-change-pulse 1.6s ease-in-out infinite;
+}
+@keyframes atlas-change-pulse {
+	50% { background-color: rgba(var(--atlas-change), 0.32); }
+}
+.atlas-change-counts {
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+.atlas-change-line {
+	color: var(--text-normal);
+}
+.atlas-change[data-state="none"] .atlas-change-line,
+.atlas-change[data-state="superseded"] .atlas-change-line,
+.atlas-change[data-state="undone"] .atlas-change-line {
 	color: var(--text-muted);
 }
-.atlas-change-bar-buttons {
+.atlas-change-buttons {
 	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
 	gap: var(--size-4-2);
-	margin-inline-start: auto;
 }
 
 /* The sessions pane. */
@@ -207,92 +206,9 @@
 	display: none;
 }
 
-/* Mentions: "@atlas" in a task line. */
-.atlas-mention {
-	padding: 0 2px;
-	border-radius: var(--radius-s);
-	color: rgb(var(--color-purple-rgb));
-	background-color: rgba(var(--color-purple-rgb), 0.14);
-	font-weight: var(--font-semibold);
-}
-
 .atlas-setting-status {
 	margin-top: var(--size-4-1);
 	color: var(--text-faint);
-}
-
-/* Graph colors: the mode buttons and the legend over the graph view. */
-/* Bottom left: the graph's own controls take the top right, and a narrow pane widens them. */
-.atlas-graph-colors {
-	position: absolute;
-	bottom: var(--size-4-2);
-	left: var(--size-4-2);
-	z-index: 2;
-	display: flex;
-	flex-direction: column-reverse;
-	gap: var(--size-4-2);
-	max-width: calc(100% - 2 * var(--size-4-2));
-	pointer-events: none;
-}
-.atlas-graph-modes,
-.atlas-graph-legend {
-	pointer-events: auto;
-	align-self: flex-start;
-	background-color: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
-	box-shadow: var(--shadow-s);
-}
-.atlas-graph-modes {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 2px;
-	padding: 2px;
-}
-.atlas-graph-mode {
-	padding: var(--size-2-1) var(--size-4-2);
-	font-size: var(--font-ui-smaller);
-	background: transparent;
-	box-shadow: none;
-	color: var(--text-muted);
-}
-.atlas-graph-mode:hover {
-	color: var(--text-normal);
-	background-color: var(--background-modifier-hover);
-}
-.atlas-graph-mode.is-active {
-	color: var(--text-on-accent);
-	background-color: var(--interactive-accent);
-}
-.atlas-graph-legend {
-	display: grid;
-	grid-template-columns: auto 1fr auto;
-	align-items: center;
-	column-gap: var(--size-4-2);
-	row-gap: var(--size-2-2);
-	padding: var(--size-4-2) var(--size-4-3);
-	max-height: 40vh;
-	overflow-y: auto;
-	font-size: var(--font-ui-smaller);
-}
-.atlas-graph-legend-row {
-	display: contents;
-}
-.atlas-graph-swatch {
-	width: 10px;
-	height: 10px;
-	border-radius: 50%;
-}
-.atlas-graph-legend-name {
-	color: var(--text-normal);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.atlas-graph-legend-count {
-	color: var(--text-muted);
-	font-variant-numeric: tabular-nums;
-	text-align: right;
 }
 
 /* The tag navigator. */

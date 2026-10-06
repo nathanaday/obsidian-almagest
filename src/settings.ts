@@ -1,6 +1,6 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import { binaryVersion, findBinary } from "./cli";
-import { GRAPH_MODES, GraphMode } from "./graphgroups";
+import { SNAPSHOT_QUIET_DEFAULT, quietSeconds } from "./helpers";
 import { AGENTS, AGENT_NAMES, AgentConfig, TERMINALS, TERMINAL_NAMES, inherited, preference } from "./agents";
 import type AtlasPlugin from "./main";
 import { homedir } from "os";
@@ -10,25 +10,16 @@ const shortHome = (p: string) => (p.startsWith(homedir() + "/") ? "~" + p.slice(
 export interface AtlasSettings {
 	binaryPath: string;
 	syncOnChange: boolean;
-	badges: boolean;
-	viewFolders: boolean;
 	tagClick: boolean;
-	graphColors: GraphMode;
-	/** The graph queries Atlas wrote last, so it replaces only its own groups. */
-	graphOwned: string[];
-	/** The tags Focus mode crosses: the Atlas navigator's last choice. */
-	focusTags: string[];
+	/** Seconds with no file event before the edits go into a snapshot commit; 0 turns it off. */
+	snapshotQuietSeconds: number;
 }
 
 export const DEFAULT_SETTINGS: AtlasSettings = {
 	binaryPath: "",
 	syncOnChange: true,
-	badges: true,
-	viewFolders: true,
 	tagClick: false,
-	graphColors: "tag",
-	graphOwned: [],
-	focusTags: [],
+	snapshotQuietSeconds: SNAPSHOT_QUIET_DEFAULT,
 };
 
 export class AtlasSettingTab extends PluginSettingTab {
@@ -80,26 +71,18 @@ export class AtlasSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Badges in the file explorer")
-			.setDesc("Shows the status of each session.")
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.badges).onChange(async (value) => {
-					this.plugin.settings.badges = value;
-					await this.plugin.saveSettings();
-					this.plugin.badges.setEnabled(value);
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName("Open a tag's view from its folder")
-			.setDesc("In the file explorer, a click on a folder under views/tags opens the tag's view, and the view itself is hidden inside the folder.")
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.viewFolders).onChange(async (value) => {
-					this.plugin.settings.viewFolders = value;
-					await this.plugin.saveSettings();
-					this.plugin.viewFolders.setEnabled(value);
-				}),
-			);
+			.setName("Snapshot after a quiet period")
+			.setDesc("Seconds with no file change before Atlas commits your edits to the vault's history. 0 turns it off.")
+			.addText((text) => {
+				text.inputEl.type = "number";
+				text.inputEl.min = "0";
+				text.setPlaceholder(String(DEFAULT_SETTINGS.snapshotQuietSeconds)).setValue(String(this.plugin.settings.snapshotQuietSeconds));
+				text.inputEl.addEventListener("change", async () => {
+					const seconds = quietSeconds(text.getValue());
+					text.setValue(String(seconds));
+					await this.plugin.setSnapshotQuiet(seconds);
+				});
+			});
 
 		new Setting(containerEl)
 			.setName("Open a tag in the Atlas navigator")
@@ -114,18 +97,6 @@ export class AtlasSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName("Agents").setHeading();
 		const agents = containerEl.createDiv();
 		void this.agents(agents);
-
-		new Setting(containerEl).setName("Graph").setHeading();
-
-		new Setting(containerEl)
-			.setName("Graph colors")
-			.setDesc("Colors the nodes of the graph by top tag, by the navigator's tags, by type, or by how recently they changed. The graph view has the same buttons.")
-			.addDropdown((dropdown) => {
-				for (const { mode, label } of GRAPH_MODES) dropdown.addOption(mode, label);
-				dropdown
-					.setValue(this.plugin.settings.graphColors)
-					.onChange((value) => void this.plugin.graphColors.setMode(value as GraphMode));
-			});
 	}
 
 	/**

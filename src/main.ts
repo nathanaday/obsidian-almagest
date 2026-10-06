@@ -1,38 +1,42 @@
-import { App, FileSystemAdapter, Modal, Notice, Plugin, debounce } from "obsidian";
-import { Badges } from "./badges";
-import { ChangeBar } from "./changebar";
+import { App, FileSystemAdapter, Modal, Notice, Plugin, TAbstractFile, debounce } from "obsidian";
+import { ChangeRunner, changeProcessor } from "./change";
 import { AtlasError, findBinary, runAtlas } from "./cli";
-import { GraphColors } from "./graphcolors";
-import { GRAPH_MODES, isGraphMode } from "./graphgroups";
-import { LAYOUT, Synced, isWatchedPath, layoutName, layoutOf, normalTag, strayNotices, syncSummary, syncedPaths, waitingLabel } from "./helpers";
-import { mentionEditor, mentionReading } from "./mentions";
+import {
+	LAYOUT,
+	MIGRATES_FROM,
+	MigrationReport,
+	Synced,
+	isLockHeld,
+	isSnapshotPath,
+	isWatchedPath,
+	layoutName,
+	layoutOf,
+	migrationSteps,
+	migrationSummary,
+	normalTag,
+	quietSeconds,
+	strayNotices,
+	syncSummary,
+	syncedPaths,
+	waitingLabel,
+} from "./helpers";
+import { QuietTimer } from "./quiet";
 import { repoProcessor } from "./repo";
 import { SESSIONS_VIEW, SessionsView, sessionGroups } from "./sessions";
 import { AgentConfig, legacyPreferences, startCommand } from "./agents";
 import { openTerminal } from "./launcher";
 import { AtlasSettingTab, AtlasSettings, DEFAULT_SETTINGS } from "./settings";
 import { NAV_ICON, TAG_NAV_VIEW, TagNavigator } from "./tagnav";
-import { ViewFolders } from "./viewfolders";
 
 const SYNC_DELAY = 2000;
 const LEGACY_KEYS = ["agentCommand", "terminal", "terminalCommand"];
 // A change to a path the last sync wrote, this soon after it, is that sync's own write.
 const ECHO_WINDOW = 5000;
 
-interface MigrationReport {
-	vault: string;
-	warnings?: string[] | null;
-	commit?: string;
-	problems?: number;
-}
-
 export default class AtlasPlugin extends Plugin {
 	settings: AtlasSettings = { ...DEFAULT_SETTINGS };
 	/** The agent settings of 8.0.2, kept in data.json until they move to the vault's config file. */
 	private legacy: Record<string, unknown> | null = null;
-	badges!: Badges;
-	viewFolders!: ViewFolders;
-	graphColors!: GraphColors;
 
 	private syncing = false;
 	private syncTimer: number | null = null;
@@ -41,6 +45,14 @@ export default class AtlasPlugin extends Plugin {
 	private echoUntil = 0;
 	private lastAutoError = "";
 
+	/** Commits the user's edits after a quiet period. */
+	private snapshots = new QuietTimer(
+		{ set: (fn, ms) => window.setTimeout(fn, ms), clear: (h) => window.clearTimeout(h) },
+		() => this.snapshot(),
+		0,
+	);
+	private lastSnapshotError = "";
+
 	private sessionsRibbon: HTMLElement | null = null;
 	private statusItem: HTMLElement | null = null;
 
@@ -48,34 +60,13 @@ export default class AtlasPlugin extends Plugin {
 		await this.loadSettings();
 		this.addSettingTab(new AtlasSettingTab(this.app, this));
 
-		this.badges = this.addChild(new Badges(this.app));
-		this.badges.setEnabled(this.settings.badges);
-		this.addChild(new ChangeBar(this));
-		this.viewFolders = this.addChild(new ViewFolders(this.app));
-		this.viewFolders.setEnabled(this.settings.viewFolders);
 		this.registerMarkdownCodeBlockProcessor("atlas-repo", repoProcessor(this));
-
-		this.graphColors = this.addChild(new GraphColors(this));
-		for (const { mode, label } of GRAPH_MODES) {
-			this.addCommand({
-				id: `graph-colors-${mode}`,
-				name: mode === "off" ? "Stop coloring the graph" : `Color the graph by ${label.toLowerCase()}`,
-				callback: () => void this.graphColors.setMode(mode),
-			});
-		}
+		this.registerMarkdownCodeBlockProcessor("atlas-change", changeProcessor(this, new ChangeRunner(this)));
 
 		this.addRibbonIcon("refresh-cw", "Atlas: sync the vault", () => void this.sync(true));
 		this.addCommand({ id: "sync", name: "Sync the vault", callback: () => void this.sync(true) });
 
-		this.registerView(
-			TAG_NAV_VIEW,
-			(leaf) =>
-				new TagNavigator(
-					leaf,
-					(tags) => void this.graphColors.setFocus(tags),
-					() => void this.focusGraph(),
-				),
-		);
+		this.registerView(TAG_NAV_VIEW, (leaf) => new TagNavigator(leaf));
 		this.addRibbonIcon(NAV_ICON, "Atlas: open the Atlas navigator", () => void this.openTags());
 		this.addCommand({ id: "open-tags", name: "Open the Atlas navigator", callback: () => void this.openTags() });
 		// A click on a #tag opens the navigator at it, when the setting asks.
@@ -91,10 +82,7 @@ export default class AtlasPlugin extends Plugin {
 		this.statusItem.addClass("atlas-status-waiting");
 		this.statusItem.onClickEvent(() => void this.openSessions());
 
-		this.addCommand({ id: "migrate", name: "Migrate this vault to the 9.0 layout", callback: () => void this.migrate() });
-
-		this.registerEditorExtension(mentionEditor);
-		this.registerMarkdownPostProcessor(mentionReading);
+		this.addCommand({ id: "migrate", name: `Migrate this vault to the ${layoutName(LAYOUT)} layout`, callback: () => void this.migrate() });
 
 		this.registerEvent(
 			this.app.metadataCache.on("changed", (file) => {
@@ -120,6 +108,7 @@ export default class AtlasPlugin extends Plugin {
 			this.refreshSessions();
 			this.checkLayout();
 			void this.moveLegacyPreferences();
+			this.watchForSnapshots();
 		});
 		// The cache may finish its first read after the layout is ready.
 		const first = this.app.metadataCache.on("resolved", () => {
@@ -131,31 +120,19 @@ export default class AtlasPlugin extends Plugin {
 
 	onunload(): void {
 		if (this.syncTimer !== null) window.clearTimeout(this.syncTimer);
-	}
-
-	/** Colors the graph by the navigator's tags, and opens the graph. */
-	private async focusGraph(): Promise<void> {
-		await this.graphColors.setMode("focus");
-		const open = this.app.workspace.getLeavesOfType("graph")[0];
-		if (open) this.app.workspace.revealLeaf(open);
-		else (this.app as unknown as { commands?: { executeCommandById?(id: string): void } }).commands?.executeCommandById?.("graph:open");
+		this.snapshots.stop();
 	}
 
 	async loadSettings(): Promise<void> {
-		const saved = (await this.loadData()) as (Partial<AtlasSettings> & { folderPages?: boolean }) | null;
+		const saved = (await this.loadData()) as Partial<AtlasSettings> | null;
 		const old = Object.entries(saved ?? {}).filter(([k]) => LEGACY_KEYS.includes(k));
 		this.legacy = old.length > 0 ? Object.fromEntries(old) : null;
 		this.settings = { ...DEFAULT_SETTINGS };
-		// Only the keys this version knows; a 6.x key goes at the next save.
+		// Only the keys this version knows; an older version's key goes at the next save.
 		for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof AtlasSettings)[]) {
 			if (saved && saved[key] !== undefined) (this.settings as unknown as Record<string, unknown>)[key] = saved[key];
 		}
-		if (saved?.folderPages !== undefined && saved.viewFolders === undefined) this.settings.viewFolders = saved.folderPages;
-		if (!isGraphMode(this.settings.graphColors)) this.settings.graphColors = DEFAULT_SETTINGS.graphColors;
-		for (const key of ["graphOwned", "focusTags"] as const) {
-			const list = this.settings[key];
-			this.settings[key] = Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : [];
-		}
+		this.settings.snapshotQuietSeconds = quietSeconds(this.settings.snapshotQuietSeconds);
 	}
 
 	async saveSettings(): Promise<void> {
@@ -231,6 +208,47 @@ export default class AtlasPlugin extends Plugin {
 		}, SYNC_DELAY);
 	}
 
+	// Quiet snapshots
+
+	/** Counts file events from now on: the events of Obsidian's first load are not edits. */
+	private watchForSnapshots(): void {
+		const touch = (...paths: string[]) => {
+			if (paths.some((p) => isSnapshotPath(p, this.app.vault.configDir))) this.snapshots.touch();
+		};
+		this.registerEvent(this.app.vault.on("create", (f: TAbstractFile) => touch(f.path)));
+		this.registerEvent(this.app.vault.on("modify", (f: TAbstractFile) => touch(f.path)));
+		this.registerEvent(this.app.vault.on("delete", (f: TAbstractFile) => touch(f.path)));
+		this.registerEvent(this.app.vault.on("rename", (f: TAbstractFile, oldPath: string) => touch(f.path, oldPath)));
+		this.snapshots.setQuiet(this.settings.snapshotQuietSeconds * 1000);
+		// Edits saved while Obsidian was closed go into the first snapshot.
+		this.snapshots.touch();
+	}
+
+	async setSnapshotQuiet(seconds: number): Promise<void> {
+		this.settings.snapshotQuietSeconds = seconds;
+		await this.saveSettings();
+		if (this.app.workspace.layoutReady) this.snapshots.setQuiet(seconds * 1000);
+	}
+
+	/**
+	 * Commits the hand edits as one snapshot. It shows no notice: a held lock tries again
+	 * after the next quiet period, and any other failure waits for the next edit.
+	 */
+	private async snapshot(): Promise<boolean> {
+		if (!this.migrated()) return false;
+		try {
+			await this.atlas<unknown>(["vault", "snapshot"]);
+			this.lastSnapshotError = "";
+			return false;
+		} catch (e) {
+			const message = (e as Error).message;
+			if (isLockHeld(message)) return true;
+			if (message !== this.lastSnapshotError) console.warn(`Atlas: the snapshot failed: ${message}`);
+			this.lastSnapshotError = message;
+			return false;
+		}
+	}
+
 	// Layout
 
 	/** The layout the vault document records; this plugin's when there is none to read. */
@@ -240,7 +258,7 @@ export default class AtlasPlugin extends Plugin {
 		return layoutOf(this.app.metadataCache.getFileCache(atlas)?.frontmatter);
 	}
 
-	/** Whether the vault has the 9.0 layout. */
+	/** Whether the vault has the layout this plugin reads. */
 	private migrated(): boolean {
 		return this.layout() >= LAYOUT;
 	}
@@ -250,11 +268,12 @@ export default class AtlasPlugin extends Plugin {
 		const notice = new Notice("", 0);
 		const el = notice.messageEl;
 		const layout = this.layout();
-		if (layout < 4) {
-			el.createDiv({ text: `Atlas: this vault has the ${layoutName(layout)} layout. This plugin needs the 9.0 layout. Migrate the vault to 8.x with Atlas 8.1.1 first.` });
+		const needs = `Atlas: this vault has the ${layoutName(layout)} layout. This plugin needs the ${layoutName(LAYOUT)} layout.`;
+		if (layout < MIGRATES_FROM) {
+			el.createDiv({ text: `${needs} Migrate the vault to 8.x with Atlas 8.1.1 first.` });
 			return;
 		}
-		el.createDiv({ text: `Atlas: this vault has the ${layoutName(layout)} layout. This plugin needs the 9.0 layout.` });
+		el.createDiv({ text: needs });
 		const button = el.createEl("button", { text: "Show the migration", cls: "mod-cta atlas-notice-button" });
 		button.onclick = () => {
 			notice.hide();
@@ -265,10 +284,11 @@ export default class AtlasPlugin extends Plugin {
 	private async migrate(): Promise<void> {
 		try {
 			const report = await this.atlas<MigrationReport>(["vault", "migrate", "--dry-run"]);
-			new MigrationModal(this.app, report, async () => {
+			new MigrationModal(this.app, report, this.layout(), async () => {
 				try {
 					const done = await this.atlas<MigrationReport>(["vault", "migrate"]);
-					new Notice(`Atlas: migrated in one commit, ${String(done.commit ?? "").slice(0, 7)}.${done.problems ? ` Lint finds ${done.problems} errors.` : ""}`, 10_000);
+					new Notice(`Atlas: ${migrationSummary(done)}`, 10_000);
+					for (const line of strayNotices(done)) new Notice(`Atlas: ${line}`, 0);
 				} catch (e) {
 					new Notice(`Atlas: ${(e as Error).message}`, 10_000);
 				}
@@ -417,23 +437,38 @@ export default class AtlasPlugin extends Plugin {
 
 /** Shows the dry run of a migration, and runs it on a second click. */
 class MigrationModal extends Modal {
-	constructor(app: App, private report: MigrationReport, private run: () => Promise<void>) {
+	constructor(
+		app: App,
+		private report: MigrationReport,
+		private layout: number,
+		private run: () => Promise<void>,
+	) {
 		super(app);
 	}
 
 	onOpen(): void {
 		const r = this.report;
-		this.setTitle("Migrate to the 9.0 layout");
+		const from = r.from || layoutName(this.layout);
+		this.setTitle(`Migrate to the ${layoutName(LAYOUT)} layout`);
 		const el = this.contentEl;
 		el.addClass("atlas-migration");
-		el.createEl("p", { text: `The migration of ${r.vault} moves the thread documents of 8.x (stubs, specs, task lists, verifications, chords, and events) and the chord canvases to threads/, an archive that Atlas does not own. It is one commit; git revert takes it back.` });
-		const warnings = r.warnings ?? [];
-		if (warnings.length > 0) {
+		el.createEl("p", { text: `The migration moves ${r.vault} from the ${from} layout to the ${layoutName(LAYOUT)} layout in one commit. git revert takes it back. It:` });
+		const steps = el.createEl("ul");
+		for (const step of migrationSteps(this.layout)) steps.createEl("li", { text: step });
+
+		const list = <T>(items: T[] | null | undefined, title: string, line: (item: T) => string) => {
+			if (!items || items.length === 0) return;
 			const d = el.createEl("details");
-			d.createEl("summary", { text: `Warnings (${warnings.length})` });
+			d.createEl("summary", { text: `${title} (${items.length})` });
 			const ul = d.createEl("ul");
-			for (const w of warnings) ul.createEl("li", { text: w });
-		}
+			for (const item of items) ul.createEl("li", { text: line(item) });
+		};
+		const move = (m: { from: string; to: string }) => `${m.from} → ${m.to}`;
+		list(r.moved, "Files to move", move);
+		list(r.edited, "Files to edit", (p) => p);
+		list(r.strays, "Your notes in views/, to move to ingest/", move);
+		list(r.warnings, "Warnings", (w) => w);
+
 		const buttons = el.createDiv({ cls: "atlas-migration-buttons" });
 		buttons.createEl("button", { text: "Cancel" }).onclick = () => this.close();
 		const go = buttons.createEl("button", { text: "Migrate", cls: "mod-cta" });

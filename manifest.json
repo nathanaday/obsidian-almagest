@@ -1,9 +1,9 @@
 {
   "id": "atlas",
   "name": "Atlas",
-  "version": "9.0.0",
+  "version": "10.0.0",
   "minAppVersion": "1.9.0",
-  "description": "Colors and icons for Atlas documents, a sessions pane, and buttons that apply a change or refresh the vault through the atlas-obsidian binary.",
+  "description": "Callouts and in-document widgets for Atlas documents, the Atlas navigator, a sessions pane, and quiet snapshots of your edits, through the atlas-obsidian binary.",
   "author": "nathanaday",
   "isDesktopOnly": true
 }
