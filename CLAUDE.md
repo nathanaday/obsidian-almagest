@@ -27,8 +27,8 @@ repository. This file holds what the code and the README do not say.
   plugin reads (`cli.Protocol` there). The plugin reads the protocols in `PROTOCOLS`;
   `binaryProblem` names the update for a missing binary, an older one, and a newer one.
   Raise the protocol on both sides when a change would make an older plugin misread.
-- **It touches only what it owns.** It adds custom views, ribbon buttons, commands,
-  in-document widgets (code block processors), and CSS for its own callouts and
+- **It touches only what it owns.** It adds one view (the palette) with one ribbon button,
+  commands, in-document widgets (code block processors), and CSS for its own callouts and
   widgets. It patches no pane of Obsidian's own and styles none. A change note's
   `cssclasses` value (`almagest-change`) styles the note itself, so the widget's class
   is `almagest-change-card`.
@@ -57,6 +57,8 @@ repository. This file holds what the code and the README do not say.
   action; a destructive one quiet, never the loudest); a link only opens a document. A
   disabled button says why in its tooltip and the page's empty state, not in a caption,
   and the palette never repeats the open note's path, which the editor shows.
+- **One pane, one ribbon button.** A feature gets a page or an action in the palette, not
+  a pane or a ribbon button of its own; a command may run it from the command palette.
 - **A view's methods may be Obsidian's.** Obsidian's `View` calls `open(containerEl)`
   when a leaf opens it, so a method named `open` on a view replaces that and breaks the
   view. The palette names its own `show` (a page) and `draw` (the content).

@@ -30,7 +30,7 @@ test("the palette's status comes from vault --json", () => {
 		],
 		problems: 2,
 	};
-	const s = paletteState(status, 1);
+	const s = paletteState(status, { open: 1, waiting: 0 });
 	assert.deepEqual(s.ingest, ["a.md", "b c.txt"]);
 	assert.deepEqual(s.proposed.map((r) => r.title), ["2026-10-05 Add A", "2026-10-06 Add B"]);
 	assert.equal(s.running[0]?.kind, "ingest");
@@ -45,11 +45,12 @@ test("the palette's status comes from vault --json", () => {
 });
 
 test("an empty or older status reads as zeros", () => {
-	const s = paletteState({ ingest: null, pending: null, changes: { proposed: null } }, 0);
-	assert.deepEqual(s, { proposed: [], running: [], ingest: [], pending: 0, sessions: 0, trash: 0, journals: [], toPublish: 0, checkouts: [], toReturn: 0, problems: 0 });
-	assert.deepEqual(paletteState({ journals: null }, 0).journals, []);
-	assert.deepEqual(paletteState({ checkouts: null }, 0).checkouts, []);
-	assert.deepEqual(paletteState({}, 2).sessions, 2);
+	const s = paletteState({ ingest: null, pending: null, changes: { proposed: null } }, { open: 0, waiting: 0 });
+	assert.deepEqual(s, { proposed: [], running: [], ingest: [], pending: 0, sessions: 0, waiting: 0, trash: 0, journals: [], toPublish: 0, checkouts: [], toReturn: 0, problems: 0 });
+	assert.deepEqual(paletteState({ journals: null }, { open: 0, waiting: 0 }).journals, []);
+	assert.deepEqual(paletteState({ checkouts: null }, { open: 0, waiting: 0 }).checkouts, []);
+	assert.deepEqual(paletteState({}, { open: 2, waiting: 1 }).sessions, 2);
+	assert.deepEqual(paletteState({}, { open: 2, waiting: 1 }).waiting, 1);
 });
 
 test("noteTitle is the name Obsidian links a file by", () => {
@@ -140,7 +141,7 @@ test("safe delete that neither moved nor found a backlink is an error", () => {
 });
 
 test("the palette's home names each area's state in one line, with a chip only when it counts", () => {
-	const empty = paletteState({}, 0);
+	const empty = paletteState({}, { open: 0, waiting: 0 });
 	const lines = AREAS.map((a) => areaLine(a, empty, 0, false));
 	assert.deepEqual(
 		lines.map((l) => [l.name, l.line, l.count]),
@@ -163,7 +164,7 @@ test("the palette's home names each area's state in one line, with a chip only w
 			journals: [{ volume: "cs566", name: "CS566", notes: 2, changed: true }],
 			checkouts: [{ folder: "checkout/2026-10-06 RL", edited: 1 }],
 		},
-		1,
+		{ open: 1, waiting: 0 },
 	);
 	assert.deepEqual(areaLine("changes", busy, 0, true), { name: "Changes", line: "1 to review · 2 running", count: 1, tone: "accent" });
 	assert.deepEqual(areaLine("ingest", busy, 0, true), { name: "Ingest", line: "2 files waiting · 1 source to absorb", count: 2, tone: "accent" });
@@ -171,5 +172,9 @@ test("the palette's home names each area's state in one line, with a chip only w
 	assert.equal(areaLine("journals", busy, 0, true).line, "1 to publish");
 	assert.equal(areaLine("library", busy, 0, true).line, "1 to return");
 	assert.deepEqual(areaLine("agents", busy, 2, true), { name: "Agents", line: "2 working · 1 live session", count: 2, tone: "muted" });
+	// A session that waits for the user outranks the agents that work: its count is the user's to act on.
+	const waiting = paletteState({}, { open: 3, waiting: 2 });
+	assert.deepEqual(areaLine("agents", waiting, 1, true), { name: "Agents", line: "2 need you · 1 working · 3 live sessions", count: 2, tone: "accent" });
+	assert.equal(areaLine("agents", paletteState({}, { open: 1, waiting: 1 }), 0, true).line, "1 needs you · 1 live session");
 	assert.equal(areaLine("note", busy, 0, true).line, "Wikify it, or delete it safely");
 });

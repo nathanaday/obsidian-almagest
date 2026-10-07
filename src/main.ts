@@ -1,4 +1,4 @@
-import { FileSystemAdapter, Notice, Plugin, TAbstractFile, TFile, debounce } from "obsidian";
+import { FileSystemAdapter, Notice, Plugin, TAbstractFile, TFile } from "obsidian";
 import { ChangeRunner, changeProcessor } from "./change";
 import { AlmagestError, binaryInfo, findBinary, runAlmagest } from "./cli";
 import {
@@ -17,7 +17,6 @@ import {
 } from "./helpers";
 import { QuietTimer } from "./quiet";
 import { repoProcessor } from "./repo";
-import { SESSIONS_VIEW, SessionsView, sessionGroups } from "./sessions";
 import { AgentConfig, startCommand } from "./agents";
 import { Conversations, duetApi } from "./conversations";
 import { openTerminal } from "./launcher";
@@ -27,7 +26,6 @@ import { confirmPublishOf } from "./publish";
 import { AlmagestSettingTab, AlmagestSettings, DEFAULT_SETTINGS } from "./settings";
 import { isWikified } from "./marks";
 import { Wikify, markExtension, markPostProcessor } from "./wikify";
-import { NAV_ICON, TAG_NAV_VIEW, TagNavigator } from "./tagnav";
 
 const SYNC_DELAY = 2000;
 // A change to a path the last sync wrote, this soon after it, is that sync's own write.
@@ -53,7 +51,6 @@ export default class AlmagestPlugin extends Plugin {
 	);
 	private lastSnapshotError = "";
 
-	private sessionsRibbon: HTMLElement | null = null;
 
 	/** The journal volume that a publish captures now, or "". */
 	publishing = "";
@@ -90,12 +87,8 @@ export default class AlmagestPlugin extends Plugin {
 			},
 		});
 
-		this.addRibbonIcon("refresh-cw", "Almagest: sync the vault", () => void this.sync(true));
 		this.addCommand({ id: "sync", name: "Sync the vault", callback: () => void this.sync(true) });
 
-		this.registerView(TAG_NAV_VIEW, (leaf) => new TagNavigator(leaf));
-		this.addRibbonIcon(NAV_ICON, "Open the tag navigator", () => void this.openTags());
-		this.addCommand({ id: "open-tags", name: "Open the tag navigator", callback: () => void this.openTags() });
 
 		this.registerView(PALETTE_VIEW, (leaf) => new PaletteView(leaf, this));
 		this.addRibbonIcon(PALETTE_ICON, "Almagest", () => void this.openPalette());
@@ -113,43 +106,27 @@ export default class AlmagestPlugin extends Plugin {
 			},
 		});
 
-		this.registerView(SESSIONS_VIEW, (leaf) => new SessionsView(leaf, this));
-		this.sessionsRibbon = this.addRibbonIcon("bot", "Almagest: open the sessions", () => void this.openSessions());
-		this.sessionsRibbon.addClass("almagest-sessions-ribbon");
-		this.addCommand({ id: "open-sessions", name: "Open the sessions", callback: () => void this.openSessions() });
-
 		this.registerEvent(
 			this.app.metadataCache.on("changed", (file) => {
-				if (file.path.startsWith("sessions/")) this.refreshSessions();
 				this.onDocChange(file.path);
 			}),
 		);
 		this.registerEvent(
 			this.app.vault.on("delete", (file) => {
-				this.refreshSessions();
 				this.onDocChange(file.path);
 			}),
 		);
 		this.registerEvent(
 			this.app.vault.on("rename", (file, oldPath) => {
-				this.refreshSessions();
 				this.onDocChange(file.path);
 				this.onDocChange(oldPath);
 			}),
 		);
-		this.registerInterval(window.setInterval(() => this.sessionViews().forEach((v) => v.tick()), 30_000));
 		this.app.workspace.onLayoutReady(() => {
-			this.refreshSessions();
 			void this.checkBinary();
 			this.checkLayout();
 			this.watchForSnapshots();
 		});
-		// The cache may finish its first read after the layout is ready.
-		const first = this.app.metadataCache.on("resolved", () => {
-			this.app.metadataCache.offref(first);
-			this.refreshSessions();
-		});
-		this.registerEvent(first);
 	}
 
 	onunload(): void {
@@ -314,18 +291,6 @@ export default class AlmagestPlugin extends Plugin {
 
 	// Views
 
-	private async openTags(): Promise<void> {
-		const { workspace } = this.app;
-		let leaf = workspace.getLeavesOfType(TAG_NAV_VIEW)[0];
-		if (!leaf) {
-			const left = workspace.getLeftLeaf(false);
-			if (!left) return;
-			await left.setViewState({ type: TAG_NAV_VIEW, active: true });
-			leaf = left;
-		}
-		await workspace.revealLeaf(leaf);
-	}
-
 	async openPalette(): Promise<void> {
 		const { workspace } = this.app;
 		let leaf = workspace.getLeavesOfType(PALETTE_VIEW)[0];
@@ -368,30 +333,6 @@ export default class AlmagestPlugin extends Plugin {
 			.map((leaf) => leaf.view)
 			.filter((v): v is PaletteView => v instanceof PaletteView);
 	}
-
-	// Sessions
-
-	private sessionViews(): SessionsView[] {
-		return this.app.workspace
-			.getLeavesOfType(SESSIONS_VIEW)
-			.map((leaf) => leaf.view)
-			.filter((v): v is SessionsView => v instanceof SessionsView);
-	}
-
-	private refreshSessions = debounce(
-		() => {
-			void sessionGroups(this.app, this.staleHours()).then(({ groups }) => {
-				const waiting = groups.open.filter((s) => s.state === "needs you").length;
-				if (this.sessionsRibbon) {
-					if (waiting > 0) this.sessionsRibbon.dataset.almagestCount = String(waiting);
-					else delete this.sessionsRibbon.dataset.almagestCount;
-				}
-			});
-			this.sessionViews().forEach((v) => void v.render());
-		},
-		500,
-		true,
-	);
 
 	/** How long a session with no recorded process may go quiet before it counts as gone. */
 	staleHours(): number {
@@ -466,17 +407,5 @@ export default class AlmagestPlugin extends Plugin {
 	/** Drops the conversations whose turn ended while no event came, such as when Duet turned off. */
 	checkConversations(): void {
 		this.conversations.check(duetApi(this.app));
-	}
-
-	async openSessions(): Promise<void> {
-		const { workspace } = this.app;
-		let leaf = workspace.getLeavesOfType(SESSIONS_VIEW)[0];
-		if (!leaf) {
-			const right = workspace.getRightLeaf(false);
-			if (!right) return;
-			await right.setViewState({ type: SESSIONS_VIEW, active: true });
-			leaf = right;
-		}
-		await workspace.revealLeaf(leaf);
 	}
 }

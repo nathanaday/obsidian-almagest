@@ -3,7 +3,7 @@
   "name": "Almagest",
   "version": "11.0.1",
   "minAppVersion": "1.13.0",
-  "description": "Review and approve the changes your coding agents make to the wiki in your vault, with a tool palette, change widgets, a tag navigator, and a sessions pane. Needs the Almagest agent plugin.",
+  "description": "Review and approve the changes your coding agents make to the wiki in your vault, with a tool palette and change widgets. Needs the Almagest agent plugin.",
   "author": "nathanaday",
   "isDesktopOnly": true
 }

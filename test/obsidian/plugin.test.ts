@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { type AlmagestBinary, buildAlmagest, frontmatter, launchObsidian, type ObsidianInstance, until } from "./harness";
@@ -332,7 +332,9 @@ describe("Almagest in Obsidian", () => {
 				await writeFile(path.join(vault, "ingest/notes.txt"), "Notes.\n");
 			},
 		});
-		expect(await o.page.locator('.side-dock-ribbon-action[aria-label="Almagest"]').count()).toBe(1);
+		// The palette is the plugin's one ribbon button: sync and the sessions live in it.
+		const ribbon = await o.page.locator(".side-dock-ribbon-action").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
+		expect(ribbon.filter((l) => /almagest|tag navigator|sessions/i.test(l ?? ""))).toEqual(["Almagest"]);
 		const palette = await openPalette(o);
 		await until("the ingest line", async () => (await line(palette, "ingest")) === "2 files waiting", { describe: () => palette.innerText() });
 		expect(await palette.locator('[data-area="ingest"] .almagest-chip').textContent()).toBe("2");
@@ -1056,6 +1058,58 @@ describe("Almagest in Obsidian", () => {
 		await momentum.locator("button", { hasText: "Link" }).click();
 		await saved(o, copy, "step size}}. [[Momentum]] speeds it up");
 		await until("three bubbles", async () => (await live.count()) === 3);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("lists the agent sessions on the Agents page; one that waits counts on the home row, and a closed one offers Resume", { timeout: TIMEOUT }, async () => {
+		const now = Date.now();
+		const session = (id: string, status: string, updated: number, extra: string, body: string) =>
+			`---\nid: ses-${id}\ntype: session\nharness: claude\nharness_id: ${id}\nstatus: ${status}\nupdated: ${new Date(updated).toISOString()}\n${extra}description: Plan the [[Alpha]] study\n---\n\n${body}`;
+		const o = await launch({
+			prepare: async (vault) => {
+				await mkdir(path.join(vault, "sessions/2026-10"), { recursive: true });
+				await writeFile(path.join(vault, "sessions/2026-10/waits.md"), session("aaaaaa", "waiting", now - 120_000, "", "## Progress\n\n- 2026-10-07: Read the sources.\n- 2026-10-07: Asked which paper comes first.\n"));
+				await writeFile(path.join(vault, "sessions/2026-10/closed.md"), session("bbbbbb", "ended", now - 1_200_000, `ended: ${new Date(now - 1_200_000).toISOString()}\n`, ""));
+			},
+		});
+		const out = await stubTerminal(o);
+		const palette = await openPalette(o);
+		await until("the agents line", async () => (await line(palette, "agents")) === "1 needs you · 1 live session", { describe: () => palette.innerText() });
+		const chip = palette.locator('[data-area="agents"] .almagest-chip');
+		expect(await chip.textContent()).toBe("1");
+		expect(await chip.getAttribute("data-tone")).toBe("accent");
+
+		await goTo(palette, "agents");
+		expect(await tile(palette, "needs you")).toBe("1");
+		const waits = palette.locator('.almagest-session[data-state="needs you"]');
+		expect(await waits.locator(".almagest-item-title").textContent()).toBe("Plan the Alpha study");
+		expect(await waits.locator(".almagest-chip").textContent()).toBe("needs you");
+		expect(await waits.locator(".almagest-item-meta").textContent()).toBe("2 min ago · 2026-10-07: Asked which paper comes first.");
+		// An open session runs in its terminal, so it offers no Resume.
+		expect(await waits.locator("button").count()).toBe(0);
+		const closed = palette.locator('.almagest-session[data-state="ended"]');
+		expect(await closed.locator(".almagest-item-meta").textContent()).toBe("ended 20 min ago");
+
+		// Resume finds no saved conversation for this made-up session, says so, and runs nothing.
+		await closed.locator('button[data-action="resume"]').click();
+		await until("the notice", async () => (await notices(o)).some((t) => t.includes("no saved conversation")), { describe: async () => JSON.stringify(await notices(o)) });
+		expect(existsSync(out)).toBe(false);
+
+		await waits.locator(".almagest-item-title a").click();
+		await until("the session to open", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === "sessions/2026-10/waits.md");
+		expect(o.errors).toEqual([]);
+	});
+
+	it("Sync the vault on the Wiki health page writes the views", { timeout: TIMEOUT }, async () => {
+		const o = await launch();
+		const home = path.join(o.vault, "wiki-view/View · Home.md");
+		expect(existsSync(home)).toBe(true);
+		await rm(home);
+		const palette = await openPalette(o);
+		await goTo(palette, "health");
+		await palette.locator('button[data-action="sync"]').click();
+		await until("the views", () => existsSync(home));
+		await until("the notice", async () => (await notices(o)).some((t) => t.startsWith("Almagest: ")), { describe: async () => JSON.stringify(await notices(o)) });
 		expect(o.errors).toEqual([]);
 	});
 

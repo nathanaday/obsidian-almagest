@@ -1,6 +1,6 @@
 // Pure functions for agent sessions and terminals: no Obsidian, no Node. The tests cover them.
 
-/** A session document's fields, as the sessions pane reads them. */
+/** A session document's fields, as the palette reads them. */
 export interface SessionRow {
 	path: string;
 	status: string;
@@ -16,7 +16,7 @@ export type SessionState = "working" | "needs you" | "idle" | "ended" | "lost";
 
 const LIVE = ["running", "waiting", "idle"];
 
-/** How long an ended session stays in the pane's recent group. */
+/** How long an ended session stays in the palette's recent group. */
 const RECENT_MS = 2 * 60 * 60 * 1000;
 
 /**
@@ -31,7 +31,7 @@ function isOpen(row: SessionRow, alive: (pid: number) => boolean, now: Date, sta
 	return !Number.isNaN(t) && now.getTime() - t < staleHours * 3600 * 1000;
 }
 
-/** The pane's word for an open session's status, or for a closed one. */
+/** The palette's word for an open session's status, or for a closed one. */
 function sessionState(row: SessionRow, open: boolean): SessionState {
 	if (!open) return row.status === "lost" ? "lost" : "ended";
 	if (row.status === "waiting") return "needs you";
@@ -48,9 +48,9 @@ export interface SessionGroups<T extends SessionRow> {
 }
 
 /**
- * The pane's groups: the open sessions (needs you, then working, then idle, the newest
+ * The palette's groups: the open sessions (needs you, then working, then idle, the newest
  * first in each), the sessions that closed in the last two hours, and a count of the
- * older ones. A subagent's session is no card of its own.
+ * older ones. A subagent's session is no item of its own.
  */
 export function groupSessions<T extends SessionRow>(rows: T[], alive: (pid: number) => boolean, now: Date, staleHours: number): SessionGroups<T> {
 	const out: SessionGroups<T> = { open: [], recent: [], older: 0 };

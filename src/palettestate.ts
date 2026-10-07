@@ -31,7 +31,9 @@ export interface PaletteState {
 	/** The file names waiting in ingest/. */
 	ingest: string[];
 	pending: number;
+	/** The open agent sessions, and those of them that wait for the user. */
 	sessions: number;
+	waiting: number;
 	trash: number;
 	journals: JournalVolume[];
 	/** The volumes with changes to publish. */
@@ -44,8 +46,8 @@ export interface PaletteState {
 	problems: number;
 }
 
-/** The palette's status. liveSessions comes from the sessions pane's rule, which checks the processes. */
-export function paletteState(status: VaultStatus, liveSessions: number): PaletteState {
+/** The palette's status. sessions comes from groupSessions, which checks the processes. */
+export function paletteState(status: VaultStatus, sessions: { open: number; waiting: number }): PaletteState {
 	const byTitle = (a: Ref, b: Ref) => a.title.localeCompare(b.title);
 	const journals = journalVolumes(status.journals);
 	const list = checkouts(status.checkouts);
@@ -54,7 +56,8 @@ export function paletteState(status: VaultStatus, liveSessions: number): Palette
 		running: [...(status.changes?.running ?? [])].sort(byTitle),
 		ingest: (status.ingest ?? []).map((i) => i.name),
 		pending: status.pending?.length ?? 0,
-		sessions: liveSessions,
+		sessions: sessions.open,
+		waiting: sessions.waiting,
 		trash: status.trash ?? 0,
 		journals,
 		toPublish: toPublish(journals),
@@ -109,8 +112,9 @@ export function areaLine(area: Area, s: PaletteState, agents: number, hasNote: b
 			return { name: "Library", line, count: s.toReturn, tone: "accent" };
 		}
 		case "agents": {
-			const parts = [agents > 0 ? `${agents} working` : "", plural(s.sessions, "live session", "live sessions")];
-			return { name: "Agents", line: parts.filter((p) => p).join(" · "), count: agents, tone: "muted" };
+			const parts = [s.waiting > 0 ? `${s.waiting} ${s.waiting === 1 ? "needs" : "need"} you` : "", agents > 0 ? `${agents} working` : "", plural(s.sessions, "live session", "live sessions")];
+			const line = parts.filter((p) => p).join(" · ");
+			return s.waiting > 0 ? { name: "Agents", line, count: s.waiting, tone: "accent" } : { name: "Agents", line, count: agents, tone: "muted" };
 		}
 		case "note":
 			return { name: "This note", line: hasNote ? "Wikify it, or delete it safely" : "Open a note first", count: 0, tone: "muted" };

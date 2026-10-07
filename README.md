@@ -2,8 +2,8 @@
 
 The Obsidian interface of [Almagest](https://github.com/nathanaday/almagest): one Obsidian
 vault for the wiki, the sessions, and the changes of your work with coding agents. This
-plugin adds a tool palette, the Approve and Cancel widget of each change document, a tag
-navigator, a sessions pane, and quiet snapshots of your edits.
+plugin adds a tool palette, the Approve and Cancel widget of each change document, and
+quiet snapshots of your edits.
 
 Almagest works without this plugin. The agent plugin for Claude Code or Codex does the
 work; this plugin is the interface for it in Obsidian.
@@ -62,6 +62,8 @@ With the plugin, Obsidian adds:
     it, and starts an agent that reports into it.
   - **Wiki health**: **Run wiki lint** lists the first findings, and **Repair with an
     agent** starts a repair work document and an agent that proposes the repairs into it.
+    **Sync the vault** writes the views and the statuses again (the command "Sync the
+    vault" does the same).
   - **Journals**: each volume, marked "changed" when it has writing to publish.
     **Publish** runs `almagest journal publish`, then starts a work document and an agent
     that absorbs the edition. See [Journals](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#journals).
@@ -69,8 +71,10 @@ With the plugin, Obsidian adds:
     **Return** next to a checkout runs `almagest checkout return` and opens the change;
     it is on when a copy is edited and the checkout is not returned. See
     [Checkouts](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#checkouts).
-  - **Agents**: the agents Almagest started and still work, **Start an agent**, and the
-    sessions pane.
+  - **Agents**: **Start an agent**, the agents Almagest started that still work, and the
+    agent sessions of the vault: the open ones, each with its state and its last progress
+    line, then the ones that closed in the last two hours, with **Resume**. A session
+    that needs you counts on the home row.
   - **This note**: **Wikify this note** (experimental) copies the open note to
     `scratchpad/`, opens the copy, and starts an agent that marks it (see
     [Wikify a note](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#wikify-a-note-experimental)). **Safe delete this note**
@@ -94,10 +98,6 @@ With the plugin, Obsidian adds:
 - **Quiet snapshots.** After two minutes with no file change, the plugin commits your
   edits to the vault's git history. Set the period in the Almagest settings; 0 turns it
   off. Every Almagest write also commits your edits first, so you need not commit by hand.
-- **The tag navigator** in the left sidebar (the command "Open the tag navigator"), which narrows the documents one tag at a
-  time.
-- **The sessions pane** in the right sidebar, with Resume, and the **Start agent**
-  command.
 - **The repository panel** in each repository document: the branch, the head, and the
   uncommitted files of the linked repository.
 - Colors and icons for the callouts of Almagest documents.

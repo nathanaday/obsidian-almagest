@@ -1,14 +1,12 @@
-import { App, ItemView, Notice, TFile, WorkspaceLeaf } from "obsidian";
+import { App, Notice, TFile } from "obsidian";
 import { homedir } from "os";
-import { SessionRow, SessionState, groupSessions, plainLinks, resumeCommand } from "./agents";
-import { expandHome, formatAgo, lastProgressLine, linkTitle } from "./helpers";
+import { SessionRow, groupSessions, resumeCommand } from "./agents";
+import { expandHome } from "./helpers";
 import { findTranscript, liveAgents, resumePlace } from "./launcher";
 import type AlmagestPlugin from "./main";
 import { markdownFilesIn } from "./vaultfiles";
 
-export const SESSIONS_VIEW = "almagest-sessions";
-
-/** A session document as the pane shows it. */
+/** A session document as the palette shows it. */
 export interface Session extends SessionRow {
 	file: TFile;
 	description: string;
@@ -70,95 +68,4 @@ export async function resume(plugin: AlmagestPlugin, s: Session): Promise<void> 
 		target = { ...target, cwd: place.cwd || target.cwd, configDir: place.configDir };
 	}
 	await plugin.runInTerminal(resumeCommand(target), "the resume command");
-}
-
-const STATE_CLASS: Record<SessionState, string> = { "needs you": "waiting", working: "working", idle: "idle", ended: "ended", lost: "ended" };
-
-/** The pane of agent sessions: the open ones, then the ones that closed in the last two hours. */
-export class SessionsView extends ItemView {
-	private generation = 0;
-
-	constructor(leaf: WorkspaceLeaf, private plugin: AlmagestPlugin) {
-		super(leaf);
-	}
-
-	getViewType(): string {
-		return SESSIONS_VIEW;
-	}
-
-	getDisplayText(): string {
-		return "Almagest sessions";
-	}
-
-	getIcon(): string {
-		return "bot";
-	}
-
-	async onOpen(): Promise<void> {
-		void this.render();
-	}
-
-	/** Checks the processes again and redraws; a closed terminal ends its card. */
-	tick(): void {
-		void this.render();
-	}
-
-	async render(): Promise<void> {
-		const generation = ++this.generation;
-		const { rows, groups } = await sessionGroups(this.app, this.plugin.staleHours());
-		if (generation !== this.generation) return;
-		const root = this.contentEl;
-		root.empty();
-		root.addClass("almagest-sessions");
-		const now = new Date();
-		const subagents = new Map<string, number>();
-		for (const r of rows) {
-			if (r.parent && r.status === "running") {
-				const key = linkTitle(r.parent);
-				subagents.set(key, (subagents.get(key) ?? 0) + 1);
-			}
-		}
-		if (groups.open.length === 0) {
-			root.createDiv({ cls: "almagest-sessions-empty", text: "No agent session is open." });
-		}
-		for (const { row, state } of groups.open) this.card(root, row, state, now, generation, subagents.get(row.file.basename) ?? 0);
-		if (groups.recent.length > 0) {
-			root.createDiv({ cls: "almagest-sessions-heading", text: "Closed in the last 2 hours" });
-			for (const { row, state } of groups.recent) this.card(root, row, state, now, generation, 0);
-		}
-		if (groups.older > 0) {
-			const more = root.createDiv({ cls: "almagest-sessions-more" });
-			more.setText(`${groups.older} older ${groups.older === 1 ? "session" : "sessions"} in sessions/`);
-			more.onclick = () => void this.app.workspace.openLinkText("sessions/Sessions.base", "", false);
-		}
-	}
-
-	private card(root: HTMLElement, s: Session, state: SessionState, now: Date, generation: number, subagents: number): void {
-		const card = root.createDiv({ cls: "almagest-session" });
-		card.dataset.state = STATE_CLASS[state];
-		card.onclick = () => void this.app.workspace.getLeaf(false).openFile(s.file);
-
-		const top = card.createDiv({ cls: "almagest-session-top" });
-		top.createSpan({ cls: "almagest-session-status", text: state });
-		if (subagents > 0) top.createSpan({ cls: "almagest-session-sub", text: `+${subagents} ${subagents === 1 ? "subagent" : "subagents"}` });
-		const closed = state === "ended" || state === "lost";
-		top.createSpan({ cls: "almagest-session-ago", text: formatAgo(closed ? s.ended || s.updated : s.updated, now) });
-		// An open session runs in its terminal already; resuming it would open it twice.
-		if (closed) {
-			const button = top.createEl("button", { cls: "almagest-session-resume", text: "Resume" });
-			button.onclick = (e) => {
-				e.stopPropagation();
-				void resume(this.plugin, s);
-			};
-		}
-
-		const title = plainLinks(s.description);
-		card.createDiv({ cls: "almagest-session-title", text: title }).setAttr("title", title);
-
-		// The last progress line is the card's hover text, so the card stays short.
-		void this.app.vault.cachedRead(s.file).then((text) => {
-			const last = lastProgressLine(text);
-			if (generation === this.generation && last) card.setAttr("title", plainLinks(last));
-		});
-	}
 }

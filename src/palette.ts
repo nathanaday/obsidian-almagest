@@ -2,7 +2,8 @@ import { App, ItemView, Modal, Notice, WorkspaceLeaf, debounce, setIcon } from "
 import { saveOpen } from "./change";
 import { CheckoutModal, returnCheckout, startCheckout } from "./checkout";
 import { Checkout, day, readingListPath, returnBlocked } from "./checkoutstate";
-import { INGEST, isSnapshotPath, lastProgressLine } from "./helpers";
+import { SessionGroups, SessionState, plainLinks } from "./agents";
+import { INGEST, formatAgo, isSnapshotPath, lastProgressLine, linkTitle } from "./helpers";
 import { wikifyBlocked } from "./marks";
 import { JOURNALS, JournalVolume, publishBlocked } from "./journalstate";
 import type AlmagestPlugin from "./main";
@@ -25,7 +26,7 @@ import {
 	trashOutcome,
 } from "./palettestate";
 import { confirmPublish } from "./publish";
-import { sessionGroups } from "./sessions";
+import { Session, resume, sessionGroups } from "./sessions";
 
 export const PALETTE_VIEW = "almagest-palette";
 export const PALETTE_ICON = "map";
@@ -38,7 +39,10 @@ interface Started {
 	ref: { id: string; title: string; path: string };
 }
 
-type Action = "ingest" | "checkout" | "lint" | "repair" | "wikify" | "trash" | "return" | "publish" | "start" | "sessions";
+type Action = "ingest" | "checkout" | "lint" | "sync" | "repair" | "wikify" | "trash" | "return" | "publish" | "start" | "resume";
+
+/** Only a session that waits for the user is the user's to act on. */
+const STATE_TONE: Record<SessionState, Tone> = { "needs you": "accent", working: "muted", idle: "muted", ended: "muted", lost: "muted" };
 
 /** The icon of each area, on its home row and its page. */
 const AREA_ICONS: Record<Area, string> = {
@@ -72,8 +76,11 @@ export class PaletteView extends ItemView {
 	private palettePage: Area | "home" = "home";
 	private state: PaletteState | null = null;
 	private error = "";
-	/** The last progress line of each running work document, by path. */
+	/** The last progress line of each running work document and open session, by path. */
 	private progress = new Map<string, string>();
+	private sessions: SessionGroups<Session> = { open: [], recent: [], older: 0 };
+	/** The running subagents of each session, by the session's title. */
+	private subagents = new Map<string, number>();
 	private lint: LintSummary | null = null;
 	private busy: Action | null = null;
 	/** The folder of the checkout that Return proposes now. */
@@ -137,15 +144,22 @@ export class PaletteView extends ItemView {
 	private async readStatus(): Promise<void> {
 		try {
 			const out = await this.plugin.almagest<{ status: VaultStatus }>(["vault"]);
-			const { groups } = await sessionGroups(this.app, this.plugin.staleHours());
-			const state = paletteState(out.status, groups.open.length);
+			const { rows, groups } = await sessionGroups(this.app, this.plugin.staleHours());
+			const waiting = groups.open.filter((s) => s.state === "needs you").length;
+			const state = paletteState(out.status, { open: groups.open.length, waiting });
 			const progress = new Map<string, string>();
-			for (const r of state.running) {
-				const file = this.app.vault.getFileByPath(r.path);
-				if (file) progress.set(r.path, lastProgressLine(await this.app.vault.read(file)));
+			for (const path of [...state.running.map((r) => r.path), ...groups.open.map((s) => s.row.path)]) {
+				const file = this.app.vault.getFileByPath(path);
+				if (file) progress.set(path, plainLinks(lastProgressLine(await this.app.vault.cachedRead(file))));
+			}
+			const subagents = new Map<string, number>();
+			for (const r of rows) {
+				if (r.parent && r.status === "running") subagents.set(linkTitle(r.parent), (subagents.get(linkTitle(r.parent)) ?? 0) + 1);
 			}
 			this.state = state;
 			this.progress = progress;
+			this.sessions = groups;
+			this.subagents = subagents;
 			this.error = "";
 		} catch (e) {
 			this.error = (e as Error).message;
@@ -279,9 +293,12 @@ export class PaletteView extends ItemView {
 	}
 
 	private renderHealth(page: HTMLElement, s: PaletteState): void {
-		this.lede(page, "Wiki lint checks every document: its links, its citations, and whether its sources changed after it.");
+		this.lede(page, "Wiki lint checks every document: its links, its citations, and whether its sources changed after it. Sync writes the views and the statuses again.");
 		this.tiles(page, [[s.problems, s.problems === 1 ? "error" : "errors"]]);
-		this.actions(page, (el) => this.button(el, "lint", "Run wiki lint", "", () => this.runLint(), "cta"));
+		this.actions(page, (el) => {
+			this.button(el, "lint", "Run wiki lint", "", () => this.runLint(), "cta");
+			this.button(el, "sync", "Sync the vault", "", () => this.plugin.sync(true));
+		});
 		const lint = this.lint;
 		if (!lint) return;
 		const result = page.createDiv({ cls: "almagest-result" });
@@ -377,23 +394,48 @@ export class PaletteView extends ItemView {
 
 	private renderAgents(page: HTMLElement, s: PaletteState): void {
 		const working = this.plugin.conversations.list();
-		this.lede(page, "The agents Almagest started for you, and the agent sessions in this vault.");
+		const { open, recent, older } = this.sessions;
+		this.lede(page, "The agents Almagest started for you, and the agent sessions in this vault. A session that needs you waits for your answer in its terminal.");
 		this.tiles(page, [
-			[working.length, "working"],
+			[s.waiting, s.waiting === 1 ? "needs you" : "need you"],
 			[s.sessions, s.sessions === 1 ? "live session" : "live sessions"],
 		]);
-		this.actions(page, (el) => {
-			this.button(el, "start", "Start an agent", "", () => this.plugin.startAgent(), "cta");
-			this.buttonEl(el, "sessions", "Open the sessions", "").onclick = () => void this.plugin.openSessions();
-		});
-		if (working.length === 0) {
-			this.empty(page, "No agent works now.");
-			return;
-		}
-		const list = this.list(page, "Working", working.length);
+		this.actions(page, (el) => this.button(el, "start", "Start an agent", "", () => this.plugin.startAgent(), "cta"));
+		if (working.length === 0 && open.length === 0 && recent.length === 0) this.empty(page, "No agent session is open.");
+
+		const started = this.list(page, "Started here", working.length);
 		for (const c of working) {
-			this.item(list, { title: c.path.slice(c.path.lastIndexOf("/") + 1).replace(/\.md$/, ""), path: c.path, chip: [c.label, "muted"] }).addClass("almagest-agent");
+			this.item(started, { title: c.path.slice(c.path.lastIndexOf("/") + 1).replace(/\.md$/, ""), path: c.path, chip: [c.label, "muted"] }).addClass("almagest-agent");
 		}
+		const now = new Date();
+		const live = this.list(page, "Sessions", open.length);
+		for (const { row, state } of open) {
+			const subs = this.subagents.get(row.file.basename) ?? 0;
+			const meta = [formatAgo(row.updated, now), subs > 0 ? `+${plural(subs, "subagent", "subagents")}` : "", this.progress.get(row.path) ?? ""];
+			this.sessionItem(live, row, state, meta);
+		}
+		// An open session runs in its terminal already, so only a closed one offers Resume.
+		const closed = this.list(page, "Closed in the last 2 hours", recent.length);
+		for (const { row, state } of recent) {
+			this.sessionItem(closed, row, state, [`ended ${formatAgo(row.ended || row.updated, now)}`], {
+				name: "resume",
+				text: "Resume",
+				why: "",
+				run: () => void resume(this.plugin, row),
+			});
+		}
+		if (older > 0) {
+			const more = page.createDiv({ cls: "almagest-quiet" });
+			this.link(more, `${plural(older, "older session", "older sessions")} in sessions/`, "sessions/Sessions.base");
+		}
+	}
+
+	private sessionItem(list: HTMLElement, row: Session, state: SessionState, meta: string[], action?: { name: Action; text: string; why: string; run: () => void }): void {
+		const line = meta.filter((m) => m).join(" · ");
+		const li = this.item(list, { title: plainLinks(row.description), path: row.path, meta: line, chip: [state, STATE_TONE[state]], action });
+		li.addClass("almagest-session");
+		li.dataset.state = state;
+		li.find(".almagest-item-meta")?.setAttr("title", line);
 	}
 
 	private renderNote(page: HTMLElement, s: PaletteState): void {
