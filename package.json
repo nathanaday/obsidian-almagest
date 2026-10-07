@@ -1,6 +1,6 @@
 {
   "name": "obsidian-almagest",
-  "version": "11.0.1",
+  "version": "11.1.0",
   "private": true,
   "description": "The Obsidian plugin of Almagest.",
   "scripts": {

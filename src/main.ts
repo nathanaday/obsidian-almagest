@@ -1,20 +1,16 @@
-import { App, FileSystemAdapter, Modal, Notice, Plugin, TAbstractFile, TFile, debounce } from "obsidian";
+import { FileSystemAdapter, MarkdownView, Notice, Plugin, TAbstractFile, TFile } from "obsidian";
 import { ChangeRunner, changeProcessor } from "./change";
 import { AlmagestError, binaryInfo, findBinary, runAlmagest } from "./cli";
 import {
 	LAYOUT,
-	VAULT_DOCUMENTS,
+	VAULT_DOCUMENT,
+	layoutNeeds,
 	binaryProblem,
-	MIGRATES_FROM,
-	MigrationReport,
 	Synced,
 	isLockHeld,
 	isSnapshotPath,
 	isWatchedPath,
-	layoutName,
 	layoutOf,
-	migrationSteps,
-	migrationSummary,
 	quietSeconds,
 	strayNotices,
 	syncSummary,
@@ -22,20 +18,27 @@ import {
 } from "./helpers";
 import { QuietTimer } from "./quiet";
 import { repoProcessor } from "./repo";
-import { SESSIONS_VIEW, SessionsView, sessionGroups } from "./sessions";
-import { AgentConfig, legacyPreferences, startCommand } from "./agents";
-import { Conversations, duetApi } from "./conversations";
+import { AgentConfig, duetTipCommand, recommendDuet, startCommand } from "./agents";
+import { Conversations, duetApi, duetState } from "./conversations";
+import { tipExtension, tipPostProcessor } from "./duettip";
 import { openTerminal } from "./launcher";
 import { volumeOf } from "./journalstate";
 import { PALETTE_ICON, PALETTE_VIEW, PaletteView } from "./palette";
 import { confirmPublishOf } from "./publish";
 import { AlmagestSettingTab, AlmagestSettings, DEFAULT_SETTINGS } from "./settings";
 import { isWikified } from "./marks";
+
+/** Runs another plugin's command by its id; false when no plugin gives it. */
+function executeCommand(app: unknown, id: string): boolean {
+	const commands = (app as { commands?: { executeCommandById?(id: string): boolean } }).commands;
+	return commands?.executeCommandById?.(id) === true;
+}
+
+/** The class on the body that colors Almagest's folders in the file explorer (styles.css). */
+const FOLDER_COLORS = "almagest-folder-colors";
 import { Wikify, markExtension, markPostProcessor } from "./wikify";
-import { NAV_ICON, TAG_NAV_VIEW, TagNavigator } from "./tagnav";
 
 const SYNC_DELAY = 2000;
-const LEGACY_KEYS = ["agentCommand", "terminal", "terminalCommand"];
 // A change to a path the last sync wrote, this soon after it, is that sync's own write.
 const ECHO_WINDOW = 5000;
 /** How long to wait for Obsidian to see a document the binary wrote. */
@@ -43,8 +46,6 @@ const SEE_MS = 10_000;
 
 export default class AlmagestPlugin extends Plugin {
 	settings: AlmagestSettings = { ...DEFAULT_SETTINGS };
-	/** The agent settings of 8.0.2, kept in data.json until they move to the vault's config file. */
-	private legacy: Record<string, unknown> | null = null;
 
 	private syncing = false;
 	private syncTimer: number | null = null;
@@ -61,7 +62,6 @@ export default class AlmagestPlugin extends Plugin {
 	);
 	private lastSnapshotError = "";
 
-	private sessionsRibbon: HTMLElement | null = null;
 
 	/** The journal volume that a publish captures now, or "". */
 	publishing = "";
@@ -71,21 +71,35 @@ export default class AlmagestPlugin extends Plugin {
 
 	/** The agents the palette started through Duet, while their turn runs. */
 	readonly conversations = new Conversations(
-		() => this.paletteViews().forEach((v) => v.render()),
+		() => this.paletteViews().forEach((v) => v.draw()),
 		(c, turn) => {
 			if (turn.status === "failed") new Notice(`Almagest: the ${c.label} agent stopped: ${turn.error ?? "its turn failed"}.`, 10_000);
 		},
 	);
 
+	private layoutNotice: Notice | null = null;
+	private settingTab: AlmagestSettingTab | null = null;
+	/** The choice of host and Duet's state, as the tip and the settings last showed them. */
+	private duetKey = "";
+	private readonly duetListeners = new Set<() => void>();
+	/** The layout the notice and the palettes last followed; null before the first read. */
+	private knownLayout: number | null = null;
+
 	async onload(): Promise<void> {
 		await this.loadSettings();
-		this.addSettingTab(new AlmagestSettingTab(this.app, this));
+		this.settingTab = new AlmagestSettingTab(this.app, this);
+		this.addSettingTab(this.settingTab);
 
 		this.registerMarkdownCodeBlockProcessor("almagest-repo", repoProcessor(this));
 		this.registerMarkdownCodeBlockProcessor("almagest-change", changeProcessor(this, new ChangeRunner(this)));
 
 		this.registerEditorExtension(markExtension(this.wikify));
 		this.registerMarkdownPostProcessor(markPostProcessor(this, this.wikify));
+		const tip = { show: () => this.recommendDuet(), listen: (fn: () => void) => this.onDuetChange(fn) };
+		this.registerEditorExtension(tipExtension(tip));
+		this.registerMarkdownPostProcessor(tipPostProcessor(tip));
+		// Obsidian sends no event when a plugin turns on or off, so Duet's state is read every two seconds.
+		this.registerInterval(window.setInterval(() => this.checkDuet(), 2000));
 		this.wikify.register();
 		this.addCommand({
 			id: "accept-link-marks",
@@ -98,12 +112,8 @@ export default class AlmagestPlugin extends Plugin {
 			},
 		});
 
-		this.addRibbonIcon("refresh-cw", "Almagest: sync the vault", () => void this.sync(true));
 		this.addCommand({ id: "sync", name: "Sync the vault", callback: () => void this.sync(true) });
 
-		this.registerView(TAG_NAV_VIEW, (leaf) => new TagNavigator(leaf));
-		this.addRibbonIcon(NAV_ICON, "Open the tag navigator", () => void this.openTags());
-		this.addCommand({ id: "open-tags", name: "Open the tag navigator", callback: () => void this.openTags() });
 
 		this.registerView(PALETTE_VIEW, (leaf) => new PaletteView(leaf, this));
 		this.addRibbonIcon(PALETTE_ICON, "Almagest", () => void this.openPalette());
@@ -121,49 +131,34 @@ export default class AlmagestPlugin extends Plugin {
 			},
 		});
 
-		this.registerView(SESSIONS_VIEW, (leaf) => new SessionsView(leaf, this));
-		this.sessionsRibbon = this.addRibbonIcon("bot", "Almagest: open the sessions", () => void this.openSessions());
-		this.sessionsRibbon.addClass("almagest-sessions-ribbon");
-		this.addCommand({ id: "open-sessions", name: "Open the sessions", callback: () => void this.openSessions() });
-
-		this.addCommand({ id: "migrate", name: `Migrate this vault to the ${layoutName(LAYOUT)} layout`, callback: () => void this.migrate() });
-
 		this.registerEvent(
 			this.app.metadataCache.on("changed", (file) => {
-				if (file.path.startsWith("sessions/")) this.refreshSessions();
+				if (file.path === VAULT_DOCUMENT) this.onLayoutChange();
 				this.onDocChange(file.path);
 			}),
 		);
 		this.registerEvent(
 			this.app.vault.on("delete", (file) => {
-				this.refreshSessions();
 				this.onDocChange(file.path);
 			}),
 		);
 		this.registerEvent(
 			this.app.vault.on("rename", (file, oldPath) => {
-				this.refreshSessions();
 				this.onDocChange(file.path);
 				this.onDocChange(oldPath);
 			}),
 		);
-		this.registerInterval(window.setInterval(() => this.sessionViews().forEach((v) => v.tick()), 30_000));
+		this.colorFolders();
 		this.app.workspace.onLayoutReady(() => {
-			this.refreshSessions();
 			void this.checkBinary();
-			this.checkLayout();
-			void this.moveLegacyPreferences();
+			this.onLayoutChange();
 			this.watchForSnapshots();
 		});
-		// The cache may finish its first read after the layout is ready.
-		const first = this.app.metadataCache.on("resolved", () => {
-			this.app.metadataCache.offref(first);
-			this.refreshSessions();
-		});
-		this.registerEvent(first);
 	}
 
 	onunload(): void {
+		document.body.removeClass(FOLDER_COLORS);
+		this.layoutNotice?.hide();
 		if (this.syncTimer !== null) window.clearTimeout(this.syncTimer);
 		this.snapshots.stop();
 		this.conversations.stop();
@@ -171,10 +166,8 @@ export default class AlmagestPlugin extends Plugin {
 
 	async loadSettings(): Promise<void> {
 		const saved = (await this.loadData()) as Partial<AlmagestSettings> | null;
-		const old = Object.entries(saved ?? {}).filter(([k]) => LEGACY_KEYS.includes(k));
-		this.legacy = old.length > 0 ? Object.fromEntries(old) : null;
 		this.settings = { ...DEFAULT_SETTINGS };
-		// Only the keys this version knows; an older version's key goes at the next save.
+		// Only the keys this version knows; any other key goes at the next save.
 		for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof AlmagestSettings)[]) {
 			if (saved && saved[key] !== undefined) (this.settings as unknown as Record<string, unknown>)[key] = saved[key];
 		}
@@ -182,7 +175,7 @@ export default class AlmagestPlugin extends Plugin {
 	}
 
 	async saveSettings(): Promise<void> {
-		await this.saveData({ ...this.legacy, ...this.settings });
+		await this.saveData(this.settings);
 	}
 
 	/** Runs one almagest command in this vault and returns its JSON; answers are the exit codes that print an answer too. */
@@ -234,7 +227,7 @@ export default class AlmagestPlugin extends Plugin {
 	}
 
 	private onDocChange(path: string): void {
-		if (!this.settings.syncOnChange || !isWatchedPath(path) || !this.migrated()) return;
+		if (!this.settings.syncOnChange || !isWatchedPath(path) || !this.ready()) return;
 		if (this.syncing) {
 			this.pending.add(path);
 			return;
@@ -281,7 +274,7 @@ export default class AlmagestPlugin extends Plugin {
 	 * after the next quiet period, and any other failure waits for the next edit.
 	 */
 	private async snapshot(): Promise<boolean> {
-		if (!this.migrated()) return false;
+		if (!this.ready()) return false;
 		try {
 			await this.almagest<unknown>(["vault", "snapshot"]);
 			this.lastSnapshotError = "";
@@ -297,25 +290,21 @@ export default class AlmagestPlugin extends Plugin {
 
 	// Layout
 
-	/** The layout the vault document records; this plugin's when there is none to read. */
+	/** The layout the vault document records; this plugin's when there is no vault document. */
 	private layout(): number {
-		const file = this.vaultDocument();
+		const file = this.app.vault.getFileByPath(VAULT_DOCUMENT);
 		if (!file) return LAYOUT;
 		return layoutOf(this.app.metadataCache.getFileCache(file)?.frontmatter);
 	}
 
-	/** The vault document, of this release or an earlier one, or null. */
-	private vaultDocument(): TFile | null {
-		for (const path of VAULT_DOCUMENTS) {
-			const file = this.app.vault.getFileByPath(path);
-			if (file) return file;
-		}
-		return null;
+	/** Whether the vault has the layout this plugin reads. */
+	ready(): boolean {
+		return this.layout() === LAYOUT;
 	}
 
-	/** Whether the vault has the layout this plugin reads. */
-	private migrated(): boolean {
-		return this.layout() >= LAYOUT;
+	/** What the vault needs before the plugin works in it: its migration, an update, or nothing. */
+	needs(): "migrate" | "update" | "" {
+		return layoutNeeds(this.layout());
 	}
 
 	/** Says once, until the user closes it, what keeps the plugin from its binary. */
@@ -325,54 +314,42 @@ export default class AlmagestPlugin extends Plugin {
 		if (problem) new Notice(`Almagest: ${problem}`, 0);
 	}
 
+	/** Says, until the layout changes or the user closes it, what a vault of another layout needs. */
 	private checkLayout(): void {
-		if (this.migrated()) return;
-		const notice = new Notice("", 0);
-		const el = notice.messageEl;
-		const layout = this.layout();
-		const needs = `Almagest: this vault has the ${layoutName(layout)} layout. This plugin needs the ${layoutName(LAYOUT)} layout.`;
-		if (layout < MIGRATES_FROM) {
-			el.createDiv({ text: `${needs} Migrate it to 8.x with release 8.1.1 first (the tag threads-final of almagest, when the project was Atlas).` });
-			return;
+		this.layoutNotice?.hide();
+		this.layoutNotice = null;
+		const needs = this.needs();
+		if (needs === "migrate") {
+			this.layoutNotice = new Notice("Almagest: this vault keeps sessions/, source-core/, and trash/ at its root, and this version keeps them in tool/. Open the Almagest palette to migrate the vault.", 0);
+		} else if (needs === "update") {
+			this.layoutNotice = new Notice(
+				`Almagest: this vault has layout ${this.layout()}, and this plugin reads layout ${LAYOUT}. Update Almagest in Obsidian's community plugins, and the agent plugin (claude plugin update almagest@nathanaday-almagest).`,
+				0,
+			);
 		}
-		el.createDiv({ text: needs });
-		const button = el.createEl("button", { text: "Show the migration", cls: "mod-cta almagest-notice-button" });
-		button.onclick = () => {
-			notice.hide();
-			void this.migrate();
-		};
 	}
 
-	private async migrate(): Promise<void> {
-		try {
-			const report = await this.almagest<MigrationReport>(["vault", "migrate", "--dry-run"]);
-			new MigrationModal(this.app, report, this.layout(), async () => {
-				try {
-					const done = await this.almagest<MigrationReport>(["vault", "migrate"]);
-					new Notice(`Almagest: ${migrationSummary(done)}`, 10_000);
-					for (const line of strayNotices(done)) new Notice(`Almagest: ${line}`, 0);
-				} catch (e) {
-					new Notice(`Almagest: ${(e as Error).message}`, 10_000);
-				}
-			}).open();
-		} catch (e) {
-			new Notice(`Almagest: ${(e as Error).message}`, 10_000);
-		}
+	/**
+	 * Follows the layout the vault document records, at the start and after a migration
+	 * here or in a terminal: the notice and the palettes follow it once per change.
+	 */
+	private onLayoutChange(): void {
+		const file = this.app.vault.getFileByPath(VAULT_DOCUMENT);
+		// Obsidian has not read the vault document yet; its "changed" event follows.
+		if (file && !this.app.metadataCache.getFileCache(file)) return;
+		const layout = this.layout();
+		if (layout === this.knownLayout) return;
+		this.knownLayout = layout;
+		this.checkLayout();
+		this.paletteViews().forEach((v) => void v.refresh());
+	}
+
+	/** Colors the folders of Almagest in the file explorer, while the setting is on. */
+	colorFolders(): void {
+		document.body.toggleClass(FOLDER_COLORS, this.settings.colorFolders);
 	}
 
 	// Views
-
-	private async openTags(): Promise<void> {
-		const { workspace } = this.app;
-		let leaf = workspace.getLeavesOfType(TAG_NAV_VIEW)[0];
-		if (!leaf) {
-			const left = workspace.getLeftLeaf(false);
-			if (!left) return;
-			await left.setViewState({ type: TAG_NAV_VIEW, active: true });
-			leaf = left;
-		}
-		await workspace.revealLeaf(leaf);
-	}
 
 	async openPalette(): Promise<void> {
 		const { workspace } = this.app;
@@ -390,7 +367,7 @@ export default class AlmagestPlugin extends Plugin {
 	setPublishing(volume: string): void {
 		this.publishing = volume;
 		for (const view of this.paletteViews()) {
-			view.render();
+			view.draw();
 			if (!volume) void view.refresh();
 		}
 	}
@@ -407,7 +384,10 @@ export default class AlmagestPlugin extends Plugin {
 			new Notice(`Almagest: Obsidian does not see ${path} yet.`);
 			return;
 		}
-		await this.app.workspace.getLeaf(newTab ? "tab" : false).openFile(file);
+		// The palette, a notice, or a modal may hold the focus; the note takes it, so the user sees it.
+		const leaf = this.app.workspace.getLeaf(newTab ? "tab" : false);
+		await leaf.openFile(file, { active: true });
+		await this.app.workspace.revealLeaf(leaf);
 	}
 
 	private paletteViews(): PaletteView[] {
@@ -417,33 +397,9 @@ export default class AlmagestPlugin extends Plugin {
 			.filter((v): v is PaletteView => v instanceof PaletteView);
 	}
 
-	// Sessions
-
-	private sessionViews(): SessionsView[] {
-		return this.app.workspace
-			.getLeavesOfType(SESSIONS_VIEW)
-			.map((leaf) => leaf.view)
-			.filter((v): v is SessionsView => v instanceof SessionsView);
-	}
-
-	private refreshSessions = debounce(
-		() => {
-			void sessionGroups(this.app, this.staleHours()).then(({ groups }) => {
-				const waiting = groups.open.filter((s) => s.state === "needs you").length;
-				if (this.sessionsRibbon) {
-					if (waiting > 0) this.sessionsRibbon.dataset.almagestCount = String(waiting);
-					else delete this.sessionsRibbon.dataset.almagestCount;
-				}
-			});
-			this.sessionViews().forEach((v) => void v.render());
-		},
-		500,
-		true,
-	);
-
 	/** How long a session with no recorded process may go quiet before it counts as gone. */
 	staleHours(): number {
-		const file = this.vaultDocument();
+		const file = this.app.vault.getFileByPath(VAULT_DOCUMENT);
 		const n = Number(file ? this.app.metadataCache.getFileCache(file)?.frontmatter?.stale_hours : 0);
 		return n > 0 ? n : 12;
 	}
@@ -461,20 +417,6 @@ export default class AlmagestPlugin extends Plugin {
 		return this.almagest<AgentConfig>(global ? [...args, "--global"] : args);
 	}
 
-	/** Moves the agent settings of 8.0.2 into the vault's config file, once. */
-	private async moveLegacyPreferences(): Promise<void> {
-		const saved = this.legacy;
-		if (!saved) return;
-		try {
-			const config = await this.agentConfig();
-			for (const [key, value] of legacyPreferences(saved, config.vault)) await this.setPreference(key, value, false);
-			this.legacy = null;
-			await this.saveSettings();
-		} catch (e) {
-			console.warn("Almagest: the agent settings did not move to .almagest/config.json", e);
-		}
-	}
-
 	/** Runs a command in a new terminal; off macOS, or when that fails, copies it. */
 	async runInTerminal(command: string, what: string, config?: AgentConfig): Promise<void> {
 		if (process.platform === "darwin") {
@@ -490,8 +432,49 @@ export default class AlmagestPlugin extends Plugin {
 		new Notice(`Almagest: copied ${what}. Run it in a terminal.`);
 	}
 
-	/** Starts the agent in the vault, in a terminal; a prompt is its first message. */
-	private async startAgent(prompt = ""): Promise<void> {
+	// Where agents work: Duet when the settings choose it and it runs, else a terminal.
+
+	/** Duet's API when the settings choose Duet and it runs. */
+	private duet() {
+		return this.settings.conversations === "duet" ? duetApi(this.app) : undefined;
+	}
+
+	/** Whether to recommend Duet, in Almagest.md and in a new terminal. */
+	recommendDuet(): boolean {
+		return recommendDuet(this.settings.conversations, duetState(this.app));
+	}
+
+	/** Calls fn after the choice of host or Duet's state changes; returns a function that stops the calls. */
+	onDuetChange(fn: () => void): () => void {
+		this.duetListeners.add(fn);
+		return () => this.duetListeners.delete(fn);
+	}
+
+	private checkDuet(): void {
+		const key = `${this.settings.conversations} ${duetState(this.app)}`;
+		if (key === this.duetKey) return;
+		this.duetKey = key;
+		this.duetChanged();
+	}
+
+	/** Draws again what depends on Duet: the tip in Almagest.md, in both modes, and the settings. */
+	duetChanged(): void {
+		this.duetKey = `${this.settings.conversations} ${duetState(this.app)}`;
+		this.duetListeners.forEach((fn) => fn());
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			if (leaf.view instanceof MarkdownView && leaf.view.file?.path === VAULT_DOCUMENT) leaf.view.previewMode.rerender(true);
+		}
+		if (this.settingTab?.containerEl.isShown()) this.settingTab.update();
+	}
+
+	/** Starts an agent in the vault: an empty Duet conversation, or the agent in a terminal with prompt as its first message. */
+	async startAgent(prompt = ""): Promise<void> {
+		if (!prompt && this.duet() && executeCommand(this.app, "duet:new-chat")) return;
+		await this.startInTerminal(prompt);
+	}
+
+	/** Starts the agent in a new terminal; while Duet is the choice and does not run, the terminal shows the tip first. */
+	private async startInTerminal(prompt: string): Promise<void> {
 		const adapter = this.app.vault.adapter;
 		if (!(adapter instanceof FileSystemAdapter)) return;
 		let config: AgentConfig;
@@ -501,7 +484,8 @@ export default class AlmagestPlugin extends Plugin {
 			new Notice(`Almagest: cannot read the agent preferences: ${(e as Error).message}`, 8000);
 			return;
 		}
-		await this.runInTerminal(startCommand(adapter.getBasePath(), config.preferences.agent_command, prompt), "the agent command", config);
+		const command = startCommand(adapter.getBasePath(), config.preferences.agent_command, prompt);
+		await this.runInTerminal(this.recommendDuet() ? `${duetTipCommand()} && ${command}` : command, "the agent command", config);
 	}
 
 	/**
@@ -510,7 +494,7 @@ export default class AlmagestPlugin extends Plugin {
 	 * what the agent does.
 	 */
 	async runAgent(message: string, title: string, label: string): Promise<void> {
-		const api = duetApi(this.app);
+		const api = this.duet();
 		if (api) {
 			try {
 				const { path } = await api.newConversation({ message, title, loadUserSetup: true });
@@ -519,75 +503,14 @@ export default class AlmagestPlugin extends Plugin {
 			} catch (e) {
 				new Notice(`Almagest: Duet did not start the agent (${(e as Error).message}). Almagest starts it in a terminal.`, 10_000);
 			}
-		} else {
-			new Notice("Almagest: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Almagest starts the agent in a terminal.", 10_000);
+		} else if (this.settings.conversations === "duet") {
+			new Notice("Almagest: Duet is not on, so the agent starts in a terminal. The Almagest settings say what Duet needs, or choose the terminal there.", 10_000);
 		}
-		await this.startAgent(message);
+		await this.startInTerminal(message);
 	}
 
 	/** Drops the conversations whose turn ended while no event came, such as when Duet turned off. */
 	checkConversations(): void {
 		this.conversations.check(duetApi(this.app));
-	}
-
-	async openSessions(): Promise<void> {
-		const { workspace } = this.app;
-		let leaf = workspace.getLeavesOfType(SESSIONS_VIEW)[0];
-		if (!leaf) {
-			const right = workspace.getRightLeaf(false);
-			if (!right) return;
-			await right.setViewState({ type: SESSIONS_VIEW, active: true });
-			leaf = right;
-		}
-		await workspace.revealLeaf(leaf);
-	}
-}
-
-/** Shows the dry run of a migration, and runs it on a second click. */
-class MigrationModal extends Modal {
-	constructor(
-		app: App,
-		private report: MigrationReport,
-		private layout: number,
-		private run: () => Promise<void>,
-	) {
-		super(app);
-	}
-
-	onOpen(): void {
-		const r = this.report;
-		const from = r.from || layoutName(this.layout);
-		this.setTitle(`Migrate to the ${layoutName(LAYOUT)} layout`);
-		const el = this.contentEl;
-		el.addClass("almagest-migration");
-		el.createEl("p", { text: `The migration moves ${r.vault} from the ${from} layout to the ${layoutName(LAYOUT)} layout in one commit. git revert takes it back. It:` });
-		const steps = el.createEl("ul");
-		for (const step of migrationSteps(this.layout)) steps.createEl("li", { text: step });
-
-		const list = <T>(items: T[] | null | undefined, title: string, line: (item: T) => string) => {
-			if (!items || items.length === 0) return;
-			const d = el.createEl("details");
-			d.createEl("summary", { text: `${title} (${items.length})` });
-			const ul = d.createEl("ul");
-			for (const item of items) ul.createEl("li", { text: line(item) });
-		};
-		const move = (m: { from: string; to: string }) => `${m.from} → ${m.to}`;
-		list(r.moved, "Files to move", move);
-		list(r.edited, "Files to edit", (p) => p);
-		list(r.strays, "Your notes in views/, to move to ingest/", move);
-		list(r.warnings, "Warnings", (w) => w);
-
-		const buttons = el.createDiv({ cls: "almagest-migration-buttons" });
-		buttons.createEl("button", { text: "Cancel" }).onclick = () => this.close();
-		const go = buttons.createEl("button", { text: "Migrate", cls: "mod-cta" });
-		go.onclick = async () => {
-			go.disabled = true;
-			await this.run();
-			this.close();
-		};
-	}
-
-	onClose(): void {
-		this.contentEl.empty();
 	}
 }

@@ -33,14 +33,14 @@ test("Checkout runs wiki-checkout on the user's request, on one line", () => {
 });
 
 test("Resolve with an agent names the file, its path, and the documents that link it", () => {
-	const target = { title: "Beta", path: "source-core/documents/Beta.md" };
+	const target = { title: "Beta", path: "tool/source-core/documents/Beta.md" };
 	assert.equal(
 		resolveMessage(target, [{ title: "Alpha" }]),
-		"/almagest:wiki-edit Remove [[Beta]] (source-core/documents/Beta.md), which [[Alpha]] links: point each backlink elsewhere, or drop it, then propose a remove.",
+		"/almagest:wiki-edit Remove [[Beta]] (tool/source-core/documents/Beta.md), which [[Alpha]] links: point each backlink elsewhere, or drop it, then propose a remove.",
 	);
 	assert.equal(
 		resolveMessage(target, [{ title: "Alpha" }, { title: "2026-10-06 Add A" }]),
-		"/almagest:wiki-edit Remove [[Beta]] (source-core/documents/Beta.md), which [[Alpha]], [[2026-10-06 Add A]] link: point each backlink elsewhere, or drop it, then propose a remove.",
+		"/almagest:wiki-edit Remove [[Beta]] (tool/source-core/documents/Beta.md), which [[Alpha]], [[2026-10-06 Add A]] link: point each backlink elsewhere, or drop it, then propose a remove.",
 	);
 	const many = Array.from({ length: 13 }, (_, i) => ({ title: `T${i}` }));
 	const text = resolveMessage(target, many);
@@ -49,10 +49,10 @@ test("Resolve with an agent names the file, its path, and the documents that lin
 });
 
 test("Resolve with an agent leaves the user's files, and then proposes no remove", () => {
-	const target = { title: "Beta", path: "source-core/documents/Beta.md" };
+	const target = { title: "Beta", path: "tool/source-core/documents/Beta.md" };
 	assert.equal(
 		resolveMessage(target, [{ title: "Alpha" }], [{ title: "Week 1" }]),
-		"/almagest:wiki-edit Remove [[Beta]] (source-core/documents/Beta.md), which [[Alpha]] links: point each backlink elsewhere, or drop it. [[Week 1]] is the user's to fix, so leave it and propose no remove; the user runs Safe delete again.",
+		"/almagest:wiki-edit Remove [[Beta]] (tool/source-core/documents/Beta.md), which [[Alpha]] links: point each backlink elsewhere, or drop it. [[Week 1]] is the user's to fix, so leave it and propose no remove; the user runs Safe delete again.",
 	);
 	assert.match(resolveMessage(target, [{ title: "Alpha" }], [{ title: "A" }, { title: "B" }]), /\[\[A\]\], \[\[B\]\] are the user's to fix, so leave them and propose no remove;/);
 });

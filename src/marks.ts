@@ -2,6 +2,8 @@
 // tests cover it. The binary places the marks (internal/wikify); the plugin reads them as
 // the binary does, so a mark in code or a comment is text.
 
+import { SESSIONS, TRASH } from "./helpers";
+
 export type MarkKind = "link" | "new";
 export type Decision = "accept" | "ignore" | "link";
 
@@ -64,12 +66,6 @@ export function findMarks(text: string): Mark[] {
 		out.push({ from, to: from + m[0].length, kind: m[1] as MarkKind, title: m[2]!, phrase: m[3]!, text: m[0] });
 	}
 	return out;
-}
-
-/** The mark that the whole of s is, or null. */
-export function parseMark(s: string): Omit<Mark, "from" | "to"> | null {
-	const m = new RegExp(`^${MARK.source}$`).exec(s);
-	return m ? { kind: m[1] as MarkKind, title: m[2]!, phrase: m[3]!, text: s } : null;
 }
 
 /** The link a mark becomes: `[[Title]]` when the phrase is the title as written, else `[[Title|phrase]]`, so the note keeps its own spelling. */
@@ -146,14 +142,16 @@ export function isWikified(path: string): boolean {
 	return /\.md$/i.test(name) && / · wikified(?: \(\d+\))?$/.test(name.slice(0, -3));
 }
 
-const NOT_YOURS = ["source-core", "changes", "sessions", "wiki-view", "trash"];
+/** The folders whose notes are code's or the wiki's, as `wikify start` refuses them. */
+const NOT_YOURS = ["tool/source-core", "changes", SESSIONS, "wiki-view", TRASH];
 
 /** Why `wikify start` refuses a path, or "" when it takes it. configDir is Obsidian's folder, `Vault#configDir`. */
 export function wikifyBlocked(path: string, configDir: string): string {
 	if (!/\.md$/i.test(path)) return "Wikify takes a markdown note.";
-	if (path === "Almagest.md" || path === "Atlas.md") return `Wikify takes a note of yours, not ${path}.`;
-	const top = path.split("/")[0] ?? "";
-	if (path.includes("/") && (NOT_YOURS.includes(top) || top === configDir)) return `Wikify takes a note of yours, not one in ${top}/.`;
+	if (path === "Almagest.md") return "Wikify takes a note of yours, not Almagest.md.";
+	const key = path.toLowerCase();
+	const folder = [...NOT_YOURS, configDir].find((d) => key.startsWith(d.toLowerCase() + "/"));
+	if (folder) return `Wikify takes a note of yours, not one in ${folder}/.`;
 	return "";
 }
 

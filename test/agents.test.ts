@@ -6,7 +6,6 @@ import {
 	AgentConfig,
 	SessionRow,
 	inherited,
-	legacyPreferences,
 	preference,
 	appleScriptString,
 	configDirOf,
@@ -17,6 +16,11 @@ import {
 	startCommand,
 	terminalLaunch,
 	plainLinks,
+	DUET_LINK,
+	DUET_TIP,
+	duetLine,
+	duetTipCommand,
+	recommendDuet,
 } from "../src/agents";
 
 const now = new Date("2026-10-01T12:00:00");
@@ -80,6 +84,26 @@ test("the shell hands the prompt to the agent as it was written", () => {
 	assert.equal(execFileSync("/bin/zsh", ["-c", command], { encoding: "utf8" }), prompt);
 });
 
+test("Almagest recommends Duet while Duet is the choice and does not run, and never after the user chose the terminal", () => {
+	assert.equal(recommendDuet("duet", "missing"), true);
+	assert.equal(recommendDuet("duet", "off"), true);
+	assert.equal(recommendDuet("duet", "old"), true);
+	assert.equal(recommendDuet("duet", "on"), false);
+	for (const state of ["on", "old", "off", "missing"] as const) assert.equal(recommendDuet("terminal", state), false);
+	assert.match(duetLine("on"), /^Duet runs each agent conversation in a note of this vault/);
+	assert.match(duetLine("missing"), /^Duet is not installed\. .* Until then, Almagest starts each agent in a terminal/);
+	assert.match(duetLine("off"), /^Duet is installed but off\. Turn it on in Community plugins\./);
+	assert.match(duetLine("old"), /Update Duet to 0\.3\.0 or later/);
+	assert.equal(DUET_LINK, "obsidian://show-plugin?id=duet");
+});
+
+test("a new terminal prints the Duet tip before the agent starts", () => {
+	const command = `${duetTipCommand()} && ${startCommand(tmpdir(), "printf %s", "the prompt")}`;
+	const out = `\n\u001b[1mTip:\u001b[0m ${DUET_TIP}\n\u001b[1mInstall Duet:\u001b[0m ${DUET_LINK}\n\nthe prompt`;
+	assert.equal(execFileSync("/bin/sh", ["-c", command], { encoding: "utf8" }), out);
+	assert.equal(execFileSync("/bin/zsh", ["-c", command], { encoding: "utf8" }), out);
+});
+
 test("each terminal runs the command in an interactive shell", () => {
 	assert.equal(shellQuote("a'b"), `'a'\\''b'`);
 	assert.equal(appleScriptString(`say "hi" \\ bye`), `"say \\"hi\\" \\\\ bye"`);
@@ -111,14 +135,3 @@ test("inherited: the global value, else the default", () => {
 	assert.equal(preference(null, "terminal"), "");
 });
 
-test("legacyPreferences moves only the changed settings the vault file lacks", () => {
-	assert.deepEqual(legacyPreferences({ agentCommand: "claude", terminal: "terminal", terminalCommand: "" }, null), []);
-	assert.deepEqual(legacyPreferences({ agentCommand: "claude-work", terminal: "wezterm", terminalCommand: "kitty {command}" }, null), [
-		["agent_commands.claude", "claude-work"],
-		["terminal", "wezterm"],
-		["terminal_command", "kitty {command}"],
-	]);
-	assert.deepEqual(legacyPreferences({ agentCommand: "claude-work", terminal: "wezterm" }, { terminal: "iterm" }), [["agent_commands.claude", "claude-work"]]);
-	assert.deepEqual(legacyPreferences({ terminal: "kitty", terminalCommand: "kitty" }, null), [], "bad values stay behind");
-	assert.deepEqual(legacyPreferences(null, null), []);
-});

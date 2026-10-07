@@ -1,12 +1,16 @@
 // Pure functions: no Obsidian, no Node. The tests cover them.
 
-// The folders of layout 10, as vault.go names them.
-export const DOCUMENTS = "source-core/documents/";
-export const WIKI_VIEW = "wiki-view/";
-export const NAV_FOLDER = "wiki-view/nav/";
+// The folders of the vault, as vault.go names them. tool/ holds what Almagest keeps for itself.
+export const TOOL = "tool";
+export const DOCUMENTS = "tool/source-core/documents/";
+export const SESSIONS = "tool/sessions";
+export const TRASH = "tool/trash";
+export const RETURNED = "tool/returned";
+const WIKI_VIEW = "wiki-view/";
+const NAV_FOLDER = "wiki-view/nav/";
 export const INGEST = "ingest/";
 
-/** Whether a path lies in source-core/documents. */
+/** Whether a path lies in tool/source-core/documents. */
 export function isDocumentPath(path: string): boolean {
 	return path.startsWith(DOCUMENTS);
 }
@@ -26,10 +30,10 @@ export interface Synced {
  * The protocols this plugin reads: the version of the commands, flags, and JSON of the
  * binary (`almagest version --json` prints its own). Each side names the update it needs.
  */
-export const PROTOCOLS = [1];
+export const PROTOCOLS = [2];
 
 /** How to install the agent plugin, whose launcher installs the binary. */
-export const INSTALL_AGENT =
+const INSTALL_AGENT =
 	"Install the Almagest agent plugin: in Claude Code, claude plugin marketplace add nathanaday/almagest, then claude plugin install almagest@nathanaday-almagest, and start one session in the vault. Its first session installs the binary. Or set the binary's path in the Almagest settings.";
 
 /** What `almagest version --json` prints. A binary that prints no protocol reads as 0. */
@@ -196,8 +200,8 @@ export function linkTitle(value: unknown): string {
 	return (m?.[1] ?? value).trim();
 }
 
-/** The three types of source-core/documents, as schema.DocumentTypes lists them. */
-export const DOCUMENT_TYPES = ["source", "repository", "topic"];
+/** The three types of tool/source-core/documents, as schema.DocumentTypes lists them. */
+const DOCUMENT_TYPES = ["source", "repository", "topic"];
 
 /** Whether a frontmatter type is one of the document types the navigator lists. */
 export function isDocumentType(type: unknown): boolean {
@@ -258,7 +262,7 @@ export function isLockHeld(message: string): boolean {
 }
 
 /** The title of a tag's view: "Tag · school › cs513". */
-export function tagTitle(tag: string): string {
+function tagTitle(tag: string): string {
 	return "Tag · " + tag.split("/").join(" › ");
 }
 
@@ -338,7 +342,7 @@ export function topTags(docs: TagDoc[]): Facet[] {
 }
 
 /** The order the navigator groups documents in. */
-export const NAV_GROUPS: { name: string; test: (d: TagDoc) => boolean }[] = [
+const NAV_GROUPS: { name: string; test: (d: TagDoc) => boolean }[] = [
 	{ name: "Topics", test: (d) => d.type === "topic" },
 	{ name: "Sources", test: (d) => d.type === "source" },
 	{ name: "Repositories", test: (d) => d.type === "repository" },
@@ -367,69 +371,30 @@ export function layoutOf(fields: Record<string, unknown> | undefined): number {
 	return Number.isFinite(n) ? n : 0;
 }
 
-/** The layout this plugin reads: the names of 11.0. */
-export const LAYOUT = 7;
+/** The layout this plugin reads, as the vault document records it. */
+export const LAYOUT = 8;
 
-/**
- * The vault document: Almagest.md, or the Atlas.md of the releases before 11.0, which the
- * migration renames.
- */
-export const VAULT_DOCUMENTS = ["Almagest.md", "Atlas.md"];
+/** The layout of 11.0, before tool/ held sessions/, source-core/, and trash/: `almagest vault migrate` takes it to LAYOUT. */
+export const LAYOUT_BEFORE_TOOL = 7;
 
-/** The oldest layout the binary migrates from: 8.x. */
-export const MIGRATES_FROM = 4;
-
-/** What vault migrate prints, for its dry run and for the migration. */
-export interface MigrationReport {
-	vault: string;
-	from?: string;
-	moved?: { from: string; to: string }[] | null;
-	edited?: string[] | null;
-	warnings?: string[] | null;
-	commit?: string;
-	strays?: { from: string; to: string }[] | null;
-	problems?: number;
+/** What a vault of another layout needs: its migration, an update, or nothing. */
+export function layoutNeeds(layout: number): "migrate" | "update" | "" {
+	if (layout === LAYOUT) return "";
+	return layout === LAYOUT_BEFORE_TOOL ? "migrate" : "update";
 }
 
-/** What the migration to 11.0 does to a vault of this layout, one step a line. */
-export function migrationSteps(layout: number): string[] {
-	const steps: string[] = [];
-	if (layout === 4) {
-		steps.push("Moves the thread documents of 8.x (stubs, specs, task lists, verifications, chords, and events) and the chord canvases to threads/, an archive Almagest does not read.");
+/** The 0-based line of a note's first text after its frontmatter, or -1 when it has none. */
+export function firstBodyLine(text: string): number {
+	const lines = text.split("\n");
+	let i = 0;
+	if (lines[0]?.trim() === "---") {
+		const end = lines.findIndex((l, n) => n > 0 && l.trim() === "---");
+		if (end < 0) return -1;
+		i = end + 1;
 	}
-	if (layout <= 5) {
-		steps.push(
-			"Moves wiki/documents/ to source-core/documents/.",
-			"Moves wiki/assets/ to source-core/originals/, and any other file of wiki/ to source-core/.",
-			"Moves inbox/ to ingest/.",
-			"Removes views/ and writes the views again in wiki-view/, with the tag views in wiki-view/nav/. A note of yours in views/ goes to ingest/.",
-			"Rewrites each link, embed, and Base that names one of these folders. Prose that names a folder stays as you wrote it.",
-			"Sets origin: ingest on each source that came from the inbox.",
-			"Sends new attachments to source-core/originals/ and keeps wiki-view/ out of Obsidian's search, unless you chose other settings.",
-		);
-	}
-	steps.push(
-		"Renames Atlas.md to Almagest.md and .atlas/ to .almagest/, and points the links to [[Atlas]] at [[Almagest]].",
-		"Gives the change and repository blocks, the change documents' class, and the callouts of checkouts and publication histories the name Almagest. Your own text stays as you wrote it.",
-	);
-	return steps;
+	for (; i < lines.length; i++) if (lines[i]!.trim() !== "") return i;
+	return -1;
 }
 
-/** The notice after a migration. */
-export function migrationSummary(r: MigrationReport): string {
-	const parts = [`Migrated to the ${layoutName(LAYOUT)} layout in one commit${r.commit ? `, ${r.commit.slice(0, 7)}` : ""}.`];
-	const moved = r.moved?.length ?? 0;
-	const edited = r.edited?.length ?? 0;
-	if (moved || edited) parts.push(`${plural(moved, "file", "files")} moved, ${edited} edited.`);
-	if (r.problems) parts.push(`Lint finds ${plural(r.problems, "error", "errors")}.`);
-	return parts.join(" ");
-}
-
-/** What a layout version is called. */
-export function layoutName(layout: number): string {
-	if (layout >= LAYOUT) return "11.0";
-	if (layout === 6) return "10.0";
-	if (layout === 5) return "9.0";
-	if (layout === 4) return "8.x";
-	return layout === 3 ? "7.x" : "6.x";
-}
+/** The vault document, which records the layout. */
+export const VAULT_DOCUMENT = "Almagest.md";

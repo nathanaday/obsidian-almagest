@@ -67,8 +67,3 @@ export async function binaryInfo(bin: string | null): Promise<BinaryInfo | null>
 		return null;
 	}
 }
-
-/** Runs a program with its arguments; for osascript. */
-export function runProgram(bin: string, args: string[]): Promise<string> {
-	return exec(bin, args, undefined);
-}

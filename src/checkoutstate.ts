@@ -2,24 +2,33 @@
 
 export const CHECKOUT = "checkout";
 
+/** The ledger: a Base of every checkout, out and returned. */
+export const LEDGER = "checkout/Checkout · Ledger.md";
+
 /** One checkout, as `vault --json` and `checkout --json` print it (checkout.Entry). */
 export interface Checkout {
-	/** The folder, from the vault's root: "checkout/2026-10-06 Alpha study". */
+	/** The folder, from the vault's root: "checkout/2026-10-06 Alpha study", or "tool/returned/…" once returned. */
 	folder: string;
+	/** The name the librarian gave it: "Alpha study". */
+	name: string;
 	request: string;
 	/** The day of the checkout: "2026-10-06". */
 	date: string;
 	documents: number;
 	/** The copies whose body differs from the body as checked out. */
 	edited: number;
+	/** Out, in checkout/, or returned, in tool/returned/. */
+	status: "out" | "returned";
 	/** The time of the return, or "". */
 	returned: string;
 }
 
 /** What `checkout return --json` prints under "returned". */
 export interface Returned {
-	change?: { ref: { id: string; title: string; path: string } } | null;
-	/** The copies left out, each "<path>: <why>". */
+	change?: { ref: { id: string; title: string; path: string }; counts?: { modify?: number } } | null;
+	/** The checkout's place in tool/returned/. */
+	folder?: string;
+	/** The copies left out, each "<file>: <why>". */
 	skipped?: string[] | null;
 	/** What went wrong after the change was proposed. */
 	warning?: string;
@@ -31,25 +40,25 @@ export function checkouts(list: Partial<Checkout>[] | null | undefined): Checkou
 		.filter((c) => typeof c.folder === "string" && c.folder !== "")
 		.map((c) => ({
 			folder: c.folder!,
+			name: c.name || folderName(c.folder!).replace(/^\d{4}-\d{2}-\d{2} /, ""),
 			request: c.request || folderName(c.folder!),
 			date: c.date ?? "",
 			documents: c.documents ?? 0,
 			edited: c.edited ?? 0,
+			status: c.status === "returned" ? ("returned" as const) : ("out" as const),
 			returned: c.returned ?? "",
 		}))
 		.sort((a, b) => (a.folder < b.folder ? 1 : a.folder > b.folder ? -1 : 0));
 }
 
-/** The checkouts with edited copies that no return took yet. */
-export function toReturn(list: Checkout[]): number {
-	return list.filter((c) => returnBlocked(c) === "").length;
+/** The checkouts that are out. */
+export function outOnly(list: Checkout[]): Checkout[] {
+	return list.filter((c) => c.status === "out");
 }
 
-/** Why Return is off for a checkout, or "" when it can return. */
-export function returnBlocked(c: Checkout): string {
-	if (c.returned) return `Returned ${day(c.returned)}.`;
-	if (c.edited === 0) return "No copy is edited.";
-	return "";
+/** The checkouts out with edited copies: their edits reach the wiki only through a return. */
+export function toReturn(list: Checkout[]): number {
+	return list.filter((c) => c.status === "out" && c.edited > 0).length;
 }
 
 /** The day of a time the binary wrote: "2026-10-06T18:00:34" gives "2026-10-06". */
@@ -57,9 +66,9 @@ export function day(stamp: string): string {
 	return stamp.slice(0, 10);
 }
 
-/** The reading list, "Checkout · <folder name>.md", a name no copy can take. */
-export function readingListPath(c: Checkout): string {
-	return `${c.folder}/Checkout · ${folderName(c.folder)}.md`;
+/** The checkout's index: its name, request, status, and reading order. */
+export function indexPath(c: Checkout): string {
+	return `${c.folder}/_index.md`;
 }
 
 /** The folder's own name: "checkout/2026-10-06 Alpha study" gives "2026-10-06 Alpha study". */
@@ -67,11 +76,20 @@ export function folderName(folder: string): string {
 	return folder.slice(folder.lastIndexOf("/") + 1);
 }
 
+/** What a return did, for its notice: where the checkout went, and the change of its edits, if any. */
+export function returnedLine(name: string, r: Returned): string {
+	const edits = r.change?.counts?.modify ?? 0;
+	const change = r.change?.ref
+		? `${r.change.ref.title} proposes your edits to ${edits === 1 ? "1 document" : `${edits} documents`}; approve it in the change.`
+		: "No copy was edited, so nothing changes in the wiki.";
+	return `Returned ${name} to ${r.folder ?? "tool/returned/"}. ${change}`;
+}
+
 /** The line of a notice that names the copies a return left out, or "" when it left none. */
 export function skippedLine(skipped: string[] | null | undefined): string {
 	const list = skipped ?? [];
 	if (list.length === 0) return "";
-	return `the return left out ${list.length === 1 ? "1 copy" : `${list.length} copies`}: ${list.join("; ")}.`;
+	return `the return left out ${list.length === 1 ? "1 copy" : `${list.length} copies`}, whose edits stay in the returned copies: ${list.join("; ")}.`;
 }
 
 /** The request as one line: Checkout's first message holds no line break. */

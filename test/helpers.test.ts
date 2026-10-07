@@ -3,10 +3,7 @@ import { test } from "node:test";
 import {
 	PROTOCOLS,
 	binaryProblem,
-	LAYOUT,
-	MIGRATES_FROM,
 	SNAPSHOT_QUIET_DEFAULT,
-	layoutName,
 	asList,
 	binaryCandidates,
 	chooseBinary,
@@ -20,9 +17,9 @@ import {
 	isLockHeld,
 	isSnapshotPath,
 	isWatchedPath,
+	firstBodyLine,
+	layoutNeeds,
 	layoutOf,
-	migrationSteps,
-	migrationSummary,
 	narrow,
 	normalTag,
 	quietSeconds,
@@ -112,34 +109,34 @@ test("lastProgressLine reads only the Progress section", () => {
 });
 
 test("small labels", () => {
-	assert.ok(isWatchedPath("source-core/documents/Filter.md"));
+	assert.ok(isWatchedPath("tool/source-core/documents/Filter.md"));
 	assert.ok(!isWatchedPath("wiki-view/View · Home.md"), "a view change never starts a sync");
 	assert.ok(!isWatchedPath(".obsidian/app.json"));
-	assert.ok(!isWatchedPath("source-core/originals/a.png"));
+	assert.ok(!isWatchedPath("tool/source-core/originals/a.png"));
 	assert.equal(layoutOf({ layout: 3 }), 3);
 	assert.equal(layoutOf({ layout: "2" }), 2);
 	assert.equal(layoutOf(undefined), 0);
+	// The Duet tip goes above the first text after the properties.
+	assert.equal(firstBodyLine("---\nid: v\nlayout: 8\n---\n\nThe vault's context.\n"), 5);
+	assert.equal(firstBodyLine("No properties.\n"), 0);
+	assert.equal(firstBodyLine("---\nid: v\n---\n\n"), -1);
+	assert.equal(firstBodyLine("---\nnever closed\n"), -1);
+	assert.equal(layoutNeeds(8), "");
+	assert.equal(layoutNeeds(7), "migrate");
+	assert.equal(layoutNeeds(9), "update");
+	assert.equal(layoutNeeds(0), "update");
 	assert.deepEqual(repoBlock(" doc-abc123 · ~/src/p3-edge \n"), { id: "doc-abc123", path: "~/src/p3-edge" });
 });
 
-test("layout 7 is 11.0, and the binary migrates from 8.x, 9.0, and 10.0", () => {
-	assert.equal(LAYOUT, 7);
-	assert.equal(MIGRATES_FROM, 4);
-	assert.deepEqual(
-		[layoutName(8), layoutName(7), layoutName(6), layoutName(5), layoutName(4), layoutName(3), layoutName(2), layoutName(0)],
-		["11.0", "11.0", "10.0", "9.0", "8.x", "7.x", "6.x", "6.x"],
-	);
-});
-
 test("the folders of layout 10", () => {
-	assert.ok(isDocumentPath("source-core/documents/Lidar.md"));
-	assert.ok(!isDocumentPath("source-core/originals/Lidar.pdf"));
+	assert.ok(isDocumentPath("tool/source-core/documents/Lidar.md"));
+	assert.ok(!isDocumentPath("tool/source-core/originals/Lidar.pdf"));
 	assert.ok(!isDocumentPath("wiki/documents/Lidar.md"));
 	assert.equal(tagViewPath("work/p3"), "wiki-view/nav/work/p3/Tag · work › p3.md");
 });
 
 test("a quiet snapshot counts every event outside the config folder and wiki-view/", () => {
-	assert.ok(isSnapshotPath("source-core/documents/Lidar.md", ".obsidian"));
+	assert.ok(isSnapshotPath("tool/source-core/documents/Lidar.md", ".obsidian"));
 	assert.ok(isSnapshotPath("scratchpad/idea.md", ".obsidian"));
 	assert.ok(isSnapshotPath("ingest/paper.pdf", ".obsidian"));
 	assert.ok(isSnapshotPath(".obsidian-notes.md", ".obsidian"), "only the folder itself is left out");
@@ -171,30 +168,6 @@ test("quietSeconds reads the setting and the field", () => {
 	assert.equal(quietSeconds(1e12), 86_400, "a timer longer than a day overflows");
 });
 
-test("the migration lists the 11.0 rename, the 10.0 moves before it, and the 9.0 step for an 8.x vault", () => {
-	const from10 = migrationSteps(6);
-	assert.ok(from10[0]?.includes("Atlas.md to Almagest.md"));
-	assert.ok(!from10.some((s) => s.includes("wiki/documents/")));
-	const from9 = migrationSteps(5);
-	assert.equal(from9.length, from10.length + 7);
-	assert.ok(from9.some((s) => s.includes("wiki/documents/ to source-core/documents/")));
-	assert.ok(from9.some((s) => s.includes("wiki/assets/ to source-core/originals/")));
-	assert.ok(from9.some((s) => s.includes("inbox/ to ingest/")));
-	assert.ok(from9.some((s) => s.includes("wiki-view/nav/")));
-	assert.ok(!from9.some((s) => s.includes("threads/")));
-	const from8 = migrationSteps(4);
-	assert.ok(from8[0]?.includes("threads/"));
-	assert.equal(from8.length, from9.length + 1);
-});
-
-test("migrationSummary", () => {
-	assert.equal(
-		migrationSummary({ vault: "Work", commit: "0123456789abcdef", moved: [{ from: "inbox/a.pdf", to: "ingest/a.pdf" }], edited: ["x.md", "y.md"], problems: 1 }),
-		"Migrated to the 11.0 layout in one commit, 0123456. 1 file moved, 2 edited. Lint finds 1 error.",
-	);
-	assert.equal(migrationSummary({ vault: "Work", commit: "abcdef0123", moved: [], edited: null, problems: 0 }), "Migrated to the 11.0 layout in one commit, abcdef0.");
-});
-
 test("a tag holds its children, and a list expands to every ancestor", () => {
 	assert.equal(normalTag(" #Work/P3 "), "work/p3");
 	assert.equal(relativeTag("ml/cs566/project", ["ml"]), "› cs566 › project");
@@ -207,7 +180,7 @@ test("a tag holds its children, and a list expands to every ancestor", () => {
 });
 
 function tdoc(title: string, type: string, tags: string[], kind = "", status = ""): TagDoc {
-	return { path: `source-core/documents/${title}.md`, title, type, kind, status, description: "", tags };
+	return { path: `tool/source-core/documents/${title}.md`, title, type, kind, status, description: "", tags };
 }
 
 test("narrow finds the documents at the intersection and the tags that occur with them", () => {
@@ -238,7 +211,7 @@ test("narrow finds the documents at the intersection and the tags that occur wit
 });
 
 test("a sync that moved a note out of wiki-view/ says where it went", () => {
-	const s = { strays: [{ from: "wiki-view/Draft.md", to: "ingest/Draft.md" }], skipped: ["source-core/documents/Paper.md"] };
+	const s = { strays: [{ from: "wiki-view/Draft.md", to: "ingest/Draft.md" }], skipped: ["tool/source-core/documents/Paper.md"] };
 	assert.deepEqual(strayNotices(s), ["Moved wiki-view/Draft.md to ingest/Draft.md: code writes every file in wiki-view/, so your note waits in ingest/."]);
 	assert.equal(syncSummary(s), "Synced 1 document left as saved.");
 	assert.deepEqual(syncedPaths(s), ["wiki-view/Draft.md", "ingest/Draft.md"]);
@@ -263,8 +236,10 @@ test("the navigator lists every document type and nothing else", () => {
 test("the plugin names the update that lets it use the binary", () => {
 	assert.match(binaryProblem(null, null), /none is installed\. Install the Almagest agent plugin: .*claude plugin install almagest@nathanaday-almagest/);
 	assert.match(binaryProblem(null, "/x/almagest"), /cannot run its binary at \/x\/almagest/);
-	assert.equal(binaryProblem({ version: "11.0.0", protocol: 1 }, "/x"), "");
-	assert.match(binaryProblem({ version: "10.9.0" }, "/x"), /older than this plugin reads\. Update the agent plugin \(claude plugin update almagest@nathanaday-almagest\)/);
-	assert.match(binaryProblem({ version: "12.0.0", protocol: 2 }, "/x"), /newer than this plugin reads\. Update Almagest in Obsidian's community plugins\./);
-	assert.deepEqual(PROTOCOLS, [1]);
+	assert.equal(binaryProblem({ version: "11.1.0", protocol: 2 }, "/x"), "");
+	// 11.0 has no vault migrate, so this plugin cannot use it.
+	assert.match(binaryProblem({ version: "11.0.1", protocol: 1 }, "/x"), /almagest 11\.0\.1 is older than this plugin reads\. Update the agent plugin \(claude plugin update almagest@nathanaday-almagest\)/);
+	assert.match(binaryProblem({ version: "10.9.0" }, "/x"), /older than this plugin reads/);
+	assert.match(binaryProblem({ version: "12.0.0", protocol: 3 }, "/x"), /newer than this plugin reads\. Update Almagest in Obsidian's community plugins\./);
+	assert.deepEqual(PROTOCOLS, [2]);
 });

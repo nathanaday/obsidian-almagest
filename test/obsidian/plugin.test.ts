@@ -1,10 +1,13 @@
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { type AlmagestBinary, buildAlmagest, frontmatter, launchObsidian, type ObsidianInstance, until } from "./harness";
 
 const TIMEOUT = 90_000;
+
+/** A terminal command while Duet is the choice and does not run: the tip, then the agent in the vault. */
+const TIP_THEN_AGENT = /^printf '.+' '.+Almagest works best with the Duet community plugin.+' 'obsidian:\/\/show-plugin\?id=duet' && cd '.+' && claude '.+'$/s;
 
 describe("Almagest in Obsidian", () => {
 	let bin: AlmagestBinary;
@@ -67,11 +70,11 @@ describe("Almagest in Obsidian", () => {
 		return o.page.$$eval(".notice", (els) => els.map((e) => e.textContent ?? ""));
 	}
 
-	it("loads in an 11.0 vault with no console error, and adds nothing to the file explorer", { timeout: TIMEOUT }, async () => {
+	it("loads in a vault with no console error, and adds nothing to the file explorer but the colors of its folders", { timeout: TIMEOUT }, async () => {
 		const o = await launch();
-		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.manifest.version)).toBe("11.0.1");
+		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.manifest.version)).toBe(JSON.parse(await readFile(new URL("../../manifest.json", import.meta.url), "utf8")).version);
 
-		// A topic and a change document: the files that 9.0 marked in the explorer.
+		// A topic and a change document: Almagest's own files, which the explorer shows as Obsidian does.
 		const change = await propose(o, "Add Alpha", "Alpha");
 		await o.almagest(["change", "apply", change.id, "--json"]);
 
@@ -101,42 +104,72 @@ describe("Almagest in Obsidian", () => {
 		);
 		expect(notes).toBeGreaterThanOrEqual(7);
 
-		const explorer = await o.page.evaluate(async () => {
-			const app = (window as any).app;
-			const root: HTMLElement = app.workspace.getLeavesOfType("file-explorer")[0].view.containerEl;
-			const elements = [root, ...root.querySelectorAll<HTMLElement>("*")];
-			const marked = elements
-				.filter((el) => [...el.classList].some((c) => c.startsWith("almagest-")) || [...el.attributes].some((a) => a.name.startsWith("data-almagest")))
-				.map((el) => el.outerHTML.slice(0, 160));
+		// What the plugin adds to the explorer: elements it marks, and the folder rows its
+		// styles reach (each element's closest folder row, by path).
+		const explorer = () =>
+			o.page.evaluate(async () => {
+				const app = (window as any).app;
+				const root: HTMLElement = app.workspace.getLeavesOfType("file-explorer")[0].view.containerEl;
+				const elements = [root, ...root.querySelectorAll<HTMLElement>("*")];
+				const marked = elements
+					.filter((el) => [...el.classList].some((c) => c.startsWith("almagest-")) || [...el.attributes].some((a) => a.name.startsWith("data-almagest")))
+					.map((el) => el.outerHTML.slice(0, 160));
 
-			// The plugin's styles.css, as Obsidian put it in the page.
-			const plugin = app.plugins.plugins.almagest;
-			const css: string = await app.vault.adapter.read(`${plugin.manifest.dir}/styles.css`);
-			const sheet = [...document.querySelectorAll("style")].find((el) => el.textContent === css)?.sheet;
-			const rules: string[] = [];
-			const walk = (list: CSSRuleList) => {
-				for (const rule of list) {
-					if (rule instanceof CSSStyleRule) rules.push(rule.selectorText);
-					else if ("cssRules" in rule) walk((rule as CSSGroupingRule).cssRules);
-				}
-			};
-			if (sheet) walk(sheet.cssRules);
-			const styled = rules.filter((selector) => {
-				const plain = selector.replace(/::?(before|after|placeholder|marker|selection|-webkit-[\w-]+)/g, "");
-				return elements.some((el) => {
-					try {
-						return el.matches(plain);
-					} catch {
-						return false;
+				// The plugin's styles.css, as Obsidian put it in the page.
+				const plugin = app.plugins.plugins.almagest;
+				const css: string = await app.vault.adapter.read(`${plugin.manifest.dir}/styles.css`);
+				const sheet = [...document.querySelectorAll("style")].find((el) => el.textContent === css)?.sheet;
+				const rules: string[] = [];
+				const walk = (list: CSSRuleList) => {
+					for (const rule of list) {
+						if (rule instanceof CSSStyleRule) rules.push(rule.selectorText);
+						else if ("cssRules" in rule) walk((rule as CSSGroupingRule).cssRules);
 					}
-				});
+				};
+				if (sheet) walk(sheet.cssRules);
+				const styled = new Set<string>();
+				for (const selector of rules) {
+					const plain = selector.replace(/::?(before|after|placeholder|marker|selection|-webkit-[\w-]+)/g, "");
+					for (const el of elements) {
+						try {
+							if (el.matches(plain)) styled.add(el.closest<HTMLElement>(".nav-folder-title")?.dataset.path ?? el.outerHTML.slice(0, 80));
+						} catch {
+							// A selector the page cannot match, such as a vendor one.
+						}
+					}
+				}
+				const color = (folder: string) => getComputedStyle(root.querySelector(`.nav-folder-title[data-path="${folder}"]`)!).color;
+				const swatch = (variable: string) => {
+					const probe = document.body.createDiv();
+					probe.style.color = `var(${variable})`;
+					const out = getComputedStyle(probe).color;
+					probe.remove();
+					return out;
+				};
+				return {
+					marked,
+					sheet: !!sheet,
+					rules: rules.length,
+					styled: [...styled].sort(),
+					colors: { "wiki-view": color("wiki-view") === swatch("--color-cyan"), journals: color("journals") === swatch("--color-purple"), ingest: color("ingest") === swatch("--color-purple"), tool: color("tool") === swatch("--text-faint") },
+				};
 			});
-			return { marked, sheet: !!sheet, rules: rules.length, styled };
+		const on = await explorer();
+		expect(on.marked).toEqual([]);
+		expect(on.sheet).toBe(true);
+		expect(on.rules).toBeGreaterThan(10);
+		expect(on.styled).toEqual(["ingest", "journals", "tool", "wiki-view"]);
+		expect(on.colors).toEqual({ "wiki-view": true, journals: true, ingest: true, tool: true });
+
+		// The setting turns the colors off, and then no rule of the plugin reaches the explorer.
+		await o.page.evaluate(async () => {
+			const plugin = (window as any).app.plugins.plugins.almagest;
+			plugin.settings.colorFolders = false;
+			plugin.colorFolders();
 		});
-		expect(explorer.marked).toEqual([]);
-		expect(explorer.sheet).toBe(true);
-		expect(explorer.rules).toBeGreaterThan(10);
-		expect(explorer.styled).toEqual([]);
+		const off = await explorer();
+		expect(off.styled).toEqual([]);
+		expect(off.colors).toEqual({ "wiki-view": false, journals: false, ingest: false, tool: false });
 		expect(o.errors).toEqual([]);
 	});
 
@@ -173,11 +206,10 @@ describe("Almagest in Obsidian", () => {
 		expect(o.errors).toEqual([]);
 	});
 
-	/** Sets the layout that the vault document records; before 11.0 the document is Atlas.md. */
+	/** Sets the layout that the vault document records. */
 	const layout = (n: number) => async (vault: string) => {
 		const almagest = path.join(vault, "Almagest.md");
 		await writeFile(almagest, (await readFile(almagest, "utf8")).replace(/^layout: \d+$/m, `layout: ${n}`));
-		if (n < 7) await rename(almagest, path.join(vault, "Atlas.md"));
 	};
 
 	/** Waits until Obsidian has read every file into its metadata cache. */
@@ -186,7 +218,7 @@ describe("Almagest in Obsidian", () => {
 	}
 
 	describe("reads the layout when it loads at Obsidian's start in a vault Obsidian has not indexed", () => {
-		it("11.0: no notice", { timeout: TIMEOUT }, async () => {
+		it("this layout: no notice", { timeout: TIMEOUT }, async () => {
 			const o = await launch();
 			await o.restart({ freshIndex: true });
 			await indexed(o);
@@ -194,11 +226,23 @@ describe("Almagest in Obsidian", () => {
 			expect(o.errors).toEqual([]);
 		});
 
-		it("9.0: the migration notice", { timeout: TIMEOUT }, async () => {
-			const o = await launch({ prepare: layout(5) });
+		it("another layout: one notice that names the update", { timeout: TIMEOUT }, async () => {
+			const o = await launch({ prepare: layout(9) });
 			await o.restart({ freshIndex: true });
 			await indexed(o);
-			expect(await notices(o)).toEqual(["Almagest: this vault has the 9.0 layout. This plugin needs the 11.0 layout.Show the migration"]);
+			expect(await notices(o)).toEqual([
+				"Almagest: this vault has layout 9, and this plugin reads layout 8. Update Almagest in Obsidian's community plugins, and the agent plugin (claude plugin update almagest@nathanaday-almagest).",
+			]);
+			expect(o.errors).toEqual([]);
+		});
+
+		it("the layout of 11.0: one notice that offers the migration", { timeout: TIMEOUT }, async () => {
+			const o = await launch({ prepare: layout(7) });
+			await o.restart({ freshIndex: true });
+			await indexed(o);
+			expect(await notices(o)).toEqual([
+				"Almagest: this vault keeps sessions/, source-core/, and trash/ at its root, and this version keeps them in tool/. Open the Almagest palette to migrate the vault.",
+			]);
 			expect(o.errors).toEqual([]);
 		});
 	});
@@ -279,40 +323,43 @@ describe("Almagest in Obsidian", () => {
 		expect(o.errors).toEqual([]);
 	});
 
-	it("offers the migration in a vault of Atlas 10.0", { timeout: TIMEOUT }, async () => {
-		const o = await launch({ prepare: layout(6) });
-		const notice = o.page.locator(".notice", { hasText: "this vault has the 10.0 layout" });
-		await notice.waitFor({ timeout: 10_000 });
-		expect(await notice.textContent()).toContain("This plugin needs the 11.0 layout.");
+	type Palette = ReturnType<ObsidianInstance["page"]["locator"]>;
 
-		await notice.locator("button", { hasText: "Show the migration" }).click();
-		const modal = o.page.locator(".modal", { hasText: "Migrate to the 11.0 layout" });
-		await modal.waitFor({ timeout: 10_000 });
-		expect(await modal.textContent()).toContain("from the 10.0 layout to the 11.0 layout in one commit");
-		expect(await modal.textContent()).toContain("Renames Atlas.md to Almagest.md");
-
-		await modal.locator("button", { hasText: "Migrate" }).click();
-		await until("layout: 7", async () => frontmatter(await o.read("Almagest.md").catch(() => "")).layout === "7", { describe: () => o.git(["status", "--short"]) });
-		expect(existsSync(path.join(o.vault, "Atlas.md"))).toBe(false);
-		await until("the migration commit", async () => (await o.git(["log", "-1", "--format=%s"])).startsWith("layout: migrate to 11.0"), {
-			describe: () => o.git(["log", "--oneline", "-3"]),
-		});
-		expect(o.errors).toEqual([]);
-	});
-
-	/** Opens the palette from its command and waits for its first status. */
-	async function openPalette(o: ObsidianInstance) {
+	/** Opens the palette from its command and waits for its home. */
+	async function openPalette(o: ObsidianInstance): Promise<Palette> {
 		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-palette"));
 		const palette = o.page.locator(".almagest-palette");
-		await until("the palette's status", async () => (await palette.locator('[data-row="ingest"]').count()) > 0, {
+		await until("the palette's home", async () => (await palette.locator('[data-area="ingest"]').count()) > 0, {
 			describe: async () => `palette: ${(await palette.count()) ? await palette.innerText() : "none"}`,
 		});
 		return palette;
 	}
 
-	/** The palette's value in a status row. */
-	function row(palette: ReturnType<ObsidianInstance["page"]["locator"]>, name: string): Promise<string | null> {
-		return palette.locator(`[data-row="${name}"] .almagest-palette-value`).textContent();
+	/** Goes back to the palette's home. */
+	async function home(palette: Palette): Promise<void> {
+		// A notice that the test already read would cover the palette's rows and its way back.
+		await palette.page().evaluate(() => document.querySelectorAll(".notice-container .notice").forEach((n) => n.remove()));
+		if ((await palette.getAttribute("data-page")) === "home") return;
+		await palette.locator(".almagest-back").click();
+		await until("the palette's home", async () => (await palette.getAttribute("data-page")) === "home");
+	}
+
+	/** Opens an area's page from the palette's home. */
+	async function goTo(palette: Palette, area: string): Promise<void> {
+		await home(palette);
+		await palette.locator(`[data-area="${area}"]`).click();
+		await until(`the ${area} page`, async () => (await palette.getAttribute("data-page")) === area);
+	}
+
+	/** The line under an area's row on the palette's home. */
+	async function line(palette: Palette, area: string): Promise<string | null> {
+		await home(palette);
+		return palette.locator(`[data-area="${area}"] .almagest-nav-line`).textContent();
+	}
+
+	/** The number of a page's tile, by its label. */
+	function tile(palette: Palette, label: string): Promise<string | null> {
+		return palette.locator(".almagest-tile", { has: palette.page().locator(".almagest-tile-label", { hasText: new RegExp(`^${label}$`) }) }).locator(".almagest-tile-number").textContent();
 	}
 
 	/** Points the agent's terminal at a command that writes what it would run to a file, so no terminal opens. */
@@ -330,18 +377,25 @@ describe("Almagest in Obsidian", () => {
 				await writeFile(path.join(vault, "ingest/notes.txt"), "Notes.\n");
 			},
 		});
-		expect(await o.page.locator('.side-dock-ribbon-action[aria-label="Almagest"]').count()).toBe(1);
+		// The palette is the plugin's one ribbon button: sync and the sessions live in it.
+		const ribbon = await o.page.locator(".side-dock-ribbon-action").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
+		expect(ribbon.filter((l) => /almagest|tag navigator|sessions/i.test(l ?? ""))).toEqual(["Almagest"]);
 		const palette = await openPalette(o);
-		await until("the ingest count", async () => (await row(palette, "ingest")) === "2 files", { describe: () => palette.innerText() });
-		expect(await palette.locator(".almagest-palette-files li").allTextContents()).toEqual(["Paper one.md", "notes.txt"]);
-		expect(await palette.locator('[data-action="ingest"] button').textContent()).toBe("Ingest 2 files");
-		expect(await row(palette, "proposed")).toBe("0");
-		expect(await row(palette, "trash")).toBe("0 files");
+		await until("the ingest line", async () => (await line(palette, "ingest")) === "2 files waiting", { describe: () => palette.innerText() });
+		expect(await palette.locator('[data-area="ingest"] .almagest-chip').textContent()).toBe("2");
+		expect(await line(palette, "changes")).toBe("Nothing to review");
+		expect(await palette.locator('[data-area="changes"] .almagest-chip').count()).toBe(0);
+		await goTo(palette, "ingest");
+		expect(await palette.locator(".almagest-item-title").allTextContents()).toEqual(["Paper one.md", "notes.txt"]);
+		expect(await palette.locator('button[data-action="ingest"]').textContent()).toBe("Ingest 2 files");
+		expect(await tile(palette, "files waiting")).toBe("2");
+		await goTo(palette, "note");
+		expect(await tile(palette, "files in trash")).toBe("0");
 		expect(await o.page.evaluate(() => {
 			const ws = (window as any).app.workspace;
 			return ws.getLeavesOfType("almagest-palette")[0].getRoot() === ws.rightSplit;
 		})).toBe(true);
-		// The palette replaces the status bar item of 10.0.
+		// Almagest adds nothing to the status bar.
 		expect(await o.page.locator(".status-bar [class*=almagest-]").count()).toBe(0);
 		expect(o.errors).toEqual([]);
 	});
@@ -350,7 +404,8 @@ describe("Almagest in Obsidian", () => {
 		const o = await launch({ prepare: (vault) => writeFile(path.join(vault, "ingest/Paper one.md"), "# Paper one\n") });
 		const out = await stubTerminal(o);
 		const palette = await openPalette(o);
-		const ingest = palette.locator('[data-action="ingest"] button', { hasText: "Ingest 1 file" });
+		await goTo(palette, "ingest");
+		const ingest = palette.locator('button[data-action="ingest"]', { hasText: "Ingest 1 file" });
 		await ingest.waitFor({ timeout: 10_000 });
 		await ingest.click();
 
@@ -361,19 +416,22 @@ describe("Almagest in Obsidian", () => {
 		expect(doc.kind).toBe("ingest");
 		expect(frontmatter(await o.read(doc.path)).files).toBe("[Paper one.md]");
 		const message = `/almagest:wiki-ingest Ingest the files of ingest/ into the wiki. Your work document is [[${doc.title}]] (${doc.id}): report each step with change progress, and propose into it with change propose and id ${doc.id}.`;
-		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command).toMatch(TIP_THEN_AGENT);
 		expect(command.endsWith(` && claude '${message}'`)).toBe(true);
 
-		expect(await notices(o)).toContain("Almagest: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Almagest starts the agent in a terminal.");
+		expect(await notices(o)).toContain("Almagest: Duet is not on, so the agent starts in a terminal. The Almagest settings say what Duet needs, or choose the terminal there.");
 		expect(await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)).toBe(doc.path);
-		await until("the palette to list the running work", async () => (await row(palette, "running")) === "1", { describe: () => palette.innerText() });
-		expect(await palette.locator(".almagest-palette-link", { hasText: doc.title }).count()).toBe(1);
+		await until("the palette to count the running work", async () => (await line(palette, "changes")) === "1 running", { describe: () => palette.innerText() });
+		await goTo(palette, "changes");
+		expect(await palette.locator(".almagest-link", { hasText: doc.title }).count()).toBe(1);
 		expect(o.errors).toEqual([]);
 	});
 
-	it("starts an ingest through Duet's API, and lists the conversation under Running until its turn ends", { timeout: TIMEOUT }, async () => {
-		const o = await launch({ prepare: (vault) => writeFile(path.join(vault, "ingest/Paper one.md"), "# Paper one\n") });
-		// A stand-in for Duet at the API boundary: it records each call and ends a turn when the test says so.
+	/**
+	 * A stand-in for Duet at its boundaries: the API, which records each call and ends a turn
+	 * when the test says so, and the command "New conversation", which counts its runs.
+	 */
+	async function fakeDuet(o: ObsidianInstance): Promise<void> {
 		await o.page.evaluate(() => {
 			const w = window as any;
 			const status = new Map<string, string>();
@@ -399,9 +457,26 @@ describe("Almagest in Obsidian", () => {
 					},
 				},
 			};
+			w.duetNewChats = 0;
+			w.app.commands.commands["duet:new-chat"] = { id: "duet:new-chat", name: "Duet: New conversation", callback: () => w.duetNewChats++ };
 		});
+	}
+
+	/** Takes the stand-in Duet away, as the user does by turning Duet off. */
+	async function removeDuet(o: ObsidianInstance): Promise<void> {
+		await o.page.evaluate(() => {
+			const w = window as any;
+			delete w.app.plugins.plugins.duet;
+			delete w.app.commands.commands["duet:new-chat"];
+		});
+	}
+
+	it("starts an ingest through Duet's API, and lists the conversation under Running until its turn ends", { timeout: TIMEOUT }, async () => {
+		const o = await launch({ prepare: (vault) => writeFile(path.join(vault, "ingest/Paper one.md"), "# Paper one\n") });
+		await fakeDuet(o);
 		const palette = await openPalette(o);
-		const ingest = palette.locator('[data-action="ingest"] button', { hasText: "Ingest 1 file" });
+		await goTo(palette, "ingest");
+		const ingest = palette.locator('button[data-action="ingest"]', { hasText: "Ingest 1 file" });
 		await ingest.waitFor({ timeout: 10_000 });
 		await ingest.click();
 
@@ -417,14 +492,141 @@ describe("Almagest in Obsidian", () => {
 				loadUserSetup: true,
 			},
 		]);
-		const running = palette.locator(".almagest-palette-agent");
-		await until("the Running list", async () => (await running.count()) === 1, { describe: () => palette.innerText() });
-		expect(await running.textContent()).toBe(`ingestAgent · ${doc.title}`);
+		await until("the agents line", async () => (await line(palette, "agents"))?.startsWith("1 working") === true, { describe: () => palette.innerText() });
+		await goTo(palette, "agents");
+		const running = palette.locator(".almagest-agent");
+		await until("the Working list", async () => (await running.count()) === 1, { describe: () => palette.innerText() });
+		expect(await running.locator(".almagest-thread-title").textContent()).toBe(`Agent · ${doc.title}`);
+		expect(await running.locator(".almagest-thread-preview").textContent()).toBe("ingest · working in Duet");
+		expect(await running.getAttribute("data-state")).toBe("working");
 
 		await o.page.evaluate((title) => (window as any).duetEnd(`Duet/Agent · ${title}.md`), doc.title);
 		await until("the turn's end to clear the list", async () => (await running.count()) === 0, { describe: () => palette.innerText() });
-		expect(await notices(o)).not.toContain("Almagest: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Almagest starts the agent in a terminal.");
-		await o.page.evaluate(() => delete (window as any).app.plugins.plugins.duet);
+		expect(await notices(o)).not.toContain("Almagest: Duet is not on, so the agent starts in a terminal. The Almagest settings say what Duet needs, or choose the terminal there.");
+		await removeDuet(o);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("the settings choose where agents work: Duet names what it needs, and the terminal's settings show while a terminal starts the agents", { timeout: TIMEOUT }, async () => {
+		const o = await launch();
+		const settings = await o.settings("almagest");
+		const tab = settings.locator(".vertical-tab-content");
+		const row = (name: RegExp) => tab.locator(".setting-item-name", { hasText: name }).first().locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' setting-item ')][1]");
+		const choice = row(/^Agent conversations$/).locator("select:not(.is-measuring)");
+		const duet = tab.locator(".almagest-duet-state");
+		const terminalSettings = tab.locator(".setting-item-heading, .setting-group-heading, h3, .setting-item-name", { hasText: /^All vaults$/ });
+		await until("the Duet line", async () => (await duet.count()) === 1, { describe: async () => (await tab.textContent()) ?? "" });
+
+		// Duet is the default; without it, the settings name the install and keep the terminal's settings.
+		expect(await choice.inputValue()).toBe("duet");
+		expect(await choice.locator("option").allTextContents()).toEqual(["Duet (recommended)", "Terminal (configurable)"]);
+		expect(await duet.getAttribute("data-state")).toBe("missing");
+		expect(await duet.textContent()).toContain("Duet is not installed. Install it from Obsidian's community plugins.");
+		expect(await duet.locator("button", { hasText: "Install Duet" }).count()).toBe(1);
+		expect(await terminalSettings.count()).toBeGreaterThan(0);
+
+		// With Duet on, Duet runs the conversations, and the terminal's settings leave.
+		await fakeDuet(o);
+		await until("Duet on", async () => (await duet.getAttribute("data-state")) === "on", { describe: async () => (await tab.textContent()) ?? "" });
+		expect(await duet.textContent()).toContain("Duet runs each agent conversation in a note of this vault");
+		expect(await terminalSettings.count()).toBe(0);
+
+		// The terminal: no Duet line, and the terminal's settings.
+		await choice.selectOption("terminal");
+		await until("the terminal's settings", async () => (await duet.count()) === 0 && (await terminalSettings.count()) > 0, { describe: async () => (await tab.textContent()) ?? "" });
+		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.settings.conversations)).toBe("terminal");
+		await removeDuet(o);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("shows the Duet tip above Almagest.md's text while Duet is the choice and does not run, and writes nothing into the file", { timeout: TIMEOUT }, async () => {
+		const o = await launch();
+		// A note keeps both views in the page; each check looks in the one the leaf shows.
+		const view = { source: ".markdown-source-view", preview: ".markdown-reading-view" } as const;
+		const tipIn = (mode: keyof typeof view) => o.page.locator(`.workspace-leaf.mod-active ${view[mode]} .almagest-duet-tip`);
+		let tip = tipIn("source");
+		const shows = async (mode: string) => {
+			await until(`the tip in ${mode}`, async () => (await tip.count()) === 1 && (await tip.isVisible()), { describe: () => o.page.locator(".workspace-leaf.mod-active").innerText() });
+			expect(await tip.locator(".callout-title-inner").textContent()).toBe("Tip");
+			expect(await tip.textContent()).toContain("Almagest works best with the Duet community plugin.");
+			expect(await tip.locator("a.almagest-duet-link").getAttribute("href")).toBe("obsidian://show-plugin?id=duet");
+		};
+		// A vault with no description has no text after the properties; the tip follows them.
+		for (const mode of ["source", "preview"] as const) {
+			await open(o, "Almagest.md", mode);
+			tip = tipIn(mode);
+			await shows(`${mode}, with no text`);
+		}
+		// With text, the tip comes before it.
+		await o.page.evaluate(async () => {
+			const app = (window as any).app;
+			const file = app.vault.getFileByPath("Almagest.md");
+			await app.vault.modify(file, (await app.vault.read(file)) + "\nThe vault's own context.\n");
+		});
+		const before = await o.read("Almagest.md");
+		for (const mode of ["source", "preview"] as const) {
+			await open(o, "Almagest.md", mode);
+			tip = tipIn(mode);
+			await shows(`${mode}, with text`);
+			// The text follows the tip, in the same view.
+			const follows = await tip.evaluate((el, scope) => {
+				const text = [...document.querySelectorAll(`.workspace-leaf.mod-active ${scope} *`)].find((x) => x.childElementCount === 0 && x.textContent === "The vault's own context.");
+				return !!text && (el.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+			}, view[mode]);
+			expect(follows).toBe(true);
+		}
+		// The tip stays out of other notes.
+		await o.page.evaluate(async () => {
+			await (window as any).app.vault.create("scratchpad/Plain.md", "Text.\n");
+		});
+		await open(o, "scratchpad/Plain.md", "source");
+		expect(await o.page.locator(".workspace-leaf.mod-active .almagest-duet-tip").count()).toBe(0);
+
+		// Duet on: no tip. Duet off again: the tip. The terminal chosen: no tip.
+		await open(o, "Almagest.md", "source");
+		tip = tipIn("source");
+		await until("the tip", async () => (await tip.count()) === 1);
+		await fakeDuet(o);
+		await until("the tip to leave with Duet on", async () => (await tip.count()) === 0);
+		await removeDuet(o);
+		await until("the tip to come back", async () => (await tip.count()) === 1);
+		await o.page.evaluate(async () => {
+			const plugin = (window as any).app.plugins.plugins.almagest;
+			plugin.settings.conversations = "terminal";
+			plugin.duetChanged();
+		});
+		await until("the tip to leave with the terminal chosen", async () => (await tip.count()) === 0);
+		await open(o, "Almagest.md", "preview");
+		expect(await tipIn("preview").count()).toBe(0);
+		expect(await o.read("Almagest.md")).toBe(before);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("with the terminal chosen, an agent starts in a terminal with no tip and no notice", { timeout: TIMEOUT }, async () => {
+		const o = await launch({ pluginData: { conversations: "terminal" } });
+		const out = await stubTerminal(o);
+		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:start-agent"));
+		const command = await terminalCommand(out);
+		expect(command).toMatch(/^cd '.+' && claude$/);
+		expect((await notices(o)).filter((t) => t.includes("Duet"))).toEqual([]);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("Start an agent opens a new Duet conversation when Duet runs, and a terminal with the tip when it does not", { timeout: TIMEOUT }, async () => {
+		const o = await launch();
+		const out = await stubTerminal(o);
+		await fakeDuet(o);
+		const palette = await openPalette(o);
+		await goTo(palette, "agents");
+		await palette.locator('button[data-action="start"]').click();
+		await until("the Duet conversation", async () => (await o.page.evaluate(() => (window as any).duetNewChats)) === 1);
+		expect(existsSync(out)).toBe(false);
+
+		await removeDuet(o);
+		await goTo(palette, "agents");
+		await palette.locator('button[data-action="start"]').click();
+		const command = await terminalCommand(out);
+		expect(command).toMatch(/^printf '.+' 'obsidian:\/\/show-plugin\?id=duet' && cd '.+' && claude$/s);
 		expect(o.errors).toEqual([]);
 	});
 
@@ -499,14 +701,16 @@ describe("Almagest in Obsidian", () => {
 		});
 		const out = await stubTerminal(o);
 		const palette = await openPalette(o);
-		const volume = palette.locator('.almagest-palette-volume[data-volume="cs566-notes"]');
-		const publish = volume.locator("button.almagest-palette-publish");
+		await until("the journals line", async () => (await line(palette, "journals")) === "1 to publish", { describe: () => palette.innerText() });
+		await goTo(palette, "journals");
+		const volume = palette.locator('.almagest-item[data-volume="cs566-notes"]');
+		const publish = volume.locator('button[data-action="publish"]');
+		const meta = volume.locator(".almagest-item-meta");
 		await until("the volume in the palette", async () => (await volume.count()) === 1, { describe: () => palette.innerText() });
-		expect(await volume.locator(".almagest-palette-volume-name").textContent()).toBe("CS566 Notes");
-		expect(await volume.locator(".almagest-palette-value").textContent()).toBe("1 note");
-		expect(await volume.locator(".almagest-palette-edition").textContent()).toBe("Never published");
-		expect(await volume.locator(".almagest-palette-changed").textContent()).toBe("changed");
-		expect(await row(palette, "journals")).toBe("1 to publish");
+		expect(await volume.locator(".almagest-item-title").textContent()).toBe("CS566 Notes");
+		expect(await meta.textContent()).toBe("1 note · never published");
+		expect(await volume.locator(".almagest-chip").textContent()).toBe("changed");
+		expect(await tile(palette, "to publish")).toBe("1");
 		expect(await publish.textContent()).toBe("Publish");
 		expect(await publish.isEnabled()).toBe(true);
 
@@ -520,7 +724,7 @@ describe("Almagest in Obsidian", () => {
 		await modal.locator("button.mod-cta", { hasText: "Publish" }).click();
 
 		const command = await terminalCommand(out);
-		const edition = `source-core/documents/${title}.md`;
+		const edition = `tool/source-core/documents/${title}.md`;
 		const fields = frontmatter(await o.read(edition));
 		expect([fields.origin, fields.volume, fields.locator, fields.status]).toEqual(["journal", "cs566-notes", "journals/cs566-notes", "pending"]);
 		expect(await o.git(["log", "-1", "--format=%s", "--", edition])).toBe(`capture: ${title}\n`);
@@ -528,17 +732,17 @@ describe("Almagest in Obsidian", () => {
 		const doc = await workDoc(o, `Ingest ${title}`);
 		expect(doc.kind).toBe("ingest");
 		const message = `/almagest:wiki-sync Absorb the source [[${title}]] (${fields.id}), the user's journal edition. Cite it where its ideas land. Your work document is [[${doc.title}]] (${doc.id}): report each step with change progress, and propose into it with change propose and id ${doc.id}.`;
-		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command).toMatch(TIP_THEN_AGENT);
 		expect(command.endsWith(` && claude '${message.replace(/'/g, "'\\''")}'`)).toBe(true);
 		expect(await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)).toBe(doc.path);
 		expect(await notices(o)).toContain(`Almagest: published ${title}.`);
 
 		// The volume now shows its edition, and Publish waits for a change.
-		await until("the edition in the palette", async () => (await volume.locator(".almagest-palette-edition").textContent()) === title, { describe: () => palette.innerText() });
+		await until("the edition in the palette", async () => (await meta.textContent()) === `1 note · last edition ${title}`, { describe: () => palette.innerText() });
 		expect(await publish.isDisabled()).toBe(true);
 		expect(await publish.getAttribute("title")).toBe(`No change since ${title}.`);
-		expect(await volume.locator(".almagest-palette-changed").count()).toBe(0);
-		expect(await row(palette, "journals")).toBe("0 to publish");
+		expect(await volume.locator(".almagest-chip").count()).toBe(0);
+		expect(await tile(palette, "to publish")).toBe("0");
 
 		// The publication history opens with the almagest callout, which the plugin styles.
 		await open(o, history, "preview");
@@ -551,7 +755,7 @@ describe("Almagest in Obsidian", () => {
 			const app = (window as any).app;
 			await app.vault.modify(app.vault.getFileByPath(file), "Gradient descent finally clicked.\nMomentum too.\n");
 		}, note);
-		await until("Publish to turn on", async () => (await publish.isEnabled()) && (await row(palette, "journals")) === "1 to publish", { describe: () => palette.innerText() });
+		await until("Publish to turn on", async () => (await publish.isEnabled()) && (await tile(palette, "to publish")) === "1", { describe: () => palette.innerText() });
 		await open(o, note, "source");
 		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:publish-journal"));
 		await modal.waitFor({ timeout: 10_000 });
@@ -560,11 +764,11 @@ describe("Almagest in Obsidian", () => {
 
 		const second = await terminalCommand(out, command);
 		const numbered = `${title} (2)`;
-		expect(frontmatter(await o.read(`source-core/documents/${numbered}.md`)).volume).toBe("cs566-notes");
+		expect(frontmatter(await o.read(`tool/source-core/documents/${numbered}.md`)).volume).toBe("cs566-notes");
 		const doc2 = await workDoc(o, `Ingest ${numbered}`);
 		expect(second).toContain(`Absorb the source [[${numbered}]]`);
 		expect(second).toContain(`Your work document is [[${doc2.title}]] (${doc2.id})`);
-		await until("the second edition in the palette", async () => (await volume.locator(".almagest-palette-edition").textContent()) === numbered, { describe: () => palette.innerText() });
+		await until("the second edition in the palette", async () => (await meta.textContent()) === `1 note · last edition ${numbered}`, { describe: () => palette.innerText() });
 		expect(await publish.isDisabled()).toBe(true);
 		expect(o.errors).toEqual([]);
 	});
@@ -579,12 +783,13 @@ describe("Almagest in Obsidian", () => {
 			},
 		});
 		const palette = await openPalette(o);
-		const volume = palette.locator('.almagest-palette-volume[data-volume="garden"]');
+		await goTo(palette, "journals");
+		const volume = palette.locator('.almagest-item[data-volume="garden"]');
 		await until("the empty volume", async () => (await volume.count()) === 1, { describe: () => palette.innerText() });
-		expect(await volume.locator(".almagest-palette-value").textContent()).toBe("0 notes");
-		expect(await volume.locator("button.almagest-palette-publish").isDisabled()).toBe(true);
-		expect(await volume.locator("button.almagest-palette-publish").getAttribute("title")).toBe("The volume holds no note.");
-		expect(await row(palette, "journals")).toBe("0 to publish");
+		expect(await volume.locator(".almagest-item-meta").textContent()).toBe("0 notes · never published");
+		expect(await volume.locator('button[data-action="publish"]').isDisabled()).toBe(true);
+		expect(await volume.locator('button[data-action="publish"]').getAttribute("title")).toBe("The volume holds no note.");
+		expect(await tile(palette, "to publish")).toBe("0");
 
 		// The command offers itself only inside journals/<volume>/.
 		await open(o, "scratchpad/Loose note.md", "source");
@@ -593,7 +798,7 @@ describe("Almagest in Obsidian", () => {
 		expect(o.errors).toEqual([]);
 	});
 
-	it("safe delete moves a note that nothing links to trash/", { timeout: TIMEOUT }, async () => {
+	it("safe delete moves a note that nothing links to tool/trash/", { timeout: TIMEOUT }, async () => {
 		const note = "scratchpad/Loose note.md";
 		const o = await launch({
 			prepare: async (vault) => {
@@ -603,20 +808,21 @@ describe("Almagest in Obsidian", () => {
 		});
 		await open(o, note, "source");
 		const palette = await openPalette(o);
-		const button = palette.locator('[data-action="trash"] button');
-		expect(await palette.locator('[data-action="trash"] .almagest-palette-path').textContent()).toBe(note);
-		await button.click();
+		await goTo(palette, "note");
+		// The editor names the open note; the palette does not repeat its path.
+		expect(await palette.innerText()).not.toContain(note);
+		await palette.locator('button[data-action="trash"]').click();
 
 		await until("the note to leave", () => !existsSync(path.join(o.vault, note)));
-		const [day] = await readdir(path.join(o.vault, "trash"));
-		const moved = `trash/${day}/${note}`;
+		const [day] = await readdir(path.join(o.vault, "tool/trash"));
+		const moved = `tool/trash/${day}/${note}`;
 		expect(await o.read(moved)).toBe("A note nothing links.\n");
 		// The views sync that the move starts may commit a snapshot after it; the move is a commit of its own.
 		await until("the trash commit", async () => (await o.git(["log", "-1", "--format=%s", "--", moved])) === `trash: ${note}\n`, {
 			describe: () => o.git(["log", "--stat", "-3"]),
 		});
 		await until("the notice", async () => (await notices(o)).includes(`Almagest: Moved ${note} to ${moved}.`), { describe: async () => JSON.stringify(await notices(o)) });
-		await until("the trash count", async () => (await row(palette, "trash")) === "1 file", { describe: () => palette.innerText() });
+		await until("the trash count", async () => (await tile(palette, "file in trash")) === "1", { describe: () => palette.innerText() });
 		expect(o.errors).toEqual([]);
 	});
 
@@ -635,7 +841,7 @@ describe("Almagest in Obsidian", () => {
 		);
 		const change = JSON.parse(await o.almagest(["change", "propose", plan, "--json"]));
 		await o.almagest(["change", "apply", change.ref.id, "--json"]);
-		const beta = "source-core/documents/Beta.md";
+		const beta = "tool/source-core/documents/Beta.md";
 		const mine = "scratchpad/Plan.md";
 		await mkdir(path.join(o.vault, "scratchpad"), { recursive: true });
 		await writeFile(path.join(o.vault, mine), "Read [[Beta]] first.\n");
@@ -643,7 +849,8 @@ describe("Almagest in Obsidian", () => {
 		await open(o, beta, "preview");
 
 		const palette = await openPalette(o);
-		await palette.locator('[data-action="trash"] button').click();
+		await goTo(palette, "note");
+		await palette.locator('button[data-action="trash"]').click();
 		const modal = o.page.locator(".modal", { hasText: "Beta stays" });
 		await modal.waitFor({ timeout: 10_000 });
 		const links = await modal.locator("li a").allTextContents();
@@ -664,7 +871,7 @@ describe("Almagest in Obsidian", () => {
 	});
 
 	/** Applies three linked topics, and checks out Beta and Alpha with the CLI, as the librarian would. */
-	async function checkOut(o: ObsidianInstance): Promise<{ folder: string; readingList: string; alphaCopy: string; date: string }> {
+	async function checkOut(o: ObsidianInstance): Promise<{ folder: string; index: string; alphaCopy: string; date: string }> {
 		const plan = path.join(o.vault, "..", "topics.json");
 		await writeFile(
 			plan,
@@ -693,71 +900,97 @@ describe("Almagest in Obsidian", () => {
 		);
 		const { made } = JSON.parse(await o.almagest(["checkout", "make", order, "--json"]));
 		const alphaCopy = made.copies.find((p: string) => p.endsWith("/Alpha (checkout).md"));
-		return { folder: made.folder, readingList: made.reading_list, alphaCopy, date: frontmatter(await o.read(made.reading_list)).checked_out!.slice(0, 10) };
+		return { folder: made.folder, index: made.index, alphaCopy, date: frontmatter(await o.read(made.index)).checked_out!.slice(0, 10) };
 	}
 
-	it("lists a checkout; an edited copy turns Return on, and Return proposes the edit that Approve applies", { timeout: 120_000 }, async () => {
+	it("lists a checkout that is out; Return in one click proposes its edit, moves it to tool/returned/, and the ledger lists it", { timeout: 120_000 }, async () => {
 		const o = await launch();
-		const { folder, readingList, alphaCopy, date } = await checkOut(o);
+		const { folder, index, alphaCopy, date } = await checkOut(o);
+		const name = "Alpha study";
+		const returned = `tool/returned/${folder.slice("checkout/".length)}`;
 		const palette = await openPalette(o);
-		const checkout = palette.locator(`.almagest-palette-checkout[data-folder="${folder}"]`);
-		const ret = checkout.locator("button.almagest-palette-return");
-		const line = checkout.locator(".almagest-palette-checkout-line");
+		expect(await line(palette, "library")).toBe("1 out");
+		await goTo(palette, "library");
+		const checkout = palette.locator(`.almagest-item[data-folder="${folder}"]`);
+		const ret = checkout.locator('button[data-action="return"]');
+		const meta = checkout.locator(".almagest-item-meta");
 		await until("the checkout in the palette", async () => (await checkout.count()) === 1, { describe: () => palette.innerText() });
-		expect(await checkout.locator(".almagest-palette-request").textContent()).toBe("everything on alpha");
-		expect(await checkout.locator(".almagest-palette-value").textContent()).toBe("2 documents");
-		expect(await line.textContent()).toBe(`${date} · 0 edited`);
+		expect(await checkout.locator(".almagest-item-title").textContent()).toBe(name);
+		expect(await meta.textContent()).toBe(`${date} · 2 documents · 0 edited`);
+		// Return is on whatever the edits: a checkout with none just moves.
 		expect(await ret.textContent()).toBe("Return");
-		expect(await ret.isDisabled()).toBe(true);
-		expect(await ret.getAttribute("title")).toBe("No copy is edited.");
-		expect(await row(palette, "checkouts")).toBe("0 to return");
+		expect(await ret.isEnabled()).toBe(true);
+		expect(await tile(palette, "out")).toBe("1");
+		expect(await tile(palette, "returned")).toBe("0");
 
-		// The request opens the reading list; it and each copy open with the almagest callout.
-		await checkout.locator(".almagest-palette-request a").click();
-		await until("the reading list", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === readingList);
-		for (const note of [readingList, alphaCopy]) {
+		// The name opens the checkout's index; it and each copy open with the almagest callout.
+		await checkout.locator(".almagest-item-title a").click();
+		await until("the index", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === index);
+		expect(index).toBe(`${folder}/_index.md`);
+		for (const note of [index, alphaCopy]) {
 			await open(o, note, "preview");
 			const callout = o.page.locator('.workspace-leaf.mod-active .markdown-reading-view .callout[data-callout="almagest"]');
 			await callout.waitFor({ timeout: 10_000 });
 			expect(await callout.evaluate((el) => getComputedStyle(el).getPropertyValue("--callout-icon").trim())).toBe("lucide-map");
 		}
 
-		// An edit of a copy, as Obsidian saves it, turns Return on after the palette reads the status again.
+		// An edit of a copy, as Obsidian saves it, counts after the palette reads the status again.
 		await o.page.evaluate(async (file) => {
 			const app = (window as any).app;
 			const copy = app.vault.getFileByPath(file);
 			await app.vault.modify(copy, `${await app.vault.read(copy)}\nA line the reader added.\n`);
 		}, alphaCopy);
-		await until("Return to turn on", async () => (await ret.isEnabled()) && (await line.textContent()) === `${date} · 1 edited`, { describe: () => palette.innerText() });
-		expect(await row(palette, "checkouts")).toBe("1 to return");
+		await until("the edit", async () => (await meta.textContent()) === `${date} · 2 documents · 1 edited`, { describe: () => palette.innerText() });
+		expect(await line(palette, "library")).toBe("1 out · 1 with edits");
 
-		// Return proposes the change and opens it.
+		// One click: the change of the edit, the move, and a notice with a link to the change.
+		await goTo(palette, "library");
 		await ret.click();
 		const proposed = await until("the proposed change", async () => {
 			const list = JSON.parse(await o.almagest(["vault", "--json"])).status.changes.proposed as { id: string; title: string; path: string }[];
 			return list.length === 1 ? list[0] : undefined;
 		});
-		expect(proposed.title).toBe(`${date} Return ${folder.slice("checkout/".length + 11)}`);
+		expect(proposed.title).toBe(`${date} Return ${name}`);
+		const notice = o.page.locator(".notice", { hasText: `Returned ${name} to ${returned}.` });
+		await until("the notice", async () => (await notice.count()) === 1, { describe: async () => JSON.stringify(await notices(o)) });
+		expect(await notice.textContent()).toContain(`${proposed.title} proposes your edits to 1 document; approve it in the change.`);
+		expect(existsSync(path.join(o.vault, folder))).toBe(false);
+		const fields = frontmatter(await o.read(`${returned}/_index.md`));
+		expect([fields.status, fields.return_change]).toEqual(["returned", proposed.id]);
+		expect(fields.returned).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+		expect(await o.read(`${returned}/Alpha (checkout).md`)).toContain("A line the reader added.");
+		// The copy that was open comes back from its new place.
+		const tabs = () => o.page.evaluate(() => (window as any).app.workspace.getLeavesOfType("markdown").map((l: any) => l.view.file?.path));
+		await until("the open copy at its new place", async () => (await tabs()).includes(`${returned}/Alpha (checkout).md`), { describe: async () => JSON.stringify(await tabs()) });
+
+		// The palette lists what is out: nothing now.
+		await until("the checkout to leave the list", async () => (await checkout.count()) === 0, { describe: () => palette.innerText() });
+		expect(await palette.locator(".almagest-empty").textContent()).toBe("No checkout is out.");
+		expect(await tile(palette, "returned")).toBe("1");
+
+		// The notice's link opens the change; Approve writes the edit into the original, with the links pointed back at the wiki.
+		await notice.locator("a", { hasText: "Open the change" }).click();
 		await until("the change to open", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === proposed.path, {
 			describe: () => o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path),
 		});
-		expect((await notices(o)).filter((t) => t.includes("left out"))).toEqual([]);
-		await until("the checkout to show its return", async () => (await line.textContent())?.startsWith(`${date} · 1 edited · returned `), { describe: () => palette.innerText() });
-		expect(await ret.isDisabled()).toBe(true);
-		expect(await ret.getAttribute("title")).toMatch(/^Returned \d{4}-\d{2}-\d{2}\.$/);
-		expect(await row(palette, "checkouts")).toBe("0 to return");
-		expect(frontmatter(await o.read(readingList)).returned).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-
-		// Approve writes the edit into the original, with the links pointed back at the wiki.
 		const widget = o.page.locator(".workspace-leaf.mod-active .almagest-change-card");
 		await widget.locator("button", { hasText: "Approve" }).click({ timeout: 10_000 });
 		await until("the change to apply", async () => (await status(o, proposed.path)).status === "applied", { describe: () => o.read(proposed.path) });
-		const alpha = await o.read("source-core/documents/Alpha.md");
+		const alpha = await o.read("tool/source-core/documents/Alpha.md");
 		expect(alpha).toContain("Alpha rests on [[Beta]] and [[Gamma]].\n\nA line the reader added.\n");
 		expect(alpha).not.toContain("(checkout)");
-		await until("the change's commit", async () => (await o.git(["log", "-1", "--format=%s", "--", "source-core/documents/Alpha.md"])) === `change: Return ${folder.slice("checkout/".length + 11)}\n`, {
+		await until("the change's commit", async () => (await o.git(["log", "-1", "--format=%s", "--", "tool/source-core/documents/Alpha.md"])) === `change: Return ${name}\n`, {
 			describe: () => o.git(["log", "--oneline", "-5"]),
 		});
+		expect(await line(palette, "library")).toBe("Gather the pages on a subject");
+
+		// The ledger's Base lists the checkout, returned; its row opens the index.
+		await open(o, "checkout/Checkout · Ledger.md", "preview");
+		const ledger = o.page.locator(".workspace-leaf.mod-active .markdown-reading-view");
+		await until("the ledger's row", async () => {
+			const text = await ledger.innerText();
+			return text.includes(name) && text.includes("returned");
+		}, { describe: () => ledger.innerText() });
 		expect(o.errors).toEqual([]);
 	});
 
@@ -765,8 +998,10 @@ describe("Almagest in Obsidian", () => {
 		const o = await launch();
 		const out = await stubTerminal(o);
 		const palette = await openPalette(o);
-		expect(await palette.locator(".almagest-palette-section", { hasText: "Checkouts" }).locator(".almagest-palette-quiet").textContent()).toMatch(/^No checkout yet:/);
-		await palette.locator('[data-action="checkout"] button', { hasText: "Checkout" }).click();
+		expect(await line(palette, "library")).toBe("Gather the pages on a subject");
+		await goTo(palette, "library");
+		expect(await palette.locator(".almagest-empty").textContent()).toBe("No checkout yet.");
+		await palette.locator('button[data-action="checkout"]').click();
 
 		const modal = o.page.locator(".modal", { hasText: "Check out material" });
 		await modal.waitFor({ timeout: 10_000 });
@@ -780,9 +1015,9 @@ describe("Almagest in Obsidian", () => {
 		await until("the modal to close", async () => (await modal.count()) === 0);
 
 		const command = await terminalCommand(out);
-		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command).toMatch(TIP_THEN_AGENT);
 		expect(command.endsWith(" && claude '/almagest:wiki-checkout Check out the material on: reinforcement learning'")).toBe(true);
-		expect(await notices(o)).toContain("Almagest: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Almagest starts the agent in a terminal.");
+		expect(await notices(o)).toContain("Almagest: Duet is not on, so the agent starts in a terminal. The Almagest settings say what Duet needs, or choose the terminal there.");
 		expect(o.errors).toEqual([]);
 	});
 
@@ -1005,9 +1240,9 @@ describe("Almagest in Obsidian", () => {
 		expect(doc.kind).toBe("draft");
 		expect(doc.title).toMatch(/^\d{4}-\d{2}-\d{2} Draft Momentum$/);
 		const message = `/almagest:wiki-edit Draft a topic titled Momentum from [[Lecture · wikified]] and what the wiki holds; give it a why. Your work document is [[${doc.title}]] (${doc.id}): report each step with change progress, and propose into it with change propose and id ${doc.id}.`;
-		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command).toMatch(TIP_THEN_AGENT);
 		expect(command.endsWith(` && claude '${message.replace(/'/g, "'\\''")}'`)).toBe(true);
-		expect(await notices(o)).toContain("Almagest: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Almagest starts the agent in a terminal.");
+		expect(await notices(o)).toContain("Almagest: Duet is not on, so the agent starts in a terminal. The Almagest settings say what Duet needs, or choose the terminal there.");
 
 		// The bubble shows drafting while the work document runs and waits for the user.
 		await until("drafting", async () => (await momentum.getAttribute("data-state")) === "drafting", { describe: () => momentum.innerHTML() });
@@ -1038,11 +1273,143 @@ describe("Almagest in Obsidian", () => {
 		expect(o.errors).toEqual([]);
 	});
 
+	it("lists the agent sessions on the Agents page as message threads; one that waits counts on the home row, and the closed ones fold away and offer Resume", { timeout: TIMEOUT }, async () => {
+		const now = Date.now();
+		const session = (id: string, status: string, updated: number, extra: string, body: string, description = "Plan the [[Alpha]] study") =>
+			`---\nid: ses-${id}\ntype: session\nharness: claude\nharness_id: ${id}\nstatus: ${status}\nupdated: ${new Date(updated).toISOString()}\n${extra}${description ? `description: ${description}\n` : ""}---\n\n${body}`;
+		const o = await launch({
+			prepare: async (vault) => {
+				await mkdir(path.join(vault, "tool/sessions/2026-10"), { recursive: true });
+				await writeFile(path.join(vault, "tool/sessions/2026-10/waits.md"), session("aaaaaa", "waiting", now - 120_000, "", "## Progress\n\n- 2026-10-07: Read the sources.\n- 2026-10-07: Asked which paper comes first.\n"));
+				await writeFile(path.join(vault, "tool/sessions/2026-10/works.md"), session("cccccc", "running", now - 10_000, "", "", ""));
+				await writeFile(path.join(vault, "tool/sessions/2026-10/closed.md"), session("bbbbbb", "ended", now - 1_200_000, `ended: ${new Date(now - 1_200_000).toISOString()}\n`, "## Progress\n\n- 2026-10-07: Proposed the edits.\n"));
+				// The waiting session runs in a Duet conversation, whose note names its id.
+				await mkdir(path.join(vault, "Conversations"), { recursive: true });
+				await writeFile(path.join(vault, "Conversations/Plan Alpha.md"), "---\nduet: conversation\nagent: claude\nsession: aaaaaa\n---\n\n> [!user]\n> Plan the study.\n");
+			},
+		});
+		// A sync links each session to its conversation, as the plugin's sync after an edit does.
+		await o.almagest(["vault", "sync", "--views"]);
+		expect(await o.read("tool/sessions/2026-10/waits.md")).toContain("> Duet conversation: [[Plan Alpha]]");
+		const out = await stubTerminal(o);
+		const palette = await openPalette(o);
+		await until("the agents line", async () => (await line(palette, "agents")) === "1 needs you · 2 live sessions", { describe: () => palette.innerText() });
+		const chip = palette.locator('[data-area="agents"] .almagest-chip');
+		expect(await chip.textContent()).toBe("1");
+		expect(await chip.getAttribute("data-tone")).toBe("accent");
+
+		await goTo(palette, "agents");
+		expect(await tile(palette, "needs you")).toBe("1");
+		const thread = (state: string) => palette.locator(`.almagest-thread[data-state="${state}"]`);
+		const waits = thread("needs-you");
+		expect(await waits.locator(".almagest-thread-title").textContent()).toBe("Plan the Alpha study");
+		expect(await waits.locator(".almagest-thread-time").textContent()).toBe("2 min ago");
+		expect(await waits.locator(".almagest-thread-preview").textContent()).toBe("Needs you · 2026-10-07: Asked which paper comes first.");
+		// An open session runs in its terminal, so it offers no Resume.
+		expect(await waits.locator("button").count()).toBe(0);
+		// A session with no description yet is untitled, not its document's name; its avatar glows while it works.
+		const works = thread("working");
+		expect(await works.locator(".almagest-thread-title").textContent()).toBe("Untitled session");
+		expect(await works.locator(".almagest-thread-preview").textContent()).toBe("Working");
+		const animation = (row: typeof works) => row.locator(".almagest-avatar").evaluate((el) => getComputedStyle(el).animationName);
+		expect(await animation(works)).toBe("almagest-glow");
+		expect(await animation(waits)).toBe("none");
+
+		// The closed sessions fold away; their head opens them, gray and still.
+		const closed = thread("ended");
+		expect(await closed.isVisible()).toBe(false);
+		await palette.locator(".almagest-fold > summary").click();
+		await until("the closed sessions", () => closed.isVisible());
+		expect(await closed.locator(".almagest-thread-time").textContent()).toBe("20 min ago");
+		expect(await closed.locator(".almagest-thread-preview").textContent()).toBe("Ended · 2026-10-07: Proposed the edits.");
+		expect(await closed.getAttribute("class")).toContain("is-closed");
+		expect(await animation(closed)).toBe("none");
+		const faint = await closed.locator(".almagest-thread-title").evaluate((el) => {
+			const probe = document.body.createDiv();
+			probe.style.color = "var(--text-faint)";
+			const want = getComputedStyle(probe).color;
+			probe.remove();
+			return getComputedStyle(el).color === want;
+		});
+		expect(faint).toBe(true);
+
+		// Resume finds no saved conversation for this made-up session, says so, and runs nothing.
+		await closed.locator('button[data-action="resume"]').click();
+		await until("the notice", async () => (await notices(o)).some((t) => t.includes("no saved conversation")), { describe: async () => JSON.stringify(await notices(o)) });
+		expect(existsSync(out)).toBe(false);
+		// The fold stays open while the palette draws again.
+		await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.app.workspace.getLeavesOfType("almagest-palette")[0].view.draw());
+		expect(await closed.isVisible()).toBe(true);
+
+		// A row opens the session's Duet conversation when it has one, else the session's document.
+		const active = () => o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path);
+		await until("the conversation's link", async () => {
+			await o.page.evaluate(() => void (window as any).app.workspace.getLeavesOfType("almagest-palette")[0].view.refresh());
+			await waits.click();
+			return (await active()) === "Conversations/Plan Alpha.md";
+		}, { describe: active });
+		await goTo(palette, "agents");
+		await thread("working").click();
+		await until("the session to open", async () => (await active()) === "tool/sessions/2026-10/works.md", { describe: active });
+		expect(o.errors).toEqual([]);
+	});
+
+	it("migrates an 11.0 vault from the palette: it shows what moves, then one button moves it and opens the home", { timeout: TIMEOUT }, async () => {
+		const session = "---\nid: ses-cccccc\ntype: session\ncreated: 2026-10-01T09:00:00\nupdated: 2026-10-01T10:00:00\nharness: claude\nharness_id: cccccc\nstatus: ended\n---\n\n## Description\n\nWork.\n";
+		const o = await launch({
+			// The vault as 11.0 left it: sessions/, source-core/, and trash/ at the root, and a note that links into one.
+			prepare: async (vault) => {
+				await mkdir(path.join(vault, "tool/sessions/2026-10"), { recursive: true });
+				await writeFile(path.join(vault, "tool/sessions/2026-10/2026-10-01 0900 cccccc.md"), session);
+				for (const dir of ["sessions", "source-core"]) await rename(path.join(vault, "tool", dir), path.join(vault, dir));
+				await rm(path.join(vault, "tool"), { recursive: true });
+				const edit = async (file: string, from: string, to: string) => writeFile(path.join(vault, file), (await readFile(path.join(vault, file), "utf8")).replace(from, to));
+				await edit("Almagest.md", "\nlayout: 8\n", "\nlayout: 7\n");
+				await edit("sessions/Sessions.base", 'file.inFolder("tool/sessions")', 'file.inFolder("sessions")');
+				await edit(".obsidian/app.json", '"tool/source-core/originals"', '"source-core/originals"');
+				await edit(".obsidian/app.json", '"tool/trash/"', '"trash/"');
+				await writeFile(path.join(vault, "scratchpad/Plan.md"), "Read [[sessions/2026-10/2026-10-01 0900 cccccc|the last session]].\n");
+			},
+		});
+		await until("the notice", async () => (await notices(o)).some((t) => t.includes("Open the Almagest palette to migrate the vault")), { describe: async () => JSON.stringify(await notices(o)) });
+		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-palette"));
+		const palette = o.page.locator(".almagest-palette");
+		await until("the migrate page", async () => (await palette.getAttribute("data-page")) === "migrate" && (await palette.locator(".almagest-tile").count()) === 2, { describe: () => palette.innerText() });
+		expect(await palette.locator("[data-area]").count()).toBe(0);
+		expect(await tile(palette, "files move")).toBe("2");
+		expect(await tile(palette, "files change")).toBe("4");
+		await palette.locator('button[data-action="migrate"]').click();
+
+		await until("the home", async () => (await palette.getAttribute("data-page")) === "home" && (await palette.locator('[data-area="ingest"]').count()) === 1, { describe: () => palette.innerText() });
+		await until("the migrated notice", async () => (await notices(o)).some((t) => t.startsWith("Almagest: migrated the vault in one commit: 2 files moved into tool/.")), { describe: async () => JSON.stringify(await notices(o)) });
+		expect((await notices(o)).some((t) => t.includes("Open the Almagest palette to migrate"))).toBe(false);
+		expect(await o.read("tool/sessions/2026-10/2026-10-01 0900 cccccc.md")).toBe(session);
+		expect(existsSync(path.join(o.vault, "sessions"))).toBe(false);
+		expect(await o.read("scratchpad/Plan.md")).toBe("Read [[tool/sessions/2026-10/2026-10-01 0900 cccccc|the last session]].\n");
+		expect(frontmatter(await o.read("Almagest.md")).layout).toBe("8");
+		expect(await o.git(["log", "-1", "--format=%s"])).toBe("layout: move sessions/, source-core/, and trash/ into tool/\n");
+		expect(o.errors).toEqual([]);
+	});
+
+	it("Sync the vault on the Wiki health page writes the views", { timeout: TIMEOUT }, async () => {
+		const o = await launch();
+		const home = path.join(o.vault, "wiki-view/View · Home.md");
+		expect(existsSync(home)).toBe(true);
+		await rm(home);
+		const palette = await openPalette(o);
+		await goTo(palette, "health");
+		await palette.locator('button[data-action="sync"]').click();
+		await until("the views", () => existsSync(home));
+		await until("the notice", async () => (await notices(o)).some((t) => t.startsWith("Almagest: ")), { describe: async () => JSON.stringify(await notices(o)) });
+		expect(o.errors).toEqual([]);
+	});
+
 	it("Wikify this note copies the active note, opens the copy, and starts the agent", { timeout: TIMEOUT }, async () => {
 		const o = await launch({ prepare: lecture });
 		const out = await stubTerminal(o);
 		const palette = await openPalette(o);
-		const button = palette.locator('[data-action="wikify"] button');
+		await goTo(palette, "note");
+		const button = palette.locator('button[data-action="wikify"]');
 
 		await open(o, "Almagest.md", "source");
 		await until("Wikify to turn off", async () => (await button.isDisabled()) && (await button.getAttribute("title")) === "Wikify takes a note of yours, not Almagest.md.", {
@@ -1058,7 +1425,7 @@ describe("Almagest in Obsidian", () => {
 		const copy = "scratchpad/Lecture · wikified.md";
 		expect(await o.read(copy)).toBe(LECTURE_TEXT);
 		expect(await o.read(LECTURE)).toBe(LECTURE_TEXT);
-		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command).toMatch(TIP_THEN_AGENT);
 		expect(command.endsWith(" && claude '/almagest:wiki-wikify Wikify [[Lecture · wikified]]: mark what the wiki knows and the subjects worth a topic, with wikify mark.'")).toBe(true);
 		await until("the copy to open", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === copy);
 		expect(o.errors).toEqual([]);

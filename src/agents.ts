@@ -1,6 +1,6 @@
 // Pure functions for agent sessions and terminals: no Obsidian, no Node. The tests cover them.
 
-/** A session document's fields, as the sessions pane reads them. */
+/** A session document's fields, as the palette reads them. */
 export interface SessionRow {
 	path: string;
 	status: string;
@@ -16,23 +16,23 @@ export type SessionState = "working" | "needs you" | "idle" | "ended" | "lost";
 
 const LIVE = ["running", "waiting", "idle"];
 
-/** How long an ended session stays in the pane's recent group. */
-export const RECENT_MS = 2 * 60 * 60 * 1000;
+/** How long an ended session stays in the palette's recent group. */
+const RECENT_MS = 2 * 60 * 60 * 1000;
 
 /**
- * Whether a session is open. With a process id, the process decides; without one (a
- * session a hook recorded before 8.0.2), the status decides while the last event is
- * younger than staleHours.
+ * Whether a session is open. With a process id, the process decides; without one (the
+ * hook found no agent process), the status decides while the last event is younger than
+ * staleHours.
  */
-export function isOpen(row: SessionRow, alive: (pid: number) => boolean, now: Date, staleHours: number): boolean {
+function isOpen(row: SessionRow, alive: (pid: number) => boolean, now: Date, staleHours: number): boolean {
 	if (!LIVE.includes(row.status)) return false;
 	if (row.pid > 0) return alive(row.pid);
 	const t = Date.parse(row.updated);
 	return !Number.isNaN(t) && now.getTime() - t < staleHours * 3600 * 1000;
 }
 
-/** The pane's word for an open session's status, or for a closed one. */
-export function sessionState(row: SessionRow, open: boolean): SessionState {
+/** The palette's word for an open session's status, or for a closed one. */
+function sessionState(row: SessionRow, open: boolean): SessionState {
 	if (!open) return row.status === "lost" ? "lost" : "ended";
 	if (row.status === "waiting") return "needs you";
 	if (row.status === "running") return "working";
@@ -48,9 +48,9 @@ export interface SessionGroups<T extends SessionRow> {
 }
 
 /**
- * The pane's groups: the open sessions (needs you, then working, then idle, the newest
+ * The palette's groups: the open sessions (needs you, then working, then idle, the newest
  * first in each), the sessions that closed in the last two hours, and a count of the
- * older ones. A subagent's session is no card of its own.
+ * older ones. A subagent's session is no item of its own.
  */
 export function groupSessions<T extends SessionRow>(rows: T[], alive: (pid: number) => boolean, now: Date, staleHours: number): SessionGroups<T> {
 	const out: SessionGroups<T> = { open: [], recent: [], older: 0 };
@@ -134,6 +134,46 @@ export function startCommand(dir: string, agent: string, prompt = ""): string {
 	return `cd ${shellQuote(dir)} && ${agent.trim() || "claude"}${first ? ` ${shellQuote(first)}` : ""}`;
 }
 
+// Duet: the plugin that hosts agent conversations in the vault. Almagest works without it.
+
+/** Duet's page in Obsidian's community plugins. */
+export const DUET_LINK = "obsidian://show-plugin?id=duet";
+
+/** Duet as Almagest finds it: on (with its API), on but too old for the API, installed but off, or not installed. */
+export type DuetState = "on" | "old" | "off" | "missing";
+
+/** Where an agent works when Almagest starts one. */
+export type ConversationHost = "duet" | "terminal";
+
+/** The recommendation of Duet, in Almagest.md and in a terminal that Almagest opens. */
+export const DUET_TIP =
+	"Did you know you can work with your agents directly in Obsidian? Almagest works best with the Duet community plugin. Once installed, Almagest will automatically handle agent conversations in this vault instead of a new terminal session.";
+
+/** Whether to recommend Duet: the settings choose it, and it does not run. A user who chose the terminal sees no tip. */
+export function recommendDuet(host: ConversationHost, state: DuetState): boolean {
+	return host === "duet" && state !== "on";
+}
+
+/** What the settings say about Duet while it is the choice: that it runs the conversations, or what it needs first. */
+export function duetLine(state: DuetState): string {
+	const until = "Until then, Almagest starts each agent in a terminal, with the settings below.";
+	switch (state) {
+		case "on":
+			return "Duet runs each agent conversation in a note of this vault, and Duet's settings choose the agent. Resume of a closed terminal session still opens a terminal.";
+		case "old":
+			return `This Duet has no API for Almagest. Update Duet to 0.3.0 or later in Community plugins. ${until}`;
+		case "off":
+			return `Duet is installed but off. Turn it on in Community plugins. ${until}`;
+		case "missing":
+			return `Duet is not installed. Install it from Obsidian's community plugins. ${until}`;
+	}
+}
+
+/** A shell command that prints the Duet tip, before the agent starts in a new terminal. */
+export function duetTipCommand(): string {
+	return `printf '\\n\\033[1mTip:\\033[0m %s\\n\\033[1mInstall Duet:\\033[0m %s\\n\\n' ${shellQuote(DUET_TIP)} ${shellQuote(DUET_LINK)}`;
+}
+
 /** The terminals Almagest opens a command in. */
 export const TERMINALS = ["terminal", "iterm", "wezterm", "ghostty", "custom"] as const;
 export type TerminalApp = (typeof TERMINALS)[number];
@@ -192,23 +232,6 @@ export function inherited(config: AgentConfig, key: string): string {
 	if (key === "terminal") return "terminal";
 	if (key.startsWith("agent_commands.")) return key.slice("agent_commands.".length);
 	return "";
-}
-
-/**
- * The keys to move from the plugin settings of 8.0.2 into the vault's config
- * file: the values that differ from the old defaults, for keys the file does not set.
- */
-export function legacyPreferences(saved: Record<string, unknown> | null, vault: Preferences | null): [string, string][] {
-	if (!saved) return [];
-	const out: [string, string][] = [];
-	const take = (key: string, value: unknown, old: string) => {
-		const v = typeof value === "string" ? value.trim() : "";
-		if (v && v !== old && !preference(vault, key)) out.push([key, v]);
-	};
-	take("agent_commands.claude", saved.agentCommand, "claude");
-	if ((TERMINALS as readonly string[]).includes(String(saved.terminal))) take("terminal", saved.terminal, "terminal");
-	if (typeof saved.terminalCommand === "string" && saved.terminalCommand.includes("{command}")) take("terminal_command", saved.terminalCommand, "");
-	return out;
 }
 
 /** The app bundle a terminal needs, by name; Terminal comes with macOS, and custom names its own program. */

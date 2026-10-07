@@ -1,4 +1,4 @@
-/* Almagest: callouts, the change widget and the change document, the palette and its Publish and Checkout modals, the bubbles of a wikified note, the tag navigator, the repository panel, the sessions pane. Nothing here styles Obsidian's own panes. */
+/* Almagest: callouts, the change widget and the change document, the palette and its Publish and Checkout modals, the bubbles of a wikified note, the repository panel, and the colors of Almagest's folders in the file explorer. Nothing else here styles Obsidian's own panes. */
 
 /* Callouts: the lead callout of each document type and kind, of the views, and of the files Almagest writes for the user (almagest): a journal's publication history, a checkout's copies, reading list, and ledger. */
 .callout[data-callout="source"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-file-image; }
@@ -148,118 +148,246 @@
 	--code-normal: var(--text-muted);
 }
 
-/* The tool palette. */
+/*
+ * The tool palette. One language throughout: a nav row opens a page; a chip only counts
+ * or names a state (accent: yours to do; warning: a problem; muted: a plain fact); a button
+ * only acts; a link only opens a document.
+ */
 .almagest-palette {
 	display: flex;
 	flex-direction: column;
-	gap: var(--size-4-4);
-	padding: var(--size-4-2);
+	gap: var(--size-4-3);
+	padding: var(--size-4-3) var(--size-4-2);
 	font-size: var(--font-ui-small);
 }
-.almagest-palette-section {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-2-2);
-}
-.almagest-palette-heading {
-	color: var(--text-faint);
-	font-size: var(--font-ui-smaller);
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-}
-.almagest-palette-row {
-	display: flex;
-	align-items: center;
-	gap: var(--size-4-2);
-}
-.almagest-palette-name {
-	flex: 1;
-	color: var(--text-muted);
-}
-.almagest-palette-value {
-	font-variant-numeric: tabular-nums;
-	color: var(--text-normal);
-}
-.almagest-palette-list {
-	margin: 0;
-	padding-inline-start: var(--size-4-4);
-	list-style: none;
-}
-.almagest-palette-list > li {
-	min-width: 0;
-	padding: var(--size-2-1) 0;
-	overflow-wrap: anywhere;
-}
-.almagest-palette-files > li {
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-}
-.almagest-palette-link {
-	color: var(--text-accent);
-	text-decoration: none;
-}
-.almagest-palette-link:hover {
-	text-decoration: underline;
-}
-.almagest-palette-progress,
-.almagest-palette-quiet {
-	color: var(--text-faint);
-	font-size: var(--font-ui-smaller);
-}
-.almagest-palette-progress {
-	font-variant-numeric: tabular-nums;
-}
-.almagest-palette-path {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.almagest-palette-error {
-	color: rgb(var(--color-red-rgb));
-}
-.almagest-palette-small {
-	height: auto;
-	padding: 1px 8px;
-	font-size: var(--font-ui-smaller);
-}
-.almagest-palette-badge {
-	margin-inline-end: var(--size-4-1);
-	padding: 0 6px;
-	border-radius: var(--radius-s);
-	font-size: var(--font-ui-smaller);
-	color: rgb(var(--color-cyan-rgb));
-	background-color: rgba(var(--color-cyan-rgb), 0.14);
-}
-.almagest-palette-finding[data-severity="error"] .almagest-palette-badge {
-	color: rgb(var(--color-red-rgb));
-	background-color: rgba(var(--color-red-rgb), 0.14);
-}
-.almagest-palette-finding[data-severity="warning"] .almagest-palette-badge {
-	color: rgb(var(--color-orange-rgb));
-	background-color: rgba(var(--color-orange-rgb), 0.14);
-}
-.almagest-palette-finding[data-severity="info"] .almagest-palette-badge {
-	color: var(--text-muted);
-	background-color: var(--background-modifier-hover);
-}
-.almagest-palette-action {
+
+/* The home: groups of rows, each the way into a page. */
+.almagest-nav {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-2-1);
 }
-.almagest-palette-action > button {
-	align-self: stretch;
+.almagest-nav + .almagest-nav {
+	padding-top: var(--size-4-3);
+	border-top: 1px solid var(--background-modifier-border);
 }
-.almagest-palette-lint {
+.almagest-nav-row {
+	display: grid;
+	grid-template-columns: auto 1fr auto auto;
+	align-items: center;
+	gap: var(--size-4-3);
+	padding: var(--size-4-2) var(--size-4-2);
+	border-radius: var(--radius-m);
+	cursor: var(--cursor);
+}
+.almagest-nav-row:hover,
+.almagest-nav-row:focus-visible {
+	background-color: var(--background-modifier-hover);
+	outline: none;
+}
+.almagest-nav-icon,
+.almagest-page-icon {
+	display: flex;
+	color: var(--text-muted);
+	--icon-size: var(--icon-m);
+}
+.almagest-nav-text {
+	min-width: 0;
+}
+.almagest-nav-name {
+	color: var(--text-normal);
+	font-weight: var(--font-medium);
+}
+.almagest-nav-line {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.almagest-nav-badge {
+	display: flex;
+	justify-content: flex-end;
+	min-width: 1.5em;
+}
+.almagest-nav-chevron {
+	display: flex;
+	color: var(--text-faint);
+	--icon-size: var(--icon-s);
+}
+
+/* Chips: a count or a state, never a control. */
+.almagest-chip {
+	flex: none;
+	padding: 0 var(--size-4-2);
+	border-radius: var(--radius-l);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-medium);
+	line-height: 1.6;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	color: var(--text-muted);
+	background-color: var(--background-modifier-hover);
+}
+.almagest-chip[data-tone="accent"] {
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+}
+.almagest-chip[data-tone="warning"] {
+	color: rgb(var(--color-orange-rgb));
+	background-color: rgba(var(--color-orange-rgb), 0.15);
+}
+
+/* A page: a head with the way back, a sentence on what the area is, its numbers, its actions, and its lists. */
+.almagest-page-head {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+.almagest-back {
+	margin-inline-start: calc(var(--size-4-1) * -1);
+}
+.almagest-page-title {
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+}
+.almagest-page {
 	display: flex;
 	flex-direction: column;
-	gap: var(--size-2-2);
-	padding: var(--size-4-2);
+	gap: var(--size-4-4);
+}
+.almagest-lede {
+	color: var(--text-muted);
+	line-height: var(--line-height-normal);
+}
+.almagest-tiles {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+	gap: var(--size-4-2);
+}
+.almagest-tile {
+	padding: var(--size-4-2) var(--size-4-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background-color: var(--background-secondary);
+}
+.almagest-tile-number {
+	font-size: var(--font-ui-large);
+	font-weight: var(--font-semibold);
+	font-variant-numeric: tabular-nums;
+	line-height: 1.2;
+}
+.almagest-tile-label {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+.almagest-actions {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+.almagest-button {
+	width: 100%;
+}
+/* A destructive action that is there when wanted, and never the loudest on the page. */
+.almagest-button.almagest-button-danger {
+	color: var(--text-error);
+}
+
+/* Lists: a labeled count, then items with a title, a line, a chip, and the item's own action. */
+.almagest-list-head {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	margin-bottom: calc(var(--size-4-2) * -1);
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+}
+.almagest-list-count {
+	font-variant-numeric: tabular-nums;
+}
+.almagest-list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.almagest-list:empty {
+	display: none;
+}
+.almagest-item {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-3);
+	padding: var(--size-4-2) 0;
+}
+.almagest-item + .almagest-item {
+	border-top: 1px solid var(--background-modifier-border);
+}
+.almagest-item-main {
+	flex: 1;
+	min-width: 0;
+}
+.almagest-item-top {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+.almagest-item-title {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.almagest-item-meta {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	overflow-wrap: anywhere;
+}
+.almagest-item-action {
+	flex: none;
+	height: auto;
+	padding: var(--size-2-2) var(--size-4-3);
+	font-size: var(--font-ui-smaller);
+}
+.almagest-link {
+	color: var(--text-accent);
+	text-decoration: none;
+}
+.almagest-link:hover {
+	text-decoration: underline;
+}
+
+/* What a run returned, such as the findings of a lint. */
+.almagest-result {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	padding: var(--size-4-3);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 }
-.almagest-palette-lint-counts {
+.almagest-result-title {
 	font-weight: var(--font-semibold);
+}
+
+/* Quiet text: an empty area, and a note under a result. */
+.almagest-empty {
+	padding: var(--size-4-4) var(--size-4-3);
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	color: var(--text-muted);
+	text-align: center;
+}
+.almagest-quiet {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+.almagest-error {
+	color: rgb(var(--color-red-rgb));
 }
 
 /* The modal of safe delete, when other documents link the file. */
@@ -272,225 +400,6 @@
 	justify-content: flex-end;
 	gap: var(--size-4-2);
 	margin-top: var(--size-4-4);
-}
-
-/* The sessions pane. */
-.almagest-sessions {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-4-2);
-	padding: var(--size-4-2);
-}
-.almagest-sessions-empty {
-	color: var(--text-muted);
-	padding: var(--size-4-2);
-}
-.almagest-session {
-	--almagest-session: var(--mono-rgb-100);
-	padding: var(--size-4-2) var(--size-4-3);
-	border: 1px solid var(--background-modifier-border);
-	border-inline-start: 3px solid rgb(var(--almagest-session));
-	border-radius: var(--radius-m);
-	cursor: pointer;
-	font-size: var(--font-ui-small);
-}
-/* Working: green, with a pulse on the status. Needs you: orange. Idle: the accent, at rest. Ended: gray. */
-.almagest-session[data-state="working"] {
-	--almagest-session: var(--color-green-rgb);
-}
-.almagest-session[data-state="working"] .almagest-session-status {
-	animation: almagest-pulse 1.6s ease-in-out infinite;
-}
-.almagest-session[data-state="waiting"] {
-	--almagest-session: var(--color-orange-rgb);
-	background-color: rgba(var(--color-orange-rgb), 0.06);
-}
-.almagest-session[data-state="idle"] {
-	--almagest-session: var(--color-blue-rgb);
-}
-.almagest-session[data-state="ended"] {
-	--almagest-session: var(--mono-rgb-100);
-	opacity: 0.65;
-}
-.almagest-session[data-state="ended"]:hover {
-	opacity: 1;
-}
-@keyframes almagest-pulse {
-	50% { background-color: rgba(var(--almagest-session), 0.32); }
-}
-.almagest-sessions-heading {
-	margin-top: var(--size-4-3);
-	color: var(--text-faint);
-	font-size: var(--font-ui-smaller);
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-}
-.almagest-sessions-more {
-	color: var(--text-faint);
-	font-size: var(--font-ui-smaller);
-	cursor: pointer;
-}
-.almagest-sessions-more:hover {
-	color: var(--text-muted);
-}
-.almagest-session:hover {
-	background-color: var(--background-modifier-hover);
-}
-.almagest-session-top {
-	display: flex;
-	align-items: center;
-	gap: var(--size-4-2);
-	font-size: var(--font-ui-smaller);
-	color: var(--text-faint);
-}
-.almagest-session-status {
-	flex-shrink: 0;
-	padding: 0 6px;
-	border-radius: var(--radius-s);
-	color: rgb(var(--almagest-session));
-	background-color: rgba(var(--almagest-session), 0.14);
-}
-.almagest-session-ago {
-	margin-inline-start: auto;
-	white-space: nowrap;
-}
-.almagest-session-title {
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	margin-top: var(--size-4-1);
-	font-weight: var(--font-semibold);
-	color: var(--text-normal);
-}
-.almagest-session-resume {
-	flex-shrink: 0;
-	height: auto;
-	padding: 1px 8px;
-	font-size: var(--font-ui-smaller);
-}
-
-/* A count on the sessions ribbon icon while a session waits. */
-.almagest-sessions-ribbon {
-	position: relative;
-}
-.almagest-sessions-ribbon[data-almagest-count]::after {
-	content: attr(data-almagest-count);
-	position: absolute;
-	top: 0;
-	right: 0;
-	min-width: 14px;
-	height: 14px;
-	padding: 0 3px;
-	border-radius: 7px;
-	font-size: 10px;
-	line-height: 14px;
-	text-align: center;
-	color: var(--text-on-accent);
-	background-color: rgb(var(--color-orange-rgb));
-}
-
-.almagest-setting-status {
-	margin-top: var(--size-4-1);
-	color: var(--text-faint);
-}
-
-/* The tag navigator. */
-.almagest-tagnav {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-4-3);
-	padding: var(--size-4-2);
-	font-size: var(--font-ui-small);
-}
-.almagest-tagnav-path {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--size-2-3);
-}
-.almagest-tagnav-path::before {
-	content: none;
-}
-.almagest-tagnav-home {
-	font-size: var(--font-ui-smaller);
-}
-.almagest-tagnav-tag > span:first-child,
-.almagest-tagnav-chip > span:first-child {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.almagest-tagnav-chip {
-	display: inline-flex;
-	max-width: 100%;
-	min-width: 0;
-	align-items: center;
-	gap: 2px;
-	padding: 0 2px 0 8px;
-	border-radius: var(--radius-l);
-	color: rgb(var(--color-purple-rgb));
-	background-color: rgba(var(--color-purple-rgb), 0.14);
-}
-.almagest-tagnav-x {
-	padding: 0 6px;
-	background: transparent;
-	box-shadow: none;
-	color: inherit;
-}
-.almagest-tagnav-hint,
-.almagest-tagnav-count {
-	color: var(--text-muted);
-}
-.almagest-tagnav-section {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-2-2);
-}
-.almagest-tagnav-label {
-	color: var(--text-faint);
-	font-size: var(--font-ui-smaller);
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-}
-.almagest-tagnav-items {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--size-2-2);
-}
-.almagest-tagnav-items > button {
-	font-size: var(--font-ui-smaller);
-}
-.almagest-tagnav-tag {
-	display: inline-flex;
-	max-width: 100%;
-	min-width: 0;
-	gap: var(--size-2-2);
-	padding: var(--size-2-1) var(--size-4-2);
-}
-.almagest-tagnav-tag-count,
-.almagest-tagnav-doc-meta {
-	color: var(--text-faint);
-	font-variant-numeric: tabular-nums;
-}
-.almagest-tagnav-group-name {
-	margin-bottom: var(--size-2-2);
-	font-weight: var(--font-semibold);
-	color: var(--text-muted);
-}
-.almagest-tagnav-doc {
-	display: flex;
-	justify-content: space-between;
-	gap: var(--size-4-2);
-	padding: var(--size-2-1) var(--size-4-2);
-	border-radius: var(--radius-s);
-	cursor: pointer;
-}
-.almagest-tagnav-doc:hover {
-	background-color: var(--background-modifier-hover);
-}
-.almagest-tagnav-empty {
-	color: var(--text-muted);
 }
 
 /* The live status panel of a repository. */
@@ -543,49 +452,6 @@
 	color: rgb(var(--color-red-rgb));
 }
 
-/* The migration notice and its report. */
-.almagest-notice-button {
-	margin-top: var(--size-4-2);
-}
-.almagest-migration details {
-	margin-top: var(--size-4-2);
-}
-.almagest-migration-buttons {
-	display: flex;
-	justify-content: flex-end;
-	gap: var(--size-4-2);
-	margin-top: var(--size-4-4);
-}
-
-/* The palette's journal volumes. */
-.almagest-palette-volume {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-2-1);
-	padding: var(--size-2-3) 0;
-}
-.almagest-palette-volume + .almagest-palette-volume {
-	border-top: 1px solid var(--background-modifier-border);
-}
-.almagest-palette-volume-name {
-	color: var(--text-normal);
-	overflow-wrap: anywhere;
-}
-.almagest-palette-volume .almagest-palette-changed {
-	color: rgb(var(--color-orange-rgb));
-	background-color: rgba(var(--color-orange-rgb), 0.14);
-}
-.almagest-palette-edition {
-	overflow-wrap: anywhere;
-}
-.almagest-palette-publish {
-	align-self: flex-start;
-}
-.almagest-palette-publish:disabled {
-	opacity: 0.5;
-	cursor: default;
-}
-
 /* The modal of Publish. */
 .almagest-publish-title {
 	padding: var(--size-4-2) var(--size-4-3);
@@ -604,28 +470,6 @@
 	justify-content: flex-end;
 	gap: var(--size-4-2);
 	margin-top: var(--size-4-4);
-}
-
-/* The palette's checkouts. */
-.almagest-palette-checkout {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-2-1);
-	padding: var(--size-2-3) 0;
-}
-.almagest-palette-checkout + .almagest-palette-checkout {
-	border-top: 1px solid var(--background-modifier-border);
-}
-.almagest-palette-request {
-	min-width: 0;
-	overflow-wrap: anywhere;
-}
-.almagest-palette-return {
-	align-self: flex-start;
-}
-.almagest-palette-return:disabled {
-	opacity: 0.5;
-	cursor: default;
 }
 
 /* The modal of Checkout. */
@@ -698,3 +542,164 @@
 	background-color: rgba(var(--almagest-mark), 0.1);
 }
 .almagest-mark .almagest-mark-button.mod-cta:hover { background-color: rgba(var(--almagest-mark), 0.22); }
+
+/* Almagest's folders in the file explorer, while the setting puts the class on the body: what the user reads (wiki-view/) in cyan, what the user writes and adds (journals/, ingest/) in purple, and what Almagest keeps for itself (tool/) dimmed. Only these top folders. */
+body.almagest-folder-colors .nav-folder-title[data-path="wiki-view"] {
+	--almagest-folder: var(--color-cyan);
+}
+body.almagest-folder-colors .nav-folder-title:is([data-path="journals"], [data-path="ingest"]) {
+	--almagest-folder: var(--color-purple);
+}
+body.almagest-folder-colors .nav-folder-title:is([data-path="wiki-view"], [data-path="journals"], [data-path="ingest"]) {
+	color: var(--almagest-folder);
+	font-weight: var(--font-semibold);
+}
+body.almagest-folder-colors .nav-folder-title:is([data-path="wiki-view"], [data-path="journals"], [data-path="ingest"]) .nav-folder-collapse-indicator {
+	color: var(--almagest-folder);
+}
+body.almagest-folder-colors .nav-folder-title[data-path="tool"] {
+	color: var(--text-faint);
+}
+
+/* The Duet tip at the top of Almagest.md, which the plugin draws while Duet is the choice and does not run. */
+.almagest-duet-tip {
+	margin-block: var(--size-4-2) var(--size-4-4);
+}
+.almagest-duet-tip-block {
+	padding-block: var(--size-4-2) var(--size-4-4);
+}
+.almagest-duet-tip-block > .almagest-duet-tip {
+	margin-block: 0;
+}
+.almagest-duet-tip-note {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+/* Agent sessions as message threads: a round avatar, the title and its time, and one line on where the session stands. The whole row opens the session. */
+.almagest-thread {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-3);
+	margin-inline: calc(var(--size-4-2) * -1);
+	padding: var(--size-4-2);
+	border-radius: var(--radius-m);
+	cursor: var(--cursor-link);
+}
+.almagest-thread:hover,
+.almagest-thread:focus-visible {
+	background-color: var(--background-modifier-hover);
+}
+.almagest-thread-body {
+	flex: 1;
+	min-width: 0;
+}
+.almagest-thread-top,
+.almagest-thread-bottom {
+	display: flex;
+	align-items: baseline;
+	gap: var(--size-4-2);
+}
+.almagest-thread-bottom {
+	align-items: center;
+}
+/* A title takes two lines at most, so a narrow sidebar still shows what the session is. */
+.almagest-thread-title {
+	flex: 1;
+	min-width: 0;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+	color: var(--text-normal);
+	font-weight: var(--font-medium);
+	overflow-wrap: anywhere;
+}
+.almagest-thread-time {
+	flex: none;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+}
+.almagest-thread-preview {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+/* The avatar shows the state: working glows, needs you is filled and its thread reads as unread, idle is tinted, and a closed session is gray. */
+.almagest-avatar {
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	color: var(--interactive-accent);
+	background-color: hsla(var(--interactive-accent-hsl), 0.15);
+}
+.almagest-avatar svg {
+	width: 18px;
+	height: 18px;
+}
+.almagest-thread:is([data-state="working"], [data-state="needs-you"]) .almagest-avatar {
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+}
+.almagest-thread[data-state="working"] .almagest-avatar {
+	animation: almagest-glow 2s ease-in-out infinite;
+}
+@keyframes almagest-glow {
+	0%, 100% { box-shadow: 0 0 0 0 hsla(var(--interactive-accent-hsl), 0.45); opacity: 1; }
+	50% { box-shadow: 0 0 0 6px hsla(var(--interactive-accent-hsl), 0); opacity: 0.7; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.almagest-thread[data-state="working"] .almagest-avatar {
+		animation: none;
+	}
+}
+.almagest-thread[data-state="needs-you"] .almagest-thread-title {
+	font-weight: var(--font-bold);
+}
+.almagest-thread[data-state="needs-you"] .almagest-thread-preview {
+	color: var(--text-accent);
+	font-weight: var(--font-medium);
+}
+.almagest-thread.is-closed .almagest-avatar {
+	color: var(--text-faint);
+	background-color: var(--background-modifier-hover);
+}
+.almagest-thread.is-closed :is(.almagest-thread-title, .almagest-thread-preview) {
+	color: var(--text-faint);
+	font-weight: var(--font-normal);
+}
+
+/* A list that folds away: its head is the toggle, with a chevron that turns when it opens. */
+.almagest-fold > summary {
+	list-style: none;
+	cursor: var(--cursor);
+}
+.almagest-fold > summary::-webkit-details-marker {
+	display: none;
+}
+.almagest-fold > summary:hover {
+	color: var(--text-muted);
+}
+.almagest-fold-chevron {
+	display: flex;
+	transition: transform 120ms ease;
+}
+.almagest-fold-chevron svg {
+	width: 14px;
+	height: 14px;
+}
+.almagest-fold[open] .almagest-fold-chevron {
+	transform: rotate(90deg);
+}
+.almagest-fold[open] > summary {
+	margin-bottom: var(--size-4-2);
+}

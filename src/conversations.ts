@@ -1,6 +1,7 @@
 // The agents the palette started through Duet, while their first turn runs. Pure: Duet's
 // API comes in, so the tests drive it with a fake.
 
+import type { DuetState } from "./agents";
 import type { ConversationStatus, DuetApi, TurnEnd } from "./duet";
 
 /** Duet's API when Duet is on and gives version 1 or later. Read it at each call: the user can turn Duet off. */
@@ -10,6 +11,14 @@ export function duetApi(app: unknown): DuetApi | undefined {
 	if (!api || typeof api.version !== "number" || api.version < 1) return undefined;
 	if (typeof api.newConversation !== "function" || typeof api.conversationStatus !== "function" || typeof api.onTurnEnd !== "function") return undefined;
 	return api as DuetApi;
+}
+
+/** Duet as Almagest finds it in Obsidian's plugin registry. A Duet that is on but has no API is older than 0.3.0. */
+export function duetState(app: unknown): DuetState {
+	if (duetApi(app)) return "on";
+	const plugins = (app as { plugins?: { manifests?: Record<string, unknown>; enabledPlugins?: Set<string> } } | null)?.plugins;
+	if (!plugins?.manifests?.["duet"]) return "missing";
+	return plugins.enabledPlugins?.has("duet") ? "old" : "off";
 }
 
 export interface Conversation {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { acceptAll, acceptedLine, decide, draftTitle, findMarks, isWikified, linkFor, locate, mask, parseMark, replacement, wikifyBlocked } from "../src/marks";
+import { acceptAll, acceptedLine, decide, draftTitle, findMarks, isWikified, linkFor, locate, mask, replacement, wikifyBlocked } from "../src/marks";
 
 const fields = (text: string) => findMarks(text).map(({ kind, title, phrase }) => ({ kind, title, phrase }));
 
@@ -77,12 +77,6 @@ test("a mark can sit right after another, and inside braces of other text", () =
 	);
 });
 
-test("parseMark takes exactly one whole mark", () => {
-	assert.deepEqual(parseMark("{{new:Momentum|momentum}}"), { kind: "new", title: "Momentum", phrase: "momentum", text: "{{new:Momentum|momentum}}" });
-	assert.equal(parseMark(" {{new:Momentum|momentum}}"), null);
-	assert.equal(parseMark("{{new:Momentum|momentum}} and more"), null);
-});
-
 test("Accept and Link write [[Title|phrase]], or [[Title]] when the phrase is the title as written; Ignore writes the phrase", () => {
 	assert.equal(linkFor({ title: "Gradient Descent", phrase: "gradient descent" }), "[[Gradient Descent|gradient descent]]");
 	assert.equal(linkFor({ title: "Gradient Descent", phrase: "Gradient Descent" }), "[[Gradient Descent]]");
@@ -144,9 +138,12 @@ test("wikify takes a markdown note of the user's", () => {
 	assert.equal(wikifyBlocked("ingest/Paper.MD", ".obsidian"), "");
 	assert.equal(wikifyBlocked("ingest/paper.pdf", ".obsidian"), "Wikify takes a markdown note.");
 	assert.equal(wikifyBlocked("Almagest.md", ".obsidian"), "Wikify takes a note of yours, not Almagest.md.");
-	for (const top of ["source-core", "changes", "sessions", "wiki-view", "trash", ".obsidian"]) {
-		assert.equal(wikifyBlocked(`${top}/sub/Note.md`, ".obsidian"), `Wikify takes a note of yours, not one in ${top}/.`);
+	for (const folder of ["tool/source-core", "changes", "tool/sessions", "wiki-view", "tool/trash", ".obsidian"]) {
+		assert.equal(wikifyBlocked(`${folder}/sub/Note.md`, ".obsidian"), `Wikify takes a note of yours, not one in ${folder}/.`);
 	}
+	// A folder is matched whole and in any case, never by its first part.
+	assert.equal(wikifyBlocked("Tool/Sessions/2026-10/S.md", ".obsidian"), "Wikify takes a note of yours, not one in tool/sessions/.");
+	assert.equal(wikifyBlocked("tool/My notes.md", ".obsidian"), "");
 	assert.equal(wikifyBlocked("changes.md", ".obsidian"), "");
 	// A vault may name Obsidian's folder otherwise; that folder is refused, and .obsidian is then a folder of notes.
 	assert.equal(wikifyBlocked(".config/sub/Note.md", ".config"), "Wikify takes a note of yours, not one in .config/.");

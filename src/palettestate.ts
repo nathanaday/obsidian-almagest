@@ -1,6 +1,6 @@
 // What the tool palette shows, from the JSON of the binary. Pure: the tests cover it.
 
-import { Checkout, checkouts, toReturn } from "./checkoutstate";
+import { Checkout, checkouts, outOnly, toReturn } from "./checkoutstate";
 import { JournalVolume, journalVolumes, toPublish } from "./journalstate";
 import { isDocumentPath } from "./helpers";
 
@@ -31,21 +31,25 @@ export interface PaletteState {
 	/** The file names waiting in ingest/. */
 	ingest: string[];
 	pending: number;
+	/** The open agent sessions, and those of them that wait for the user. */
 	sessions: number;
+	waiting: number;
 	trash: number;
 	journals: JournalVolume[];
 	/** The volumes with changes to publish. */
 	toPublish: number;
-	/** The checkouts, newest first. */
+	/** The checkouts that are out, newest first. */
 	checkouts: Checkout[];
-	/** The checkouts with edited copies to return. */
+	/** The checkouts returned, which the ledger lists. */
+	returned: number;
+	/** The checkouts out with edited copies, whose edits reach the wiki only through a return. */
 	toReturn: number;
 	/** The errors of the quick lint that status runs. */
 	problems: number;
 }
 
-/** The palette's status. liveSessions comes from the sessions pane's rule, which checks the processes. */
-export function paletteState(status: VaultStatus, liveSessions: number): PaletteState {
+/** The palette's status. sessions comes from groupSessions, which checks the processes. */
+export function paletteState(status: VaultStatus, sessions: { open: number; waiting: number }): PaletteState {
 	const byTitle = (a: Ref, b: Ref) => a.title.localeCompare(b.title);
 	const journals = journalVolumes(status.journals);
 	const list = checkouts(status.checkouts);
@@ -54,14 +58,70 @@ export function paletteState(status: VaultStatus, liveSessions: number): Palette
 		running: [...(status.changes?.running ?? [])].sort(byTitle),
 		ingest: (status.ingest ?? []).map((i) => i.name),
 		pending: status.pending?.length ?? 0,
-		sessions: liveSessions,
+		sessions: sessions.open,
+		waiting: sessions.waiting,
 		trash: status.trash ?? 0,
 		journals,
 		toPublish: toPublish(journals),
-		checkouts: list,
+		checkouts: outOnly(list),
+		returned: list.length - outOnly(list).length,
 		toReturn: toReturn(list),
 		problems: status.problems ?? 0,
 	};
+}
+
+// The home of the palette: one row per area, each with a line and a count.
+
+/** The areas of the palette, in the order its home lists them. */
+export const AREAS = ["changes", "ingest", "health", "journals", "library", "agents", "note"] as const;
+export type Area = (typeof AREAS)[number];
+
+/** What a count chip means: something for the user to do, a problem, or a plain number. */
+export type Tone = "accent" | "warning" | "muted";
+
+/** One row of the palette's home: its name, the line under it, and its chip. */
+export interface AreaLine {
+	name: string;
+	line: string;
+	/** The chip's number; no chip when 0. */
+	count: number;
+	tone: Tone;
+}
+
+/**
+ * The home row of an area. agents is the count of the agents the palette started that
+ * still work; hasNote is whether a note is open.
+ */
+export function areaLine(area: Area, s: PaletteState, agents: number, hasNote: boolean): AreaLine {
+	switch (area) {
+		case "changes": {
+			const parts = [s.proposed.length > 0 ? `${s.proposed.length} to review` : "", s.running.length > 0 ? `${s.running.length} running` : ""].filter((p) => p);
+			return { name: "Changes", line: parts.join(" · ") || "Nothing to review", count: s.proposed.length, tone: "accent" };
+		}
+		case "ingest": {
+			const parts = [s.ingest.length > 0 ? `${plural(s.ingest.length, "file", "files")} waiting` : "", s.pending > 0 ? `${plural(s.pending, "source", "sources")} to absorb` : ""].filter((p) => p);
+			return { name: "Ingest", line: parts.join(" · ") || "Drop files in ingest/", count: s.ingest.length, tone: "accent" };
+		}
+		case "health":
+			return { name: "Wiki health", line: s.problems > 0 ? plural(s.problems, "error", "errors") : "No errors", count: s.problems, tone: "warning" };
+		case "journals": {
+			const n = s.journals.length;
+			const line = n === 0 ? "Your own writing" : s.toPublish > 0 ? `${s.toPublish} to publish` : `${plural(n, "volume", "volumes")}, all published`;
+			return { name: "Journals", line, count: s.toPublish, tone: "accent" };
+		}
+		case "library": {
+			const n = s.checkouts.length;
+			const line = n === 0 ? "Gather the pages on a subject" : [`${n} out`, s.toReturn > 0 ? `${s.toReturn} with edits` : ""].filter((x) => x).join(" · ");
+			return { name: "Library", line, count: s.toReturn, tone: "accent" };
+		}
+		case "agents": {
+			const parts = [s.waiting > 0 ? `${s.waiting} ${s.waiting === 1 ? "needs" : "need"} you` : "", agents > 0 ? `${agents} working` : "", plural(s.sessions, "live session", "live sessions")];
+			const line = parts.filter((p) => p).join(" · ");
+			return s.waiting > 0 ? { name: "Agents", line, count: s.waiting, tone: "accent" } : { name: "Agents", line, count: agents, tone: "muted" };
+		}
+		case "note":
+			return { name: "This note", line: hasNote ? "Wikify it, or delete it safely" : "Open a note first", count: 0, tone: "muted" };
+	}
 }
 
 export function plural(n: number, one: string, many: string): string {

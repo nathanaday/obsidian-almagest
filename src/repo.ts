@@ -32,7 +32,7 @@ interface Brief {
  * binary when the document opens and on Refresh. It writes nothing; the working tree's
  * state changes with every save, so it is not in the file.
  */
-export class RepoPanel extends MarkdownRenderChild {
+class RepoPanel extends MarkdownRenderChild {
 	constructor(containerEl: HTMLElement, private plugin: AlmagestPlugin, private id: string, private branch: string) {
 		super(containerEl);
 	}
