@@ -2,6 +2,7 @@
 
 import { Checkout, checkouts, toReturn } from "./checkoutstate";
 import { JournalVolume, journalVolumes, toPublish } from "./journalstate";
+import { isDocumentPath } from "./helpers";
 
 /** A document as the binary refers to it (vault.Ref). */
 export interface Ref {
@@ -135,13 +136,21 @@ export interface TrashResult {
 
 export type TrashOutcome =
 	| { kind: "moved"; line: string }
-	| { kind: "linked"; path: string; title: string; backlinks: Ref[] }
+	| { kind: "linked"; path: string; title: string; backlinks: Ref[]; yours: Ref[]; agent: boolean }
 	| { kind: "error"; line: string };
 
-/** What safe delete did: the file moved to trash/, or the documents that link it and keep it. */
+/**
+ * What safe delete did: the file moved to trash/, or the files that link it and keep it.
+ * A link outside the knowledge documents is the user's to fix: an agent edits documents
+ * only, and removes only a document. So an agent resolves a document that documents link.
+ */
 export function trashOutcome(r: TrashResult): TrashOutcome {
 	const backlinks = r.backlinks ?? [];
-	if (backlinks.length > 0) return { kind: "linked", path: r.path, title: noteTitle(r.path), backlinks };
+	if (backlinks.length > 0) {
+		const yours = backlinks.filter((b) => !isDocumentPath(b.path));
+		const agent = isDocumentPath(r.path) && yours.length < backlinks.length;
+		return { kind: "linked", path: r.path, title: noteTitle(r.path), backlinks, yours, agent };
+	}
 	if (!r.moved) return { kind: "error", line: `${r.path} did not move, and nothing links it.` };
 	const through = r.change?.title ? ` The change ${r.change.title} records it.` : "";
 	return { kind: "moved", line: `Moved ${r.path} to ${r.moved}.${through}` };

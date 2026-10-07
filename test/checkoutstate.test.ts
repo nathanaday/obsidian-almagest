@@ -36,7 +36,7 @@ test("Return is on only for a checkout with an edited copy that no return took",
 
 test("the paths and names of a checkout", () => {
 	const [c] = checkouts([entry("checkout/2026-10-06 Alpha study")]);
-	assert.equal(readingListPath(c!), "checkout/2026-10-06 Alpha study/Reading list.md");
+	assert.equal(readingListPath(c!), "checkout/2026-10-06 Alpha study/Checkout · 2026-10-06 Alpha study.md");
 	assert.equal(folderName("checkout/2026-10-06 Alpha study"), "2026-10-06 Alpha study");
 	assert.equal(day("2026-10-06T18:00:34"), "2026-10-06");
 });

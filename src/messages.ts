@@ -35,12 +35,21 @@ export function checkoutMessage(request: string): string {
 	return `/atlas-obsidian:wiki-checkout Check out the material on: ${oneLine(request)}`;
 }
 
-/** Resolve with an agent: a file that safe delete kept because these documents link it. */
-export function resolveMessage(target: { title: string; path: string }, backlinks: { title: string }[]): string {
-	const names = backlinks.slice(0, MAX_NAMED).map((b) => `[[${b.title}]]`);
-	const more = backlinks.length - names.length;
+function named(list: { title: string }[]): string {
+	const names = list.slice(0, MAX_NAMED).map((b) => `[[${b.title}]]`);
+	const more = list.length - names.length;
 	if (more > 0) names.push(`${more} more`);
-	return `/atlas-obsidian:wiki-edit Remove [[${target.title}]] (${target.path}), which ${names.join(", ")} ${backlinks.length === 1 ? "links" : "link"}: point each backlink elsewhere, or drop it, then propose a remove.`;
+	return names.join(", ");
+}
+
+/**
+ * Resolve with an agent: a document that safe delete kept because documents link it. The
+ * files of the user's own that link it too stay as they are, so the agent proposes no remove.
+ */
+export function resolveMessage(target: { title: string; path: string }, backlinks: { title: string }[], yours: { title: string }[] = []): string {
+	const head = `/atlas-obsidian:wiki-edit Remove [[${target.title}]] (${target.path}), which ${named(backlinks)} ${backlinks.length === 1 ? "links" : "link"}: point each backlink elsewhere, or drop it`;
+	if (yours.length === 0) return `${head}, then propose a remove.`;
+	return `${head}. ${named(yours)} ${yours.length === 1 ? "is" : "are"} the user's to fix, so leave ${yours.length === 1 ? "it" : "them"} and propose no remove; the user runs Safe delete again.`;
 }
 
 /** Create on a new mark: an agent drafts the topic from the wikified note into its work document. */

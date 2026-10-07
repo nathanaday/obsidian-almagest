@@ -48,6 +48,15 @@ test("Resolve with an agent names the file, its path, and the documents that lin
 	assert.ok(!text.includes("[[T10]]"));
 });
 
+test("Resolve with an agent leaves the user's files, and then proposes no remove", () => {
+	const target = { title: "Beta", path: "source-core/documents/Beta.md" };
+	assert.equal(
+		resolveMessage(target, [{ title: "Alpha" }], [{ title: "Week 1" }]),
+		"/atlas-obsidian:wiki-edit Remove [[Beta]] (source-core/documents/Beta.md), which [[Alpha]] links: point each backlink elsewhere, or drop it. [[Week 1]] is the user's to fix, so leave it and propose no remove; the user runs Safe delete again.",
+	);
+	assert.match(resolveMessage(target, [{ title: "Alpha" }], [{ title: "A" }, { title: "B" }]), /\[\[A\]\], \[\[B\]\] are the user's to fix, so leave them and propose no remove;/);
+});
+
 test("Create on a new mark runs wiki-edit to draft the topic from the wikified note, into its work document", () => {
 	assert.equal(
 		draftMessage("Momentum", "My note · wikified", { id: "chg-qrjq13", title: "2026-10-06 Draft Momentum" }),

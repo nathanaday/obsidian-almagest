@@ -44,7 +44,7 @@ test("Publish is off for a volume with no note or no change", () => {
 test("a path lies in a volume when it is inside journals/<volume>/", () => {
 	assert.equal(volumeOf("journals/cs566-notes/Week 1.md"), "cs566-notes");
 	assert.equal(volumeOf("journals/cs566-notes/labs/Lab 1.md"), "cs566-notes");
-	assert.equal(volumeOf("journals/cs566-notes/Publication history.md"), "cs566-notes");
+	assert.equal(volumeOf("journals/cs566-notes/Journal · cs566-notes.md"), "cs566-notes");
 	assert.equal(volumeOf("journals/Loose.md"), "");
 	assert.equal(volumeOf("journals/.hidden/a.md"), "");
 	assert.equal(volumeOf("scratchpad/journals/a/b.md"), "");

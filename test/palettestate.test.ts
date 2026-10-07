@@ -117,9 +117,22 @@ test("safe delete of a file that nothing links: it moved to trash/", () => {
 });
 
 test("safe delete of a file that others link: it stays, with its backlinks", () => {
-	const backlinks = [ref("Alpha", "source-core/documents/Alpha.md", { type: "topic" })];
-	const out = trashOutcome({ path: "source-core/documents/Beta.md", backlinks, moved: "" });
-	assert.deepEqual(out, { kind: "linked", path: "source-core/documents/Beta.md", title: "Beta", backlinks });
+	const alpha = ref("Alpha", "source-core/documents/Alpha.md", { type: "topic" });
+	const out = trashOutcome({ path: "source-core/documents/Beta.md", backlinks: [alpha], moved: "" });
+	assert.deepEqual(out, { kind: "linked", path: "source-core/documents/Beta.md", title: "Beta", backlinks: [alpha], yours: [], agent: true });
+});
+
+test("a link outside the knowledge documents is the user's, and an agent resolves only a document that documents link", () => {
+	const alpha = ref("Alpha", "source-core/documents/Alpha.md", { type: "topic" });
+	const week = ref("Week 1", "journals/cs566/Week 1.md");
+	const copy = ref("Beta (checkout)", "checkout/2026-10-06 Study/Beta (checkout).md");
+	const mixed = trashOutcome({ path: "source-core/documents/Beta.md", backlinks: [alpha, week, copy], moved: "" });
+	assert.ok(mixed.kind === "linked" && mixed.agent);
+	assert.deepEqual((mixed as { yours: unknown }).yours, [week, copy]);
+	const onlyYours = trashOutcome({ path: "source-core/documents/Beta.md", backlinks: [week], moved: "" });
+	assert.ok(onlyYours.kind === "linked" && !onlyYours.agent);
+	const aNote = trashOutcome({ path: "scratchpad/Plan.md", backlinks: [alpha], moved: "" });
+	assert.ok(aNote.kind === "linked" && !aNote.agent && aNote.yours.length === 0);
 });
 
 test("safe delete that neither moved nor found a backlink is an error", () => {

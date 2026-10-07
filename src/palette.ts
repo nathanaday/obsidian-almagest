@@ -387,9 +387,11 @@ export class PaletteView extends ItemView {
 		const out = await this.plugin.atlas<{ trash: TrashResult }>(["vault", "trash", arg], [2]);
 		const outcome = trashOutcome(out.trash);
 		if (outcome.kind === "linked") {
-			new BacklinksModal(this.app, outcome, (path) => void this.openPath(path, false), () =>
-				void this.act("trash", () => this.plugin.runAgent(resolveMessage(outcome, outcome.backlinks), `Agent · Remove ${outcome.title}`, "remove")),
-			).open();
+			const agent = () => {
+				const docs = outcome.backlinks.filter((b) => !outcome.yours.includes(b));
+				void this.act("trash", () => this.plugin.runAgent(resolveMessage(outcome, docs, outcome.yours), `Agent · Remove ${outcome.title}`, "remove"));
+			};
+			new BacklinksModal(this.app, outcome, (path) => void this.openPath(path, false), outcome.agent ? agent : null).open();
 			return;
 		}
 		new Notice(`Atlas: ${outcome.line}`, outcome.kind === "error" ? 10_000 : 6000);
@@ -407,13 +409,13 @@ export class PaletteView extends ItemView {
 	}
 }
 
-/** The documents that keep a file from safe delete, and the agent that resolves them. */
+/** The files that keep a file from safe delete, and the agent that resolves the documents among them. */
 class BacklinksModal extends Modal {
 	constructor(
 		app: App,
 		private outcome: Extract<TrashOutcome, { kind: "linked" }>,
 		private show: (path: string) => void,
-		private resolve: () => void,
+		private resolve: (() => void) | null,
 	) {
 		super(app);
 	}
@@ -424,8 +426,13 @@ class BacklinksModal extends Modal {
 		const el = this.contentEl;
 		el.addClass("atlas-backlinks");
 		el.createEl("p", {
-			text: `${plural(outcome.backlinks.length, "document links", "documents link")} ${outcome.path}, so safe delete moved nothing. Point each link elsewhere, or drop it; then the file can go to trash/.`,
+			text: `${plural(outcome.backlinks.length, "file links", "files link")} ${outcome.path}, so safe delete moved nothing. Point each link elsewhere, or drop it; then the file can go to trash/.`,
 		});
+		if (outcome.yours.length > 0) {
+			el.createEl("p", {
+				text: `The links in your own notes are yours to fix: an agent edits knowledge documents only.`,
+			});
+		}
 		const ul = el.createEl("ul");
 		for (const b of outcome.backlinks) {
 			const li = ul.createEl("li");
@@ -436,14 +443,17 @@ class BacklinksModal extends Modal {
 				this.close();
 				this.show(b.path);
 			};
-			if (b.type) li.createSpan({ cls: "atlas-backlinks-type", text: ` ${b.kind || b.type}` });
+			if (outcome.yours.includes(b)) li.createSpan({ cls: "atlas-backlinks-type", text: " yours to fix" });
+			else if (b.type) li.createSpan({ cls: "atlas-backlinks-type", text: ` ${b.kind || b.type}` });
 		}
 		const buttons = el.createDiv({ cls: "atlas-backlinks-buttons" });
 		buttons.createEl("button", { text: "Close" }).onclick = () => this.close();
+		const resolve = this.resolve;
+		if (!resolve) return;
 		const go = buttons.createEl("button", { cls: "mod-cta", text: "Resolve with an agent" });
 		go.onclick = () => {
 			this.close();
-			this.resolve();
+			resolve();
 		};
 	}
 

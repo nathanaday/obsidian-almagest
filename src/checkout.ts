@@ -21,6 +21,7 @@ export async function returnCheckout(plugin: AtlasPlugin, c: Checkout): Promise<
 	const { returned } = await plugin.atlas<{ returned: Returned }>([CHECKOUT, "return", c.folder]);
 	const line = skippedLine(returned.skipped);
 	if (line) new Notice(`Atlas: ${line}`, 15_000);
+	if (returned.warning) new Notice(`Atlas: ${returned.warning}`, 15_000);
 	if (returned.change?.ref) await plugin.openWhenSeen(returned.change.ref.path, true);
 }
 

@@ -1,7 +1,6 @@
 // The librarian's checkouts as the palette shows them. Pure: the tests cover them.
 
 export const CHECKOUT = "checkout";
-export const READING_LIST = "Reading list";
 
 /** One checkout, as `vault --json` and `checkout --json` print it (checkout.Entry). */
 export interface Checkout {
@@ -22,6 +21,8 @@ export interface Returned {
 	change?: { ref: { id: string; title: string; path: string } } | null;
 	/** The copies left out, each "<path>: <why>". */
 	skipped?: string[] | null;
+	/** What went wrong after the change was proposed. */
+	warning?: string;
 }
 
 /** The checkouts, newest first (a folder's name begins with its date), with any missing field filled. */
@@ -56,8 +57,9 @@ export function day(stamp: string): string {
 	return stamp.slice(0, 10);
 }
 
+/** The reading list, "Checkout · <folder name>.md", a name no copy can take. */
 export function readingListPath(c: Checkout): string {
-	return `${c.folder}/${READING_LIST}.md`;
+	return `${c.folder}/Checkout · ${folderName(c.folder)}.md`;
 }
 
 /** The folder's own name: "checkout/2026-10-06 Alpha study" gives "2026-10-06 Alpha study". */

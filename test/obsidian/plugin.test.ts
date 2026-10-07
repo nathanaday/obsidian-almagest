@@ -69,7 +69,7 @@ describe("Atlas in Obsidian", () => {
 
 	it("loads in a 10.0 vault with no console error, and adds nothing to the file explorer", { timeout: TIMEOUT }, async () => {
 		const o = await launch();
-		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.atlas.manifest.version)).toBe("10.4.0");
+		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.atlas.manifest.version)).toBe("10.4.1");
 
 		// A topic and a change document: the files that 9.0 marked in the explorer.
 		const change = await propose(o, "Add Alpha", "Alpha");
@@ -454,7 +454,7 @@ describe("Atlas in Obsidian", () => {
 
 	it("publishes a journal volume from the palette and from the command, without Duet", { timeout: 120_000 }, async () => {
 		const note = "journals/cs566-notes/Week 1.md";
-		const history = "journals/cs566-notes/Publication history.md";
+		const history = "journals/cs566-notes/Journal · cs566-notes.md";
 		const o = await launch({
 			prepare: async (vault) => {
 				await mkdir(path.join(vault, "journals/cs566-notes"), { recursive: true });
@@ -600,6 +600,9 @@ describe("Atlas in Obsidian", () => {
 		const change = JSON.parse(await o.atlas(["change", "propose", plan, "--json"]));
 		await o.atlas(["change", "apply", change.ref.id, "--json"]);
 		const beta = "source-core/documents/Beta.md";
+		const mine = "scratchpad/Plan.md";
+		await mkdir(path.join(o.vault, "scratchpad"), { recursive: true });
+		await writeFile(path.join(o.vault, mine), "Read [[Beta]] first.\n");
 		const out = await stubTerminal(o);
 		await open(o, beta, "preview");
 
@@ -608,8 +611,10 @@ describe("Atlas in Obsidian", () => {
 		const modal = o.page.locator(".modal", { hasText: "Beta stays" });
 		await modal.waitFor({ timeout: 10_000 });
 		const links = await modal.locator("li a").allTextContents();
-		expect(links).toContain("Alpha");
-		expect(await modal.textContent()).toContain(`${links.length === 1 ? "1 document links" : `${links.length} documents link`} ${beta}, so safe delete moved nothing.`);
+		expect(links).toEqual(expect.arrayContaining(["Alpha", "Plan"]));
+		expect(await modal.textContent()).toContain(`${links.length} files link ${beta}, so safe delete moved nothing.`);
+		expect(await modal.locator("li", { hasText: "Plan" }).textContent()).toContain("yours to fix");
+		expect(await modal.textContent()).toContain("The links in your own notes are yours to fix");
 		expect(existsSync(path.join(o.vault, beta))).toBe(true);
 		expect(existsSync(path.join(o.vault, "trash"))).toBe(false);
 
@@ -617,7 +622,8 @@ describe("Atlas in Obsidian", () => {
 		const command = await until("the terminal command", async () => (existsSync(out) ? (await readFile(out, "utf8")).trim() : undefined));
 		expect(command).toContain(`claude '/atlas-obsidian:wiki-edit Remove [[Beta]] (${beta}), which `);
 		expect(command).toContain("[[Alpha]]");
-		expect(command).toMatch(/then propose a remove\.'$/);
+		expect(command).toContain("[[Plan]] is the user");
+		expect(command).toContain("propose no remove");
 		expect(o.errors).toEqual([]);
 	});
 
@@ -923,6 +929,28 @@ describe("Atlas in Obsidian", () => {
 		await until("two bubbles in reading view", async () => (await bubbles(o, "preview").count()) === 2);
 		await command();
 		await until("the notice", async () => (await notices(o)).includes("Atlas: this note holds no link mark."));
+		expect(o.errors).toEqual([]);
+	});
+
+	it("a link mark whose title names no note offers Ignore only, and bulk Accept leaves it", { timeout: TIMEOUT }, async () => {
+		const o = await launch({ prepare: lecture });
+		const copy = await wikified(o);
+		await writeFile(path.join(o.vault, copy), (await o.read(copy)) + "\nThe {{link:Gone Topic|gone topic}} stays.\n");
+		await open(o, copy, "source");
+		const live = bubbles(o, "source");
+		await until("the bubbles", async () => (await live.count()) === 5, { describe: async () => `bubbles: ${await live.count()}` });
+		const gone = live.filter({ hasText: "→ Gone Topic" });
+		expect(await gone.getAttribute("data-state")).toBe("gone");
+		expect(await shown(gone)).toEqual([{ phrase: "gone topic", pill: "→ Gone Topic", buttons: ["Ignore"] }]);
+		expect(await gone.locator(".atlas-mark-gone").getAttribute("title")).toBe("No note is titled Gone Topic now.");
+
+		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("atlas:accept-link-marks"));
+		await saved(o, copy, "[[Gradient Descent|Gradient descent]] takes a");
+		expect(await notices(o)).toContain("Atlas: accepted 2 link marks. 1 names no note now; Ignore it or fix the title.");
+		expect(await o.read(copy)).toContain("The {{link:Gone Topic|gone topic}} stays.");
+
+		await gone.locator("button", { hasText: "Ignore" }).click();
+		await saved(o, copy, "The gone topic stays.");
 		expect(o.errors).toEqual([]);
 	});
 

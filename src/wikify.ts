@@ -3,7 +3,7 @@ import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetTy
 import { MarkdownPostProcessorContext, MarkdownRenderChild, MarkdownView, Notice, TFile, debounce, editorInfoField, editorLivePreviewField } from "obsidian";
 import { saveOpen } from "./change";
 import type AtlasPlugin from "./main";
-import { Decision, Mark, acceptAll, decide as decideMark, draftTitle, findMarks, isWikified, linkFor, locate, replacement, wikifyBlocked } from "./marks";
+import { Decision, Mark, acceptAll, acceptedLine, decide as decideMark, draftTitle, findMarks, isWikified, linkFor, linkMarks, locate, replacement, wikifyBlocked } from "./marks";
 import { draftMessage, wikifyMessage } from "./messages";
 import { noteTitle } from "./palettestate";
 
@@ -11,10 +11,11 @@ import { noteTitle } from "./palettestate";
 type MarkFields = Pick<Mark, "kind" | "title" | "phrase" | "text">;
 
 /**
- * What a bubble offers. A link: Accept. A new subject: Create; drafting while its draft
- * work document runs or waits for the user; Link once a note has its title.
+ * What a bubble offers. A link: Accept, or only Ignore once no note has its title. A new
+ * subject: Create; drafting while its draft work document runs or waits for the user;
+ * Link once a note has its title.
  */
-type BubbleState = { kind: "link" } | { kind: "new" } | { kind: "drafting"; path: string } | { kind: "ready" };
+type BubbleState = { kind: "link" } | { kind: "gone" } | { kind: "new" } | { kind: "drafting"; path: string } | { kind: "ready" };
 
 const DRAFTING = ["running", "proposed", "applying"];
 const CHANGED = "Atlas: this mark changed since it showed. Nothing was replaced.";
@@ -56,11 +57,16 @@ export class Wikify {
 	}
 
 	state(mark: MarkFields, sourcePath: string): BubbleState {
-		if (mark.kind === "link") return { kind: "link" };
-		if (this.plugin.app.metadataCache.getFirstLinkpathDest(mark.title, sourcePath)) return { kind: "ready" };
+		const found = this.resolves(mark.title, sourcePath);
+		if (mark.kind === "link") return { kind: found ? "link" : "gone" };
+		if (found) return { kind: "ready" };
 		const path = this.draftOf(mark.title);
 		if (path !== null) return { kind: "drafting", path };
 		return { kind: "new" };
+	}
+
+	private resolves(title: string, sourcePath: string): boolean {
+		return !!this.plugin.app.metadataCache.getFirstLinkpathDest(title, sourcePath);
 	}
 
 	/** The draft work document of a title that runs or waits, "" while Create starts it, or null. */
@@ -111,24 +117,31 @@ export class Wikify {
 		if (path) void this.plugin.openWhenSeen(path, true);
 	}
 
-	/** Accept on every link mark of a wikified note: through the editor when it shows the note, else on disk. */
+	/**
+	 * Accept on every link mark of a wikified note whose title names a note: through the
+	 * editor when it shows the note, else on disk.
+	 */
 	async acceptAll(file: TFile): Promise<void> {
 		const { workspace, vault } = this.plugin.app;
+		const resolves = (title: string) => this.resolves(title, file.path);
 		let count = 0;
+		let gone = 0;
 		const view = workspace.getActiveViewOfType(MarkdownView);
 		if (view?.file?.path === file.path && view.getMode() === "source") {
 			const editor = view.editor;
-			const marks = findMarks(editor.getValue()).filter((m) => m.kind === "link");
-			count = marks.length;
-			if (count > 0) editor.transaction({ changes: marks.map((m) => ({ from: editor.offsetToPos(m.from), to: editor.offsetToPos(m.to), text: linkFor(m) })) });
+			const { take, gone: left } = linkMarks(editor.getValue(), resolves);
+			count = take.length;
+			gone = left;
+			if (count > 0) editor.transaction({ changes: take.map((m) => ({ from: editor.offsetToPos(m.from), to: editor.offsetToPos(m.to), text: linkFor(m) })) });
 		} else {
 			await vault.process(file, (text) => {
-				const out = acceptAll(text);
+				const out = acceptAll(text, resolves);
 				count = out.count;
+				gone = out.gone;
 				return out.text;
 			});
 		}
-		new Notice(count > 0 ? `Atlas: accepted ${count === 1 ? "1 link mark" : `${count} link marks`}.` : "Atlas: this note holds no link mark.");
+		new Notice(acceptedLine(count, gone));
 	}
 
 	/**
@@ -171,6 +184,9 @@ function drawBubble(el: HTMLElement, w: Wikify, mark: MarkFields, state: BubbleS
 	switch (state.kind) {
 		case "link":
 			button("Accept", () => decide("accept"), true);
+			break;
+		case "gone":
+			el.createSpan({ cls: "atlas-mark-gone", text: "no note", attr: { title: `No note is titled ${mark.title} now.` } });
 			break;
 		case "new":
 			button("Create", () => void w.create(mark.title, sourcePath), true);

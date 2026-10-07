@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { acceptAll, decide, draftTitle, findMarks, isWikified, linkFor, locate, mask, parseMark, replacement, wikifyBlocked } from "../src/marks";
+import { acceptAll, acceptedLine, decide, draftTitle, findMarks, isWikified, linkFor, locate, mask, parseMark, replacement, wikifyBlocked } from "../src/marks";
 
 const fields = (text: string) => findMarks(text).map(({ kind, title, phrase }) => ({ kind, title, phrase }));
 
@@ -114,8 +114,17 @@ test("locate finds a mark by its exact text, the nth of equal marks, within a ra
 
 test("acceptAll accepts every link mark and leaves new marks and code", () => {
 	const text = "{{link:A|a}} and {{new:B|b}}, `{{link:C|c}}`, {{link:Gradient Descent|descent}}.";
-	assert.deepEqual(acceptAll(text), { text: "[[A|a]] and {{new:B|b}}, `{{link:C|c}}`, [[Gradient Descent|descent]].", count: 2 });
-	assert.deepEqual(acceptAll("no marks"), { text: "no marks", count: 0 });
+	assert.deepEqual(acceptAll(text), { text: "[[A|a]] and {{new:B|b}}, `{{link:C|c}}`, [[Gradient Descent|descent]].", count: 2, gone: 0 });
+	assert.deepEqual(acceptAll("no marks"), { text: "no marks", count: 0, gone: 0 });
+});
+
+test("acceptAll leaves a link mark whose title names no note now", () => {
+	const text = "{{link:A|a}} and {{link:Gone|g}}.";
+	assert.deepEqual(acceptAll(text, (t) => t !== "Gone"), { text: "[[A|a]] and {{link:Gone|g}}.", count: 1, gone: 1 });
+	assert.equal(acceptedLine(1, 1), "Atlas: accepted 1 link mark. 1 names no note now; Ignore it or fix the title.");
+	assert.equal(acceptedLine(2, 0), "Atlas: accepted 2 link marks.");
+	assert.equal(acceptedLine(0, 2), "Atlas: no link mark to accept. 2 name no note now; Ignore them or fix the title.");
+	assert.equal(acceptedLine(0, 0), "Atlas: this note holds no link mark.");
 });
 
 test("a wikified copy is a markdown note whose name ends with · wikified, or that and a number", () => {

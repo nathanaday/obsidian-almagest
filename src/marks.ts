@@ -118,12 +118,26 @@ export function decide(text: string, m: Mark, decision: Decision): string {
 	return text.slice(0, m.from) + replacement(m, decision) + text.slice(m.to);
 }
 
-/** Accept on every link mark: the new text and how many marks it accepted. */
-export function acceptAll(text: string): { text: string; count: number } {
-	const marks = findMarks(text).filter((m) => m.kind === "link");
+/** The link marks of a text that Accept takes, and those whose title names no note now. */
+export function linkMarks(text: string, resolves: (title: string) => boolean): { take: Mark[]; gone: number } {
+	const links = findMarks(text).filter((m) => m.kind === "link");
+	const take = links.filter((m) => resolves(m.title));
+	return { take, gone: links.length - take.length };
+}
+
+/** Accept on every link mark whose title names a note: the new text, how many it accepted, and how many it left. */
+export function acceptAll(text: string, resolves: (title: string) => boolean = () => true): { text: string; count: number; gone: number } {
+	const { take, gone } = linkMarks(text, resolves);
 	let out = text;
-	for (const m of [...marks].reverse()) out = decide(out, m, "accept");
-	return { text: out, count: marks.length };
+	for (const m of [...take].reverse()) out = decide(out, m, "accept");
+	return { text: out, count: take.length, gone };
+}
+
+/** The notice of bulk Accept. */
+export function acceptedLine(count: number, gone: number): string {
+	const left = gone === 0 ? "" : ` ${gone === 1 ? "1 names" : `${gone} name`} no note now; Ignore ${gone === 1 ? "it" : "them"} or fix the title.`;
+	if (count === 0) return gone === 0 ? "Atlas: this note holds no link mark." : `Atlas: no link mark to accept.${left}`;
+	return `Atlas: accepted ${count === 1 ? "1 link mark" : `${count} link marks`}.${left}`;
 }
 
 /** Whether a path is a copy that `wikify start` made: its name ends with " · wikified", or that and a number. */
