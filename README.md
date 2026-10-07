@@ -20,9 +20,9 @@ work; this plugin is the interface for it in Obsidian.
   claude plugin install almagest@nathanaday-almagest
   ```
 
-  Its first session installs the binary at `~/.almagest/bin/almagest`. See the
-  [Almagest README](https://github.com/nathanaday/almagest#readme) for Codex and for the
-  details.
+  Its first session installs the binary at `~/.almagest/bin/almagest`. For Codex and
+  the details, see the
+  [Almagest guide](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#install-and-update).
 - A vault that Almagest made (`almagest vault init`, or the `almagest-onboard` skill).
 
 This plugin never downloads, installs, or updates the binary, and never installs or
@@ -66,13 +66,13 @@ With the plugin, Obsidian adds:
     proposes no remove, and you run Safe delete again after you fix it.
   - **Publish** next to a journal volume (marked when the volume has changes) runs
     `almagest journal publish`, then starts a work document and an agent that
-    absorbs the edition. See [Journals](https://github.com/nathanaday/almagest#journals).
+    absorbs the edition. See [Journals](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#journals).
   - **Checkout** asks for your request and starts an agent that checks out the
     material on it.
   - **Return** next to a checkout runs `almagest checkout return` and opens the
-    change. It is on when a copy is edited and the checkout is not returned. See [Checkouts](https://github.com/nathanaday/almagest#checkouts).
+    change. It is on when a copy is edited and the checkout is not returned. See [Checkouts](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#checkouts).
   - **Wikify this note** (experimental) copies the open note to `scratchpad/`, opens
-    the copy, and starts an agent that marks it. See [Wikify a note](https://github.com/nathanaday/almagest#wikify-a-note-experimental).
+    the copy, and starts an agent that marks it. See [Wikify a note](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#wikify-a-note-experimental).
 
   The palette starts an agent through the Duet plugin. Without Duet, it starts your
   agent in a terminal (the agent and terminal settings of Almagest) with the same
