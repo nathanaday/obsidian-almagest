@@ -5,6 +5,7 @@ export const TOOL = "tool";
 export const DOCUMENTS = "tool/source-core/documents/";
 export const SESSIONS = "tool/sessions";
 export const TRASH = "tool/trash";
+export const RETURNED = "tool/returned";
 const WIKI_VIEW = "wiki-view/";
 const NAV_FOLDER = "wiki-view/nav/";
 export const INGEST = "ingest/";

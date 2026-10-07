@@ -871,7 +871,7 @@ describe("Almagest in Obsidian", () => {
 	});
 
 	/** Applies three linked topics, and checks out Beta and Alpha with the CLI, as the librarian would. */
-	async function checkOut(o: ObsidianInstance): Promise<{ folder: string; readingList: string; alphaCopy: string; date: string }> {
+	async function checkOut(o: ObsidianInstance): Promise<{ folder: string; index: string; alphaCopy: string; date: string }> {
 		const plan = path.join(o.vault, "..", "topics.json");
 		await writeFile(
 			plan,
@@ -900,72 +900,97 @@ describe("Almagest in Obsidian", () => {
 		);
 		const { made } = JSON.parse(await o.almagest(["checkout", "make", order, "--json"]));
 		const alphaCopy = made.copies.find((p: string) => p.endsWith("/Alpha (checkout).md"));
-		return { folder: made.folder, readingList: made.reading_list, alphaCopy, date: frontmatter(await o.read(made.reading_list)).checked_out!.slice(0, 10) };
+		return { folder: made.folder, index: made.index, alphaCopy, date: frontmatter(await o.read(made.index)).checked_out!.slice(0, 10) };
 	}
 
-	it("lists a checkout; an edited copy turns Return on, and Return proposes the edit that Approve applies", { timeout: 120_000 }, async () => {
+	it("lists a checkout that is out; Return in one click proposes its edit, moves it to tool/returned/, and the ledger lists it", { timeout: 120_000 }, async () => {
 		const o = await launch();
-		const { folder, readingList, alphaCopy, date } = await checkOut(o);
+		const { folder, index, alphaCopy, date } = await checkOut(o);
+		const name = "Alpha study";
+		const returned = `tool/returned/${folder.slice("checkout/".length)}`;
 		const palette = await openPalette(o);
-		expect(await line(palette, "library")).toBe("1 checkout");
+		expect(await line(palette, "library")).toBe("1 out");
 		await goTo(palette, "library");
 		const checkout = palette.locator(`.almagest-item[data-folder="${folder}"]`);
 		const ret = checkout.locator('button[data-action="return"]');
 		const meta = checkout.locator(".almagest-item-meta");
 		await until("the checkout in the palette", async () => (await checkout.count()) === 1, { describe: () => palette.innerText() });
-		expect(await checkout.locator(".almagest-item-title").textContent()).toBe("everything on alpha");
+		expect(await checkout.locator(".almagest-item-title").textContent()).toBe(name);
 		expect(await meta.textContent()).toBe(`${date} · 2 documents · 0 edited`);
+		// Return is on whatever the edits: a checkout with none just moves.
 		expect(await ret.textContent()).toBe("Return");
-		expect(await ret.isDisabled()).toBe(true);
-		expect(await ret.getAttribute("title")).toBe("No copy is edited.");
-		expect(await tile(palette, "to return")).toBe("0");
+		expect(await ret.isEnabled()).toBe(true);
+		expect(await tile(palette, "out")).toBe("1");
+		expect(await tile(palette, "returned")).toBe("0");
 
-		// The request opens the reading list; it and each copy open with the almagest callout.
+		// The name opens the checkout's index; it and each copy open with the almagest callout.
 		await checkout.locator(".almagest-item-title a").click();
-		await until("the reading list", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === readingList);
-		for (const note of [readingList, alphaCopy]) {
+		await until("the index", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === index);
+		expect(index).toBe(`${folder}/_index.md`);
+		for (const note of [index, alphaCopy]) {
 			await open(o, note, "preview");
 			const callout = o.page.locator('.workspace-leaf.mod-active .markdown-reading-view .callout[data-callout="almagest"]');
 			await callout.waitFor({ timeout: 10_000 });
 			expect(await callout.evaluate((el) => getComputedStyle(el).getPropertyValue("--callout-icon").trim())).toBe("lucide-map");
 		}
 
-		// An edit of a copy, as Obsidian saves it, turns Return on after the palette reads the status again.
+		// An edit of a copy, as Obsidian saves it, counts after the palette reads the status again.
 		await o.page.evaluate(async (file) => {
 			const app = (window as any).app;
 			const copy = app.vault.getFileByPath(file);
 			await app.vault.modify(copy, `${await app.vault.read(copy)}\nA line the reader added.\n`);
 		}, alphaCopy);
-		await until("Return to turn on", async () => (await ret.isEnabled()) && (await meta.textContent()) === `${date} · 2 documents · 1 edited`, { describe: () => palette.innerText() });
-		expect(await tile(palette, "to return")).toBe("1");
+		await until("the edit", async () => (await meta.textContent()) === `${date} · 2 documents · 1 edited`, { describe: () => palette.innerText() });
+		expect(await line(palette, "library")).toBe("1 out · 1 with edits");
 
-		// Return proposes the change and opens it.
+		// One click: the change of the edit, the move, and a notice with a link to the change.
+		await goTo(palette, "library");
 		await ret.click();
 		const proposed = await until("the proposed change", async () => {
 			const list = JSON.parse(await o.almagest(["vault", "--json"])).status.changes.proposed as { id: string; title: string; path: string }[];
 			return list.length === 1 ? list[0] : undefined;
 		});
-		expect(proposed.title).toBe(`${date} Return ${folder.slice("checkout/".length + 11)}`);
+		expect(proposed.title).toBe(`${date} Return ${name}`);
+		const notice = o.page.locator(".notice", { hasText: `Returned ${name} to ${returned}.` });
+		await until("the notice", async () => (await notice.count()) === 1, { describe: async () => JSON.stringify(await notices(o)) });
+		expect(await notice.textContent()).toContain(`${proposed.title} proposes your edits to 1 document; approve it in the change.`);
+		expect(existsSync(path.join(o.vault, folder))).toBe(false);
+		const fields = frontmatter(await o.read(`${returned}/_index.md`));
+		expect([fields.status, fields.return_change]).toEqual(["returned", proposed.id]);
+		expect(fields.returned).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+		expect(await o.read(`${returned}/Alpha (checkout).md`)).toContain("A line the reader added.");
+		// The copy that was open comes back from its new place.
+		const tabs = () => o.page.evaluate(() => (window as any).app.workspace.getLeavesOfType("markdown").map((l: any) => l.view.file?.path));
+		await until("the open copy at its new place", async () => (await tabs()).includes(`${returned}/Alpha (checkout).md`), { describe: async () => JSON.stringify(await tabs()) });
+
+		// The palette lists what is out: nothing now.
+		await until("the checkout to leave the list", async () => (await checkout.count()) === 0, { describe: () => palette.innerText() });
+		expect(await palette.locator(".almagest-empty").textContent()).toBe("No checkout is out.");
+		expect(await tile(palette, "returned")).toBe("1");
+
+		// The notice's link opens the change; Approve writes the edit into the original, with the links pointed back at the wiki.
+		await notice.locator("a", { hasText: "Open the change" }).click();
 		await until("the change to open", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === proposed.path, {
 			describe: () => o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path),
 		});
-		expect((await notices(o)).filter((t) => t.includes("left out"))).toEqual([]);
-		await until("the checkout to show its return", async () => (await meta.textContent())?.startsWith(`${date} · 2 documents · 1 edited · returned `), { describe: () => palette.innerText() });
-		expect(await ret.isDisabled()).toBe(true);
-		expect(await ret.getAttribute("title")).toMatch(/^Returned \d{4}-\d{2}-\d{2}\.$/);
-		expect(await tile(palette, "to return")).toBe("0");
-		expect(frontmatter(await o.read(readingList)).returned).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-
-		// Approve writes the edit into the original, with the links pointed back at the wiki.
 		const widget = o.page.locator(".workspace-leaf.mod-active .almagest-change-card");
 		await widget.locator("button", { hasText: "Approve" }).click({ timeout: 10_000 });
 		await until("the change to apply", async () => (await status(o, proposed.path)).status === "applied", { describe: () => o.read(proposed.path) });
 		const alpha = await o.read("tool/source-core/documents/Alpha.md");
 		expect(alpha).toContain("Alpha rests on [[Beta]] and [[Gamma]].\n\nA line the reader added.\n");
 		expect(alpha).not.toContain("(checkout)");
-		await until("the change's commit", async () => (await o.git(["log", "-1", "--format=%s", "--", "tool/source-core/documents/Alpha.md"])) === `change: Return ${folder.slice("checkout/".length + 11)}\n`, {
+		await until("the change's commit", async () => (await o.git(["log", "-1", "--format=%s", "--", "tool/source-core/documents/Alpha.md"])) === `change: Return ${name}\n`, {
 			describe: () => o.git(["log", "--oneline", "-5"]),
 		});
+		expect(await line(palette, "library")).toBe("Gather the pages on a subject");
+
+		// The ledger's Base lists the checkout, returned; its row opens the index.
+		await open(o, "checkout/Checkout · Ledger.md", "preview");
+		const ledger = o.page.locator(".workspace-leaf.mod-active .markdown-reading-view");
+		await until("the ledger's row", async () => {
+			const text = await ledger.innerText();
+			return text.includes(name) && text.includes("returned");
+		}, { describe: () => ledger.innerText() });
 		expect(o.errors).toEqual([]);
 	});
 

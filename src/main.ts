@@ -384,7 +384,10 @@ export default class AlmagestPlugin extends Plugin {
 			new Notice(`Almagest: Obsidian does not see ${path} yet.`);
 			return;
 		}
-		await this.app.workspace.getLeaf(newTab ? "tab" : false).openFile(file);
+		// The palette, a notice, or a modal may hold the focus; the note takes it, so the user sees it.
+		const leaf = this.app.workspace.getLeaf(newTab ? "tab" : false);
+		await leaf.openFile(file, { active: true });
+		await this.app.workspace.revealLeaf(leaf);
 	}
 
 	private paletteViews(): PaletteView[] {

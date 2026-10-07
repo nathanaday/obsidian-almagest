@@ -1,6 +1,6 @@
 // What the tool palette shows, from the JSON of the binary. Pure: the tests cover it.
 
-import { Checkout, checkouts, toReturn } from "./checkoutstate";
+import { Checkout, checkouts, outOnly, toReturn } from "./checkoutstate";
 import { JournalVolume, journalVolumes, toPublish } from "./journalstate";
 import { isDocumentPath } from "./helpers";
 
@@ -38,9 +38,11 @@ export interface PaletteState {
 	journals: JournalVolume[];
 	/** The volumes with changes to publish. */
 	toPublish: number;
-	/** The checkouts, newest first. */
+	/** The checkouts that are out, newest first. */
 	checkouts: Checkout[];
-	/** The checkouts with edited copies to return. */
+	/** The checkouts returned, which the ledger lists. */
+	returned: number;
+	/** The checkouts out with edited copies, whose edits reach the wiki only through a return. */
 	toReturn: number;
 	/** The errors of the quick lint that status runs. */
 	problems: number;
@@ -61,7 +63,8 @@ export function paletteState(status: VaultStatus, sessions: { open: number; wait
 		trash: status.trash ?? 0,
 		journals,
 		toPublish: toPublish(journals),
-		checkouts: list,
+		checkouts: outOnly(list),
+		returned: list.length - outOnly(list).length,
 		toReturn: toReturn(list),
 		problems: status.problems ?? 0,
 	};
@@ -108,7 +111,7 @@ export function areaLine(area: Area, s: PaletteState, agents: number, hasNote: b
 		}
 		case "library": {
 			const n = s.checkouts.length;
-			const line = n === 0 ? "Gather the pages on a subject" : s.toReturn > 0 ? `${s.toReturn} to return` : plural(n, "checkout", "checkouts");
+			const line = n === 0 ? "Gather the pages on a subject" : [`${n} out`, s.toReturn > 0 ? `${s.toReturn} with edits` : ""].filter((x) => x).join(" · ");
 			return { name: "Library", line, count: s.toReturn, tone: "accent" };
 		}
 		case "agents": {

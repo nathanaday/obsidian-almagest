@@ -68,8 +68,10 @@ With the plugin, Obsidian adds:
     **Publish** runs `almagest journal publish`, then starts a work document and an agent
     that absorbs the edition. See [Journals](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#journals).
   - **Library**: **Check out material** asks for your request and starts the librarian.
-    **Return** next to a checkout runs `almagest checkout return` and opens the change;
-    it is on when a copy is edited and the checkout is not returned. See
+    It lists the checkouts that are out. **Return** next to one returns it in one click:
+    it proposes the edits of the copies as one change, when there are any, and moves the
+    checkout to `tool/returned/`, and a notice says how it went. The ledger lists every
+    checkout. See
     [Checkouts](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#checkouts).
   - **Agents**: **Start an agent**, the agents Almagest started that still work, and the
     agent sessions of the vault as message threads: the open ones, each with its state

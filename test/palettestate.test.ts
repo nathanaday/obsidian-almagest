@@ -25,7 +25,7 @@ test("the palette's status comes from vault --json", () => {
 			{ volume: "garden", name: "Garden", notes: 4, edition: "User Journal Garden - 5 October 2026 Edition", changed: false },
 		],
 		checkouts: [
-			{ folder: "checkout/2026-10-05 Bandits", request: "bandits", date: "2026-10-05", documents: 4, edited: 1, returned: "2026-10-05T17:00:00" },
+			{ folder: "tool/returned/2026-10-05 Bandits", request: "bandits", date: "2026-10-05", documents: 4, edited: 1, status: "returned" as const, returned: "2026-10-05T17:00:00" },
 			{ folder: "checkout/2026-10-06 RL", request: "reinforcement learning", date: "2026-10-06", documents: 7, edited: 2, returned: "" },
 		],
 		problems: 2,
@@ -39,14 +39,16 @@ test("the palette's status comes from vault --json", () => {
 	assert.equal(s.trash, 3);
 	assert.deepEqual(s.journals.map((v) => [v.volume, v.changed]), [["cs566-notes", true], ["garden", false]]);
 	assert.equal(s.toPublish, 1);
-	assert.deepEqual(s.checkouts.map((c) => [c.request, c.edited, c.returned]), [["reinforcement learning", 2, ""], ["bandits", 1, "2026-10-05T17:00:00"]]);
+	// The palette lists the checkouts out; the returned ones count for the ledger.
+	assert.deepEqual(s.checkouts.map((c) => [c.request, c.edited, c.status]), [["reinforcement learning", 2, "out"]]);
+	assert.equal(s.returned, 1);
 	assert.equal(s.toReturn, 1);
 	assert.equal(s.problems, 2);
 });
 
 test("an empty or older status reads as zeros", () => {
 	const s = paletteState({ ingest: null, pending: null, changes: { proposed: null } }, { open: 0, waiting: 0 });
-	assert.deepEqual(s, { proposed: [], running: [], ingest: [], pending: 0, sessions: 0, waiting: 0, trash: 0, journals: [], toPublish: 0, checkouts: [], toReturn: 0, problems: 0 });
+	assert.deepEqual(s, { proposed: [], running: [], ingest: [], pending: 0, sessions: 0, waiting: 0, trash: 0, journals: [], toPublish: 0, checkouts: [], returned: 0, toReturn: 0, problems: 0 });
 	assert.deepEqual(paletteState({ journals: null }, { open: 0, waiting: 0 }).journals, []);
 	assert.deepEqual(paletteState({ checkouts: null }, { open: 0, waiting: 0 }).checkouts, []);
 	assert.deepEqual(paletteState({}, { open: 2, waiting: 1 }).sessions, 2);
@@ -170,7 +172,7 @@ test("the palette's home names each area's state in one line, with a chip only w
 	assert.deepEqual(areaLine("ingest", busy, 0, true), { name: "Ingest", line: "2 files waiting · 1 source to absorb", count: 2, tone: "accent" });
 	assert.deepEqual(areaLine("health", busy, 0, true), { name: "Wiki health", line: "3 errors", count: 3, tone: "warning" });
 	assert.equal(areaLine("journals", busy, 0, true).line, "1 to publish");
-	assert.equal(areaLine("library", busy, 0, true).line, "1 to return");
+	assert.deepEqual(areaLine("library", busy, 0, true), { name: "Library", line: "1 out · 1 with edits", count: 1, tone: "accent" });
 	assert.deepEqual(areaLine("agents", busy, 2, true), { name: "Agents", line: "2 working · 1 live session", count: 2, tone: "muted" });
 	// A session that waits for the user outranks the agents that work: its count is the user's to act on.
 	const waiting = paletteState({}, { open: 3, waiting: 2 });

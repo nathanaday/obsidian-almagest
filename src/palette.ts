@@ -1,9 +1,9 @@
 import { App, ItemView, Modal, Notice, WorkspaceLeaf, debounce, setIcon } from "obsidian";
 import { saveOpen } from "./change";
 import { CheckoutModal, returnCheckout, startCheckout } from "./checkout";
-import { Checkout, day, readingListPath, returnBlocked } from "./checkoutstate";
+import { Checkout, LEDGER, indexPath } from "./checkoutstate";
 import { SessionGroups, SessionState, plainLinks } from "./agents";
-import { INGEST, SESSIONS, TOOL, TRASH, formatAgo, isSnapshotPath, lastProgressLine, linkTitle } from "./helpers";
+import { INGEST, RETURNED, SESSIONS, TOOL, TRASH, formatAgo, isSnapshotPath, lastProgressLine, linkTitle } from "./helpers";
 import { wikifyBlocked } from "./marks";
 import { JOURNALS, JournalVolume, publishBlocked } from "./journalstate";
 import type AlmagestPlugin from "./main";
@@ -428,10 +428,10 @@ export class PaletteView extends ItemView {
 	}
 
 	private renderLibrary(page: HTMLElement, s: PaletteState): void {
-		this.lede(page, "The librarian picks the pages that serve a request, in reading order, and copies them for you to read and mark up. Return proposes your edits as one change.");
+		this.lede(page, `The librarian picks the pages that serve a request, in reading order, and copies them for you to read and mark up. Return proposes your edits as one change and keeps the checkout in ${RETURNED}/.`);
 		this.tiles(page, [
-			[s.checkouts.length, s.checkouts.length === 1 ? "checkout" : "checkouts"],
-			[s.toReturn, "to return"],
+			[s.checkouts.length, "out"],
+			[s.returned, "returned"],
 		]);
 		// The modal asks first; the action runs once it has the request.
 		this.actions(page, (el) => {
@@ -439,25 +439,27 @@ export class PaletteView extends ItemView {
 			button.onclick = () => this.askCheckout();
 		});
 		if (s.checkouts.length === 0) {
-			this.empty(page, "No checkout yet.");
-			return;
+			this.empty(page, s.returned > 0 ? "No checkout is out." : "No checkout yet.");
+		} else {
+			const list = this.list(page, "Out", s.checkouts.length);
+			for (const c of s.checkouts) this.renderCheckout(list, c);
 		}
-		const list = this.list(page, "Checkouts", s.checkouts.length);
-		for (const c of s.checkouts) this.renderCheckout(list, c);
+		if (s.checkouts.length + s.returned > 0) {
+			const ledger = page.createDiv({ cls: "almagest-quiet" });
+			this.link(ledger, "The ledger", LEDGER);
+			ledger.appendText(" lists every checkout, out and returned.");
+		}
 	}
 
 	private renderCheckout(list: HTMLElement, c: Checkout): void {
-		const meta = [c.date, plural(c.documents, "document", "documents"), `${c.edited} edited`];
-		if (c.returned) meta.push(`returned ${day(c.returned)}`);
-		const why = returnBlocked(c);
 		const li = this.item(list, {
-			title: c.request,
-			path: readingListPath(c),
-			meta: meta.join(" · "),
+			title: c.name,
+			path: indexPath(c),
+			meta: [c.date, plural(c.documents, "document", "documents"), `${c.edited} edited`].join(" · "),
 			action: {
 				name: "return",
 				text: this.busy === "return" && this.returning === c.folder ? "Return…" : "Return",
-				why: why || (this.busy || this.plugin.publishing ? "Another action runs." : ""),
+				why: this.busy || this.plugin.publishing ? "Another action runs." : "",
 				run: () => {
 					this.returning = c.folder;
 					void this.act("return", () => returnCheckout(this.plugin, c));
