@@ -23,6 +23,11 @@ export function repairMessage(doc: WorkDoc): string {
 	return `/atlas-obsidian:wiki-review Repair the lint findings that a change repairs. ${report(doc, "the repairs into it")}`;
 }
 
+/** Publish: an edition of the user's journal, captured as a source, into the work document the palette started. */
+export function publishMessage(edition: WorkDoc, doc: WorkDoc): string {
+	return `/atlas-obsidian:wiki-sync Absorb the source [[${edition.title}]] (${edition.id}), the user's journal edition. Cite it where its ideas land. ${report(doc, "into it")}`;
+}
+
 /** Resolve with an agent: a file that safe delete kept because these documents link it. */
 export function resolveMessage(target: { title: string; path: string }, backlinks: { title: string }[]): string {
 	const names = backlinks.slice(0, MAX_NAMED).map((b) => `[[${b.title}]]`);

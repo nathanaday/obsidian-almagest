@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ingestMessage, repairMessage, resolveMessage } from "../src/messages";
+import { ingestMessage, publishMessage, repairMessage, resolveMessage } from "../src/messages";
 
 const doc = { id: "chg-qhezxf", title: "2026-10-06 Ingest 2 files" };
 
@@ -15,6 +15,15 @@ test("Repair with an agent runs wiki-review into its work document", () => {
 	assert.equal(
 		repairMessage({ id: "chg-r8m3tb", title: "2026-10-06 Repair the lint findings" }),
 		"/atlas-obsidian:wiki-review Repair the lint findings that a change repairs. Your work document is [[2026-10-06 Repair the lint findings]] (chg-r8m3tb): report each step with change progress, and propose the repairs into it with change propose and id chg-r8m3tb.",
+	);
+});
+
+test("Publish runs wiki-sync on the edition, into its work document", () => {
+	const edition = { id: "doc-e48had", title: "User Journal CS566 Notes - 6 October 2026 Edition" };
+	const work = { id: "chg-tw95fx", title: "2026-10-06 Ingest User Journal CS566 Notes - 6 October 2026 Edition" };
+	assert.equal(
+		publishMessage(edition, work),
+		"/atlas-obsidian:wiki-sync Absorb the source [[User Journal CS566 Notes - 6 October 2026 Edition]] (doc-e48had), the user's journal edition. Cite it where its ideas land. Your work document is [[2026-10-06 Ingest User Journal CS566 Notes - 6 October 2026 Edition]] (chg-tw95fx): report each step with change progress, and propose into it with change propose and id chg-tw95fx.",
 	);
 });
 
@@ -35,8 +44,8 @@ test("Resolve with an agent names the file, its path, and the documents that lin
 });
 
 test("every message runs a skill of the atlas-obsidian plugin and stays on one line", () => {
-	for (const m of [ingestMessage(doc), repairMessage(doc), resolveMessage({ title: "x", path: "x.md" }, [{ title: "y" }])]) {
-		assert.match(m, /^\/atlas-obsidian:wiki-(ingest|review|edit) /);
+	for (const m of [ingestMessage(doc), repairMessage(doc), publishMessage({ id: "doc-1", title: "E" }, doc), resolveMessage({ title: "x", path: "x.md" }, [{ title: "y" }])]) {
+		assert.match(m, /^\/atlas-obsidian:wiki-(ingest|review|sync|edit) /);
 		assert.ok(!m.includes("\n"));
 	}
 });

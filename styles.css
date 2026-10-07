@@ -1,6 +1,6 @@
-/* Atlas: callouts, the change widget and the change document, the palette, the tag navigator, the repository panel, the sessions pane. Nothing here styles Obsidian's own panes. */
+/* Atlas: callouts, the change widget and the change document, the palette and its Publish modal, the tag navigator, the repository panel, the sessions pane. Nothing here styles Obsidian's own panes. */
 
-/* Callouts: the lead callout of each document type and kind, and of the views. */
+/* Callouts: the lead callout of each document type and kind, of the views, and of a journal's publication history (atlas). */
 .callout[data-callout="source"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-file-image; }
 .callout[data-callout="repository"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-git-branch; }
 .callout[data-callout="repository-missing"] { --callout-color: var(--color-red-rgb); --callout-icon: lucide-git-branch-plus; }
@@ -551,6 +551,55 @@
 	margin-top: var(--size-4-2);
 }
 .atlas-migration-buttons {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--size-4-2);
+	margin-top: var(--size-4-4);
+}
+
+/* The palette's journal volumes. */
+.atlas-palette-volume {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	padding: var(--size-2-3) 0;
+}
+.atlas-palette-volume + .atlas-palette-volume {
+	border-top: 1px solid var(--background-modifier-border);
+}
+.atlas-palette-volume-name {
+	color: var(--text-normal);
+	overflow-wrap: anywhere;
+}
+.atlas-palette-volume .atlas-palette-changed {
+	color: rgb(var(--color-orange-rgb));
+	background-color: rgba(var(--color-orange-rgb), 0.14);
+}
+.atlas-palette-edition {
+	overflow-wrap: anywhere;
+}
+.atlas-palette-publish {
+	align-self: flex-start;
+}
+.atlas-palette-publish:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+/* The modal of Publish. */
+.atlas-publish-title {
+	padding: var(--size-4-2) var(--size-4-3);
+	border-inline-start: 3px solid rgb(var(--color-cyan-rgb));
+	border-radius: var(--radius-s);
+	background-color: rgba(var(--color-cyan-rgb), 0.08);
+	font-weight: var(--font-semibold);
+	overflow-wrap: anywhere;
+}
+.atlas-publish-quiet {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+.atlas-publish-buttons {
 	display: flex;
 	justify-content: flex-end;
 	gap: var(--size-4-2);

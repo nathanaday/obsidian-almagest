@@ -69,7 +69,7 @@ describe("Atlas in Obsidian", () => {
 
 	it("loads in a 10.0 vault with no console error, and adds nothing to the file explorer", { timeout: TIMEOUT }, async () => {
 		const o = await launch();
-		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.atlas.manifest.version)).toBe("10.1.0");
+		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.atlas.manifest.version)).toBe("10.2.0");
 
 		// A topic and a change document: the files that 9.0 marked in the explorer.
 		const change = await propose(o, "Add Alpha", "Alpha");
@@ -427,6 +427,133 @@ describe("Atlas in Obsidian", () => {
 		});
 		expect(await widget.locator(".atlas-change-line").textContent()).toBe("Rejected: cancelled in Obsidian");
 		expect(await widget.locator("button").count()).toBe(0);
+		expect(o.errors).toEqual([]);
+	});
+
+	/** Today in an edition's title: "6 October 2026". */
+	function today(): string {
+		const d = new Date();
+		return `${d.getDate()} ${d.toLocaleString("en-US", { month: "long" })} ${d.getFullYear()}`;
+	}
+
+	/** The command the terminal stand-in got, once it differs from before. */
+	function terminalCommand(out: string, before = ""): Promise<string> {
+		return until("the terminal command", async () => {
+			const text = existsSync(out) ? (await readFile(out, "utf8")).trim() : "";
+			return text !== "" && text !== before ? text : undefined;
+		});
+	}
+
+	/** The running work document whose title ends with title. */
+	async function workDoc(o: ObsidianInstance, title: string): Promise<{ id: string; title: string; path: string; kind: string }> {
+		const running = JSON.parse(await o.atlas(["vault", "--json"])).status.changes.running as { id: string; title: string; path: string; kind: string }[];
+		const doc = running.find((r) => r.title.endsWith(` ${title}`));
+		if (!doc) throw new Error(`No running work document for ${title}: ${JSON.stringify(running)}`);
+		return doc;
+	}
+
+	it("publishes a journal volume from the palette and from the command, without Duet", { timeout: 120_000 }, async () => {
+		const note = "journals/cs566-notes/Week 1.md";
+		const history = "journals/cs566-notes/Publication history.md";
+		const o = await launch({
+			prepare: async (vault) => {
+				await mkdir(path.join(vault, "journals/cs566-notes"), { recursive: true });
+				await writeFile(path.join(vault, note), "Gradient descent finally clicked.\n");
+			},
+		});
+		const out = await stubTerminal(o);
+		const palette = await openPalette(o);
+		const volume = palette.locator('.atlas-palette-volume[data-volume="cs566-notes"]');
+		const publish = volume.locator("button.atlas-palette-publish");
+		await until("the volume in the palette", async () => (await volume.count()) === 1, { describe: () => palette.innerText() });
+		expect(await volume.locator(".atlas-palette-volume-name").textContent()).toBe("CS566 Notes");
+		expect(await volume.locator(".atlas-palette-value").textContent()).toBe("1 note");
+		expect(await volume.locator(".atlas-palette-edition").textContent()).toBe("never published");
+		expect(await volume.locator(".atlas-palette-changed").textContent()).toBe("changed");
+		expect(await row(palette, "journals")).toBe("1 to publish");
+		expect(await publish.textContent()).toBe("Publish");
+		expect(await publish.isEnabled()).toBe(true);
+
+		// Publish asks first, and names the edition it makes.
+		const title = `User Journal CS566 Notes - ${today()} Edition`;
+		await publish.click();
+		const modal = o.page.locator(".modal", { hasText: "Publish CS566 Notes" });
+		await modal.waitFor({ timeout: 10_000 });
+		expect(await modal.locator(".atlas-publish-title").textContent()).toBe(title);
+		expect(await modal.textContent()).toContain("Publish captures the 1 note of journals/cs566-notes/ as one source:");
+		await modal.locator("button.mod-cta", { hasText: "Publish" }).click();
+
+		const command = await terminalCommand(out);
+		const edition = `source-core/documents/${title}.md`;
+		const fields = frontmatter(await o.read(edition));
+		expect([fields.origin, fields.volume, fields.locator, fields.status]).toEqual(["journal", "cs566-notes", "journals/cs566-notes", "pending"]);
+		expect(await o.git(["log", "-1", "--format=%s", "--", edition])).toBe(`capture: ${title}\n`);
+		expect(await o.read(history)).toMatch(/^> \[!atlas\] Written by Atlas at each publish\./);
+		const doc = await workDoc(o, `Ingest ${title}`);
+		expect(doc.kind).toBe("ingest");
+		const message = `/atlas-obsidian:wiki-sync Absorb the source [[${title}]] (${fields.id}), the user's journal edition. Cite it where its ideas land. Your work document is [[${doc.title}]] (${doc.id}): report each step with change progress, and propose into it with change propose and id ${doc.id}.`;
+		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command.endsWith(` && claude '${message.replace(/'/g, "'\\''")}'`)).toBe(true);
+		expect(await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)).toBe(doc.path);
+		expect(await notices(o)).toContain(`Atlas: published ${title}.`);
+
+		// The volume now shows its edition, and Publish waits for a change.
+		await until("the edition in the palette", async () => (await volume.locator(".atlas-palette-edition").textContent()) === title, { describe: () => palette.innerText() });
+		expect(await publish.isDisabled()).toBe(true);
+		expect(await publish.getAttribute("title")).toBe(`No change since ${title}.`);
+		expect(await volume.locator(".atlas-palette-changed").count()).toBe(0);
+		expect(await row(palette, "journals")).toBe("0 to publish");
+
+		// The publication history opens with the atlas callout, which the plugin styles.
+		await open(o, history, "preview");
+		const callout = o.page.locator('.markdown-reading-view .callout[data-callout="atlas"]');
+		await callout.waitFor({ timeout: 10_000 });
+		expect(await callout.evaluate((el) => getComputedStyle(el).getPropertyValue("--callout-icon").trim())).toBe("lucide-map");
+
+		// A change to a note turns Publish on again; the command publishes the volume of the open note.
+		await o.page.evaluate(async (file) => {
+			const app = (window as any).app;
+			await app.vault.modify(app.vault.getFileByPath(file), "Gradient descent finally clicked.\nMomentum too.\n");
+		}, note);
+		await until("Publish to turn on", async () => (await publish.isEnabled()) && (await row(palette, "journals")) === "1 to publish", { describe: () => palette.innerText() });
+		await open(o, note, "source");
+		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("atlas:publish-journal"));
+		await modal.waitFor({ timeout: 10_000 });
+		expect(await modal.textContent()).toContain("An edition of this day exists, so this one takes a number.");
+		await modal.locator("button.mod-cta", { hasText: "Publish" }).click();
+
+		const second = await terminalCommand(out, command);
+		const numbered = `${title} (2)`;
+		expect(frontmatter(await o.read(`source-core/documents/${numbered}.md`)).volume).toBe("cs566-notes");
+		const doc2 = await workDoc(o, `Ingest ${numbered}`);
+		expect(second).toContain(`Absorb the source [[${numbered}]]`);
+		expect(second).toContain(`Your work document is [[${doc2.title}]] (${doc2.id})`);
+		await until("the second edition in the palette", async () => (await volume.locator(".atlas-palette-edition").textContent()) === numbered, { describe: () => palette.innerText() });
+		expect(await publish.isDisabled()).toBe(true);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("publish needs a note in a journal volume", { timeout: TIMEOUT }, async () => {
+		const o = await launch({
+			prepare: async (vault) => {
+				await mkdir(path.join(vault, "journals/garden"), { recursive: true });
+				await writeFile(path.join(vault, "journals/garden/.keep"), "");
+				await mkdir(path.join(vault, "scratchpad"), { recursive: true });
+				await writeFile(path.join(vault, "scratchpad/Loose note.md"), "Not a journal.\n");
+			},
+		});
+		const palette = await openPalette(o);
+		const volume = palette.locator('.atlas-palette-volume[data-volume="garden"]');
+		await until("the empty volume", async () => (await volume.count()) === 1, { describe: () => palette.innerText() });
+		expect(await volume.locator(".atlas-palette-value").textContent()).toBe("0 notes");
+		expect(await volume.locator("button.atlas-palette-publish").isDisabled()).toBe(true);
+		expect(await volume.locator("button.atlas-palette-publish").getAttribute("title")).toBe("The volume holds no note.");
+		expect(await row(palette, "journals")).toBe("0 to publish");
+
+		// The command offers itself only inside journals/<volume>/.
+		await open(o, "scratchpad/Loose note.md", "source");
+		const available = () => o.page.evaluate(() => (window as any).app.commands.findCommand("atlas:publish-journal").checkCallback(true));
+		expect(await available()).toBe(false);
 		expect(o.errors).toEqual([]);
 	});
 

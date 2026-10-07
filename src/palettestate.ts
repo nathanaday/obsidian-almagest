@@ -1,5 +1,7 @@
 // What the tool palette shows, from the JSON of the binary. Pure: the tests cover it.
 
+import { JournalVolume, journalVolumes, toPublish } from "./journalstate";
+
 /** A document as the binary refers to it (vault.Ref). */
 export interface Ref {
 	id?: string;
@@ -16,6 +18,7 @@ export interface VaultStatus {
 	pending?: Ref[] | null;
 	changes?: { proposed?: Ref[] | null; running?: Ref[] | null } | null;
 	trash?: number;
+	journals?: Partial<JournalVolume>[] | null;
 	problems?: number;
 }
 
@@ -27,6 +30,9 @@ export interface PaletteState {
 	pending: number;
 	sessions: number;
 	trash: number;
+	journals: JournalVolume[];
+	/** The volumes with changes to publish. */
+	toPublish: number;
 	/** The errors of the quick lint that status runs. */
 	problems: number;
 }
@@ -34,6 +40,7 @@ export interface PaletteState {
 /** The palette's status. liveSessions comes from the sessions pane's rule, which checks the processes. */
 export function paletteState(status: VaultStatus, liveSessions: number): PaletteState {
 	const byTitle = (a: Ref, b: Ref) => a.title.localeCompare(b.title);
+	const journals = journalVolumes(status.journals);
 	return {
 		proposed: [...(status.changes?.proposed ?? [])].sort(byTitle),
 		running: [...(status.changes?.running ?? [])].sort(byTitle),
@@ -41,6 +48,8 @@ export function paletteState(status: VaultStatus, liveSessions: number): Palette
 		pending: status.pending?.length ?? 0,
 		sessions: liveSessions,
 		trash: status.trash ?? 0,
+		journals,
+		toPublish: toPublish(journals),
 		problems: status.problems ?? 0,
 	};
 }

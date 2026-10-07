@@ -20,6 +20,10 @@ test("the palette's status comes from vault --json", () => {
 		},
 		sessions: { running: [ref("s", "sessions/s.md")], waiting: [], idle: [] },
 		trash: 3,
+		journals: [
+			{ volume: "cs566-notes", name: "CS566 Notes", notes: 2, edition: "", changed: true },
+			{ volume: "garden", name: "Garden", notes: 4, edition: "User Journal Garden - 5 October 2026 Edition", changed: false },
+		],
 		problems: 2,
 	};
 	const s = paletteState(status, 1);
@@ -29,12 +33,15 @@ test("the palette's status comes from vault --json", () => {
 	assert.equal(s.pending, 1);
 	assert.equal(s.sessions, 1);
 	assert.equal(s.trash, 3);
+	assert.deepEqual(s.journals.map((v) => [v.volume, v.changed]), [["cs566-notes", true], ["garden", false]]);
+	assert.equal(s.toPublish, 1);
 	assert.equal(s.problems, 2);
 });
 
 test("an empty or older status reads as zeros", () => {
 	const s = paletteState({ ingest: null, pending: null, changes: { proposed: null } }, 0);
-	assert.deepEqual(s, { proposed: [], running: [], ingest: [], pending: 0, sessions: 0, trash: 0, problems: 0 });
+	assert.deepEqual(s, { proposed: [], running: [], ingest: [], pending: 0, sessions: 0, trash: 0, journals: [], toPublish: 0, problems: 0 });
+	assert.deepEqual(paletteState({ journals: null }, 0).journals, []);
 	assert.deepEqual(paletteState({}, 2).sessions, 2);
 });
 

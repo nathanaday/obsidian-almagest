@@ -1,6 +1,7 @@
-import { App, ItemView, Modal, Notice, TFile, WorkspaceLeaf, debounce } from "obsidian";
+import { App, ItemView, Modal, Notice, WorkspaceLeaf, debounce } from "obsidian";
 import { saveOpen } from "./change";
 import { isSnapshotPath, lastProgressLine } from "./helpers";
+import { JOURNALS, JournalVolume, publishBlocked } from "./journalstate";
 import type AtlasPlugin from "./main";
 import { ingestMessage, repairMessage, resolveMessage } from "./messages";
 import {
@@ -16,6 +17,7 @@ import {
 	plural,
 	trashOutcome,
 } from "./palettestate";
+import { confirmPublish } from "./publish";
 import { sessionGroups } from "./sessions";
 
 export const PALETTE_VIEW = "atlas-palette";
@@ -23,8 +25,6 @@ export const PALETTE_ICON = "map";
 
 const REFRESH_MS = 30_000;
 const EVENT_DELAY = 1500;
-/** How long to wait for Obsidian to see a document the binary wrote. */
-const SEE_MS = 10_000;
 
 /** What change start prints: the work document. */
 interface Started {
@@ -125,6 +125,7 @@ export class PaletteView extends ItemView {
 		root.addClass("atlas-palette");
 		this.renderStatus(root);
 		this.renderRunning(root);
+		this.renderJournals(root);
 		this.renderActions(root);
 	}
 
@@ -184,6 +185,7 @@ export class PaletteView extends ItemView {
 		const open = sessions.createEl("button", { cls: "atlas-palette-small", text: "Open sessions" });
 		open.onclick = () => void this.plugin.openSessions();
 		this.row(el, "trash", "Trash", plural(s.trash, "file", "files"));
+		this.row(el, "journals", "Journals", `${s.toPublish} to publish`);
 		this.row(el, "problems", "Lint problems", plural(s.problems, "error", "errors"));
 	}
 
@@ -197,6 +199,47 @@ export class PaletteView extends ItemView {
 			li.createSpan({ cls: "atlas-palette-badge", text: c.label });
 			this.link(li, c.path.slice(c.path.lastIndexOf("/") + 1).replace(/\.md$/, ""), c.path);
 		}
+	}
+
+	private renderJournals(root: HTMLElement): void {
+		const s = this.state;
+		if (!s) return;
+		const el = this.section(root, "Journals");
+		if (s.journals.length === 0) {
+			el.createDiv({ cls: "atlas-palette-quiet", text: `No journal yet: a volume is a folder directly under ${JOURNALS}/.` });
+			return;
+		}
+		for (const vol of s.journals) this.renderVolume(el, vol);
+	}
+
+	private renderVolume(parent: HTMLElement, vol: JournalVolume): void {
+		const el = parent.createDiv({ cls: "atlas-palette-volume" });
+		el.dataset.volume = vol.volume;
+		el.dataset.changed = String(vol.changed);
+		const head = el.createDiv({ cls: "atlas-palette-row" });
+		head.createSpan({ cls: "atlas-palette-name atlas-palette-volume-name", text: vol.name }).setAttr("title", `${JOURNALS}/${vol.volume}/`);
+		if (vol.changed) head.createSpan({ cls: "atlas-palette-badge atlas-palette-changed", text: "changed" });
+		head.createSpan({ cls: "atlas-palette-value", text: plural(vol.notes, "note", "notes") });
+
+		const edition = el.createDiv({ cls: "atlas-palette-progress atlas-palette-edition" });
+		if (vol.edition) {
+			const file = this.app.metadataCache.getFirstLinkpathDest(vol.edition, "");
+			if (file) this.link(edition, vol.edition, file.path);
+			else edition.setText(vol.edition);
+		} else {
+			edition.setText("never published");
+		}
+
+		const why = publishBlocked(vol);
+		const publishing = this.plugin.publishing === vol.volume;
+		const button = el.createEl("button", { cls: "atlas-palette-small atlas-palette-publish", text: publishing ? "Publish…" : "Publish" });
+		if (why || this.busy || this.plugin.publishing) {
+			button.disabled = true;
+			button.setAttr("title", why || "Another action runs.");
+		} else {
+			button.addClass("mod-cta");
+		}
+		button.onclick = () => confirmPublish(this.plugin, vol);
 	}
 
 	private renderActions(root: HTMLElement): void {
@@ -216,7 +259,7 @@ export class PaletteView extends ItemView {
 		const wrap = parent.createDiv({ cls: "atlas-palette-action" });
 		wrap.dataset.action = name;
 		const button = wrap.createEl("button", { text: this.busy === name ? `${text}…` : text });
-		if (why || this.busy) {
+		if (why || this.busy || this.plugin.publishing) {
 			button.disabled = true;
 			button.setAttr("title", why || "Another action runs.");
 		}
@@ -226,7 +269,7 @@ export class PaletteView extends ItemView {
 	}
 
 	private async act(name: Action, run: () => Promise<void>): Promise<void> {
-		if (this.busy) return;
+		if (this.busy || this.plugin.publishing) return;
 		this.busy = name;
 		this.render();
 		try {
@@ -302,19 +345,8 @@ export class PaletteView extends ItemView {
 		return ref;
 	}
 
-	/** Opens a file once Obsidian sees it; a document the binary just wrote takes a moment. */
-	private async openPath(path: string, newTab: boolean): Promise<void> {
-		const deadline = Date.now() + SEE_MS;
-		let file = this.app.vault.getFileByPath(path);
-		while (!file && Date.now() < deadline) {
-			await new Promise((resolve) => window.setTimeout(resolve, 100));
-			file = this.app.vault.getFileByPath(path);
-		}
-		if (!(file instanceof TFile)) {
-			new Notice(`Atlas: Obsidian does not see ${path} yet.`);
-			return;
-		}
-		await this.app.workspace.getLeaf(newTab ? "tab" : false).openFile(file);
+	private openPath(path: string, newTab: boolean): Promise<void> {
+		return this.plugin.openWhenSeen(path, newTab);
 	}
 }
 

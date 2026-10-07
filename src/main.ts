@@ -1,4 +1,4 @@
-import { App, FileSystemAdapter, Modal, Notice, Plugin, TAbstractFile, debounce } from "obsidian";
+import { App, FileSystemAdapter, Modal, Notice, Plugin, TAbstractFile, TFile, debounce } from "obsidian";
 import { ChangeRunner, changeProcessor } from "./change";
 import { AtlasError, findBinary, runAtlas } from "./cli";
 import {
@@ -24,7 +24,9 @@ import { SESSIONS_VIEW, SessionsView, sessionGroups } from "./sessions";
 import { AgentConfig, legacyPreferences, startCommand } from "./agents";
 import { Conversations, duetApi } from "./conversations";
 import { openTerminal } from "./launcher";
+import { volumeOf } from "./journalstate";
 import { PALETTE_ICON, PALETTE_VIEW, PaletteView } from "./palette";
+import { confirmPublishOf } from "./publish";
 import { AtlasSettingTab, AtlasSettings, DEFAULT_SETTINGS } from "./settings";
 import { NAV_ICON, TAG_NAV_VIEW, TagNavigator } from "./tagnav";
 
@@ -32,6 +34,8 @@ const SYNC_DELAY = 2000;
 const LEGACY_KEYS = ["agentCommand", "terminal", "terminalCommand"];
 // A change to a path the last sync wrote, this soon after it, is that sync's own write.
 const ECHO_WINDOW = 5000;
+/** How long to wait for Obsidian to see a document the binary wrote. */
+const SEE_MS = 10_000;
 
 export default class AtlasPlugin extends Plugin {
 	settings: AtlasSettings = { ...DEFAULT_SETTINGS };
@@ -54,6 +58,9 @@ export default class AtlasPlugin extends Plugin {
 	private lastSnapshotError = "";
 
 	private sessionsRibbon: HTMLElement | null = null;
+
+	/** The journal volume that a publish captures now, or "". */
+	publishing = "";
 
 	/** The agents the palette started through Duet, while their turn runs. */
 	readonly conversations = new Conversations(
@@ -82,6 +89,16 @@ export default class AtlasPlugin extends Plugin {
 		this.addCommand({ id: "open-palette", name: "Open the Atlas palette", callback: () => void this.openPalette() });
 
 		this.addCommand({ id: "start-agent", name: "Start agent", callback: () => void this.startAgent() });
+		this.addCommand({
+			id: "publish-journal",
+			name: "Publish this journal volume",
+			checkCallback: (checking) => {
+				const volume = volumeOf(this.app.workspace.getActiveFile()?.path ?? "");
+				if (!volume) return false;
+				if (!checking) void confirmPublishOf(this, volume);
+				return true;
+			},
+		});
 
 		this.registerView(SESSIONS_VIEW, (leaf) => new SessionsView(leaf, this));
 		this.sessionsRibbon = this.addRibbonIcon("bot", "Atlas: open the sessions", () => void this.openSessions());
@@ -329,6 +346,30 @@ export default class AtlasPlugin extends Plugin {
 			leaf = right;
 		}
 		await workspace.revealLeaf(leaf);
+	}
+
+	/** Marks the volume a publish captures, "" when it ends, in every palette. */
+	setPublishing(volume: string): void {
+		this.publishing = volume;
+		for (const view of this.paletteViews()) {
+			view.render();
+			if (!volume) void view.refresh();
+		}
+	}
+
+	/** Opens a file once Obsidian sees it; a document the binary just wrote takes a moment. */
+	async openWhenSeen(path: string, newTab: boolean): Promise<void> {
+		const deadline = Date.now() + SEE_MS;
+		let file = this.app.vault.getFileByPath(path);
+		while (!file && Date.now() < deadline) {
+			await new Promise((resolve) => window.setTimeout(resolve, 100));
+			file = this.app.vault.getFileByPath(path);
+		}
+		if (!(file instanceof TFile)) {
+			new Notice(`Atlas: Obsidian does not see ${path} yet.`);
+			return;
+		}
+		await this.app.workspace.getLeaf(newTab ? "tab" : false).openFile(file);
 	}
 
 	private paletteViews(): PaletteView[] {
