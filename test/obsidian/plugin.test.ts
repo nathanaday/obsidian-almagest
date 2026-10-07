@@ -496,8 +496,9 @@ describe("Almagest in Obsidian", () => {
 		await goTo(palette, "agents");
 		const running = palette.locator(".almagest-agent");
 		await until("the Working list", async () => (await running.count()) === 1, { describe: () => palette.innerText() });
-		expect(await running.locator(".almagest-item-title").textContent()).toBe(`Agent · ${doc.title}`);
-		expect(await running.locator(".almagest-chip").textContent()).toBe("ingest");
+		expect(await running.locator(".almagest-thread-title").textContent()).toBe(`Agent · ${doc.title}`);
+		expect(await running.locator(".almagest-thread-preview").textContent()).toBe("ingest · working in Duet");
+		expect(await running.getAttribute("data-state")).toBe("working");
 
 		await o.page.evaluate((title) => (window as any).duetEnd(`Duet/Agent · ${title}.md`), doc.title);
 		await until("the turn's end to clear the list", async () => (await running.count()) === 0, { describe: () => palette.innerText() });
@@ -1247,41 +1248,70 @@ describe("Almagest in Obsidian", () => {
 		expect(o.errors).toEqual([]);
 	});
 
-	it("lists the agent sessions on the Agents page; one that waits counts on the home row, and a closed one offers Resume", { timeout: TIMEOUT }, async () => {
+	it("lists the agent sessions on the Agents page as message threads; one that waits counts on the home row, and the closed ones fold away and offer Resume", { timeout: TIMEOUT }, async () => {
 		const now = Date.now();
-		const session = (id: string, status: string, updated: number, extra: string, body: string) =>
-			`---\nid: ses-${id}\ntype: session\nharness: claude\nharness_id: ${id}\nstatus: ${status}\nupdated: ${new Date(updated).toISOString()}\n${extra}description: Plan the [[Alpha]] study\n---\n\n${body}`;
+		const session = (id: string, status: string, updated: number, extra: string, body: string, description = "Plan the [[Alpha]] study") =>
+			`---\nid: ses-${id}\ntype: session\nharness: claude\nharness_id: ${id}\nstatus: ${status}\nupdated: ${new Date(updated).toISOString()}\n${extra}${description ? `description: ${description}\n` : ""}---\n\n${body}`;
 		const o = await launch({
 			prepare: async (vault) => {
 				await mkdir(path.join(vault, "tool/sessions/2026-10"), { recursive: true });
 				await writeFile(path.join(vault, "tool/sessions/2026-10/waits.md"), session("aaaaaa", "waiting", now - 120_000, "", "## Progress\n\n- 2026-10-07: Read the sources.\n- 2026-10-07: Asked which paper comes first.\n"));
-				await writeFile(path.join(vault, "tool/sessions/2026-10/closed.md"), session("bbbbbb", "ended", now - 1_200_000, `ended: ${new Date(now - 1_200_000).toISOString()}\n`, ""));
+				await writeFile(path.join(vault, "tool/sessions/2026-10/works.md"), session("cccccc", "running", now - 10_000, "", "", ""));
+				await writeFile(path.join(vault, "tool/sessions/2026-10/closed.md"), session("bbbbbb", "ended", now - 1_200_000, `ended: ${new Date(now - 1_200_000).toISOString()}\n`, "## Progress\n\n- 2026-10-07: Proposed the edits.\n"));
 			},
 		});
 		const out = await stubTerminal(o);
 		const palette = await openPalette(o);
-		await until("the agents line", async () => (await line(palette, "agents")) === "1 needs you · 1 live session", { describe: () => palette.innerText() });
+		await until("the agents line", async () => (await line(palette, "agents")) === "1 needs you · 2 live sessions", { describe: () => palette.innerText() });
 		const chip = palette.locator('[data-area="agents"] .almagest-chip');
 		expect(await chip.textContent()).toBe("1");
 		expect(await chip.getAttribute("data-tone")).toBe("accent");
 
 		await goTo(palette, "agents");
 		expect(await tile(palette, "needs you")).toBe("1");
-		const waits = palette.locator('.almagest-session[data-state="needs you"]');
-		expect(await waits.locator(".almagest-item-title").textContent()).toBe("Plan the Alpha study");
-		expect(await waits.locator(".almagest-chip").textContent()).toBe("needs you");
-		expect(await waits.locator(".almagest-item-meta").textContent()).toBe("2 min ago · 2026-10-07: Asked which paper comes first.");
+		const thread = (state: string) => palette.locator(`.almagest-thread[data-state="${state}"]`);
+		const waits = thread("needs-you");
+		expect(await waits.locator(".almagest-thread-title").textContent()).toBe("Plan the Alpha study");
+		expect(await waits.locator(".almagest-thread-time").textContent()).toBe("2 min ago");
+		expect(await waits.locator(".almagest-thread-preview").textContent()).toBe("Needs you · 2026-10-07: Asked which paper comes first.");
 		// An open session runs in its terminal, so it offers no Resume.
 		expect(await waits.locator("button").count()).toBe(0);
-		const closed = palette.locator('.almagest-session[data-state="ended"]');
-		expect(await closed.locator(".almagest-item-meta").textContent()).toBe("ended 20 min ago");
+		// A session with no description yet is untitled, not its document's name; its avatar glows while it works.
+		const works = thread("working");
+		expect(await works.locator(".almagest-thread-title").textContent()).toBe("Untitled session");
+		expect(await works.locator(".almagest-thread-preview").textContent()).toBe("Working");
+		const animation = (row: typeof works) => row.locator(".almagest-avatar").evaluate((el) => getComputedStyle(el).animationName);
+		expect(await animation(works)).toBe("almagest-glow");
+		expect(await animation(waits)).toBe("none");
+
+		// The closed sessions fold away; their head opens them, gray and still.
+		const closed = thread("ended");
+		expect(await closed.isVisible()).toBe(false);
+		await palette.locator(".almagest-fold > summary").click();
+		await until("the closed sessions", () => closed.isVisible());
+		expect(await closed.locator(".almagest-thread-time").textContent()).toBe("20 min ago");
+		expect(await closed.locator(".almagest-thread-preview").textContent()).toBe("Ended · 2026-10-07: Proposed the edits.");
+		expect(await closed.getAttribute("class")).toContain("is-closed");
+		expect(await animation(closed)).toBe("none");
+		const faint = await closed.locator(".almagest-thread-title").evaluate((el) => {
+			const probe = document.body.createDiv();
+			probe.style.color = "var(--text-faint)";
+			const want = getComputedStyle(probe).color;
+			probe.remove();
+			return getComputedStyle(el).color === want;
+		});
+		expect(faint).toBe(true);
 
 		// Resume finds no saved conversation for this made-up session, says so, and runs nothing.
 		await closed.locator('button[data-action="resume"]').click();
 		await until("the notice", async () => (await notices(o)).some((t) => t.includes("no saved conversation")), { describe: async () => JSON.stringify(await notices(o)) });
 		expect(existsSync(out)).toBe(false);
+		// The fold stays open while the palette draws again.
+		await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.app.workspace.getLeavesOfType("almagest-palette")[0].view.draw());
+		expect(await closed.isVisible()).toBe(true);
 
-		await waits.locator(".almagest-item-title a").click();
+		// The row opens the session.
+		await waits.click();
 		await until("the session to open", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === "tool/sessions/2026-10/waits.md");
 		expect(o.errors).toEqual([]);
 	});

@@ -72,6 +72,10 @@ repository. This file holds what the code and the README do not say.
   action; a destructive one quiet, never the loudest); a link only opens a document. A
   disabled button says why in its tooltip and the page's empty state, not in a caption,
   and the palette never repeats the open note's path, which the editor shows.
+  The Agents page is the one exception to "a link only opens a document": it shows each
+  session as a message thread, a row that opens its document, with a round avatar that
+  says the state (working glows, needs you is filled with a bold title, idle is tinted,
+  closed is gray) and one line on where the session stands. The closed sessions fold away.
 - **One pane, one ribbon button.** A feature gets a page or an action in the palette, not
   a pane or a ribbon button of its own; a command may run it from the command palette.
 - **A view's methods may be Obsidian's.** Obsidian's `View` calls `open(containerEl)`

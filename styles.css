@@ -347,13 +347,6 @@
 	font-variant-numeric: tabular-nums;
 	overflow-wrap: anywhere;
 }
-/* A session's last progress line may run long: two lines, and the rest in its tooltip. */
-.almagest-session .almagest-item-meta {
-	display: -webkit-box;
-	-webkit-box-orient: vertical;
-	-webkit-line-clamp: 2;
-	overflow: hidden;
-}
 .almagest-item-action {
 	flex: none;
 	height: auto;
@@ -581,4 +574,132 @@ body.almagest-folder-colors .nav-folder-title[data-path="tool"] {
 .almagest-duet-tip-note {
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
+}
+
+/* Agent sessions as message threads: a round avatar, the title and its time, and one line on where the session stands. The whole row opens the session. */
+.almagest-thread {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-3);
+	margin-inline: calc(var(--size-4-2) * -1);
+	padding: var(--size-4-2);
+	border-radius: var(--radius-m);
+	cursor: var(--cursor-link);
+}
+.almagest-thread:hover,
+.almagest-thread:focus-visible {
+	background-color: var(--background-modifier-hover);
+}
+.almagest-thread-body {
+	flex: 1;
+	min-width: 0;
+}
+.almagest-thread-top,
+.almagest-thread-bottom {
+	display: flex;
+	align-items: baseline;
+	gap: var(--size-4-2);
+}
+.almagest-thread-bottom {
+	align-items: center;
+}
+/* A title takes two lines at most, so a narrow sidebar still shows what the session is. */
+.almagest-thread-title {
+	flex: 1;
+	min-width: 0;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+	color: var(--text-normal);
+	font-weight: var(--font-medium);
+	overflow-wrap: anywhere;
+}
+.almagest-thread-time {
+	flex: none;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+}
+.almagest-thread-preview {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+/* The avatar shows the state: working glows, needs you is filled and its thread reads as unread, idle is tinted, and a closed session is gray. */
+.almagest-avatar {
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	color: var(--interactive-accent);
+	background-color: hsla(var(--interactive-accent-hsl), 0.15);
+}
+.almagest-avatar svg {
+	width: 18px;
+	height: 18px;
+}
+.almagest-thread:is([data-state="working"], [data-state="needs-you"]) .almagest-avatar {
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+}
+.almagest-thread[data-state="working"] .almagest-avatar {
+	animation: almagest-glow 2s ease-in-out infinite;
+}
+@keyframes almagest-glow {
+	0%, 100% { box-shadow: 0 0 0 0 hsla(var(--interactive-accent-hsl), 0.45); opacity: 1; }
+	50% { box-shadow: 0 0 0 6px hsla(var(--interactive-accent-hsl), 0); opacity: 0.7; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.almagest-thread[data-state="working"] .almagest-avatar {
+		animation: none;
+	}
+}
+.almagest-thread[data-state="needs-you"] .almagest-thread-title {
+	font-weight: var(--font-bold);
+}
+.almagest-thread[data-state="needs-you"] .almagest-thread-preview {
+	color: var(--text-accent);
+	font-weight: var(--font-medium);
+}
+.almagest-thread.is-closed .almagest-avatar {
+	color: var(--text-faint);
+	background-color: var(--background-modifier-hover);
+}
+.almagest-thread.is-closed :is(.almagest-thread-title, .almagest-thread-preview) {
+	color: var(--text-faint);
+	font-weight: var(--font-normal);
+}
+
+/* A list that folds away: its head is the toggle, with a chevron that turns when it opens. */
+.almagest-fold > summary {
+	list-style: none;
+	cursor: var(--cursor);
+}
+.almagest-fold > summary::-webkit-details-marker {
+	display: none;
+}
+.almagest-fold > summary:hover {
+	color: var(--text-muted);
+}
+.almagest-fold-chevron {
+	display: flex;
+	transition: transform 120ms ease;
+}
+.almagest-fold-chevron svg {
+	width: 14px;
+	height: 14px;
+}
+.almagest-fold[open] .almagest-fold-chevron {
+	transform: rotate(90deg);
+}
+.almagest-fold[open] > summary {
+	margin-bottom: var(--size-4-2);
 }

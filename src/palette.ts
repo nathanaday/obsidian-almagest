@@ -22,6 +22,7 @@ import {
 	areaLine,
 	lintSummary,
 	paletteState,
+	noteTitle,
 	plural,
 	trashOutcome,
 } from "./palettestate";
@@ -49,8 +50,13 @@ interface Migration {
 	commit?: string;
 }
 
-/** Only a session that waits for the user is the user's to act on. */
-const STATE_TONE: Record<SessionState, Tone> = { "needs you": "accent", working: "muted", idle: "muted", ended: "muted", lost: "muted" };
+/** The word that opens a session's line. */
+const STATE_WORDS: Record<SessionState, string> = { "needs you": "Needs you", working: "Working", idle: "Idle", ended: "Ended", lost: "Lost" };
+
+/** A session's title: its description, or "Untitled session" while it has none (the document's name is its date and id). */
+function sessionTitle(row: Session): string {
+	return row.description === row.file.basename ? "Untitled session" : plainLinks(row.description);
+}
 
 /** The icon of each area, on its home row and its page. */
 const AREA_ICONS: Record<Area, string> = {
@@ -87,6 +93,8 @@ export class PaletteView extends ItemView {
 	/** The last progress line of each running work document and open session, by path. */
 	private progress = new Map<string, string>();
 	private sessions: SessionGroups<Session> = { open: [], recent: [], older: 0 };
+	/** Whether the closed sessions show on the Agents page; they fold away at first. */
+	private closedOpen = false;
 	/** What the migration would do, while the vault waits for it. */
 	private migration: Migration | null = null;
 	/** The running subagents of each session, by the session's title. */
@@ -168,7 +176,7 @@ export class PaletteView extends ItemView {
 			const waiting = groups.open.filter((s) => s.state === "needs you").length;
 			const state = paletteState(out.status, { open: groups.open.length, waiting });
 			const progress = new Map<string, string>();
-			for (const path of [...state.running.map((r) => r.path), ...groups.open.map((s) => s.row.path)]) {
+			for (const path of [...state.running.map((r) => r.path), ...groups.open.map((s) => s.row.path), ...groups.recent.map((s) => s.row.path)]) {
 				const file = this.app.vault.getFileByPath(path);
 				if (file) progress.set(path, plainLinks(lastProgressLine(await this.app.vault.cachedRead(file))));
 			}
@@ -467,24 +475,41 @@ export class PaletteView extends ItemView {
 
 		const started = this.list(page, "Started here", working.length);
 		for (const c of working) {
-			this.item(started, { title: c.path.slice(c.path.lastIndexOf("/") + 1).replace(/\.md$/, ""), path: c.path, chip: [c.label, "muted"] }).addClass("almagest-agent");
+			this.thread(started, { title: noteTitle(c.path), path: c.path, state: "working", time: "", preview: `${c.label} · working in Duet` }).addClass("almagest-agent");
 		}
 		const now = new Date();
 		const live = this.list(page, "Sessions", open.length);
 		for (const { row, state } of open) {
 			const subs = this.subagents.get(row.file.basename) ?? 0;
-			const meta = [formatAgo(row.updated, now), subs > 0 ? `+${plural(subs, "subagent", "subagents")}` : "", this.progress.get(row.path) ?? ""];
-			this.sessionItem(live, row, state, meta);
-		}
-		// An open session runs in its terminal already, so only a closed one offers Resume.
-		const closed = this.list(page, "Closed in the last 2 hours", recent.length);
-		for (const { row, state } of recent) {
-			this.sessionItem(closed, row, state, [`ended ${formatAgo(row.ended || row.updated, now)}`], {
-				name: "resume",
-				text: "Resume",
-				why: "",
-				run: () => void resume(this.plugin, row),
+			this.thread(live, {
+				title: sessionTitle(row),
+				path: row.path,
+				state,
+				time: formatAgo(row.updated, now),
+				preview: [STATE_WORDS[state], subs > 0 ? `+${plural(subs, "subagent", "subagents")}` : "", this.progress.get(row.path) ?? ""].filter((x) => x).join(" · "),
 			});
+		}
+		if (recent.length > 0) {
+			// The closed sessions fold away; the fold stays as the user left it while the palette is open.
+			const fold = page.createEl("details", { cls: "almagest-fold" });
+			fold.open = this.closedOpen;
+			fold.addEventListener("toggle", () => (this.closedOpen = fold.open));
+			const head = fold.createEl("summary", { cls: "almagest-list-head" });
+			setIcon(head.createSpan({ cls: "almagest-fold-chevron" }), "chevron-right");
+			head.createSpan({ text: "Closed in the last 2 hours" });
+			head.createSpan({ cls: "almagest-list-count", text: String(recent.length) });
+			const closed = fold.createEl("ul", { cls: "almagest-list" });
+			// An open session runs in its terminal already, so only a closed one offers Resume.
+			for (const { row, state } of recent) {
+				this.thread(closed, {
+					title: sessionTitle(row),
+					path: row.path,
+					state,
+					time: formatAgo(row.ended || row.updated, now),
+					preview: [STATE_WORDS[state], this.progress.get(row.path) ?? ""].filter((x) => x).join(" · "),
+					action: { name: "resume", text: "Resume", run: () => void resume(this.plugin, row) },
+				});
+			}
 		}
 		if (older > 0) {
 			const more = page.createDiv({ cls: "almagest-quiet" });
@@ -492,12 +517,40 @@ export class PaletteView extends ItemView {
 		}
 	}
 
-	private sessionItem(list: HTMLElement, row: Session, state: SessionState, meta: string[], action?: { name: Action; text: string; why: string; run: () => void }): void {
-		const line = meta.filter((m) => m).join(" · ");
-		const li = this.item(list, { title: plainLinks(row.description), path: row.path, meta: line, chip: [state, STATE_TONE[state]], action });
-		li.addClass("almagest-session");
-		li.dataset.state = state;
-		li.find(".almagest-item-meta")?.setAttr("title", line);
+	/**
+	 * One agent session as a message thread: a round avatar that shows its state (it glows
+	 * while the agent works, and turns gray once the session closes), the title with its
+	 * time, and a line on where it stands. The row opens the session's document.
+	 */
+	private thread(list: HTMLElement, t: { title: string; path: string; state: SessionState; time: string; preview: string; action?: { name: Action; text: string; run: () => void } }): HTMLElement {
+		const li = list.createEl("li", { cls: "almagest-thread", attr: { role: "link", tabindex: "0", "aria-label": `${t.title}: ${t.preview}` } });
+		li.dataset.state = t.state.replace(" ", "-");
+		li.toggleClass("is-closed", t.state === "ended" || t.state === "lost");
+		setIcon(li.createDiv({ cls: "almagest-avatar" }), "bot");
+		const body = li.createDiv({ cls: "almagest-thread-body" });
+		const top = body.createDiv({ cls: "almagest-thread-top" });
+		top.createSpan({ cls: "almagest-thread-title", text: t.title });
+		if (t.time) top.createSpan({ cls: "almagest-thread-time", text: t.time });
+		const bottom = body.createDiv({ cls: "almagest-thread-bottom" });
+		bottom.createDiv({ cls: "almagest-thread-preview", text: t.preview, attr: { title: t.preview } });
+		const go = (evt: MouseEvent | KeyboardEvent) => void this.openPath(t.path, evt.metaKey || evt.ctrlKey);
+		li.onclick = go;
+		li.onkeydown = (evt) => {
+			if (evt.key === "Enter" || evt.key === " ") {
+				evt.preventDefault();
+				go(evt);
+			}
+		};
+		if (t.action) {
+			const a = t.action;
+			const button = bottom.createEl("button", { cls: "almagest-item-action", text: a.text });
+			button.dataset.action = a.name;
+			button.onclick = (evt) => {
+				evt.stopPropagation();
+				a.run();
+			};
+		}
+		return li;
 	}
 
 	private renderNote(page: HTMLElement, s: PaletteState): void {
