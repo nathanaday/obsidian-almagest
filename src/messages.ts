@@ -1,6 +1,8 @@
 // The first message of each agent the palette starts. Pure: the tests cover them, and the
 // skills read these words.
 
+import { oneLine } from "./checkoutstate";
+
 /** A work document: the change document an agent reports into and proposes into. */
 export interface WorkDoc {
 	id: string;
@@ -26,6 +28,11 @@ export function repairMessage(doc: WorkDoc): string {
 /** Publish: an edition of the user's journal, captured as a source, into the work document the palette started. */
 export function publishMessage(edition: WorkDoc, doc: WorkDoc): string {
 	return `/atlas-obsidian:wiki-sync Absorb the source [[${edition.title}]] (${edition.id}), the user's journal edition. Cite it where its ideas land. ${report(doc, "into it")}`;
+}
+
+/** Checkout: the librarian gathers the material on the user's request into a checkout. */
+export function checkoutMessage(request: string): string {
+	return `/atlas-obsidian:wiki-checkout Check out the material on: ${oneLine(request)}`;
 }
 
 /** Resolve with an agent: a file that safe delete kept because these documents link it. */

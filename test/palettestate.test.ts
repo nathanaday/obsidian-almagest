@@ -24,6 +24,10 @@ test("the palette's status comes from vault --json", () => {
 			{ volume: "cs566-notes", name: "CS566 Notes", notes: 2, edition: "", changed: true },
 			{ volume: "garden", name: "Garden", notes: 4, edition: "User Journal Garden - 5 October 2026 Edition", changed: false },
 		],
+		checkouts: [
+			{ folder: "checkout/2026-10-05 Bandits", request: "bandits", date: "2026-10-05", documents: 4, edited: 1, returned: "2026-10-05T17:00:00" },
+			{ folder: "checkout/2026-10-06 RL", request: "reinforcement learning", date: "2026-10-06", documents: 7, edited: 2, returned: "" },
+		],
 		problems: 2,
 	};
 	const s = paletteState(status, 1);
@@ -35,13 +39,16 @@ test("the palette's status comes from vault --json", () => {
 	assert.equal(s.trash, 3);
 	assert.deepEqual(s.journals.map((v) => [v.volume, v.changed]), [["cs566-notes", true], ["garden", false]]);
 	assert.equal(s.toPublish, 1);
+	assert.deepEqual(s.checkouts.map((c) => [c.request, c.edited, c.returned]), [["reinforcement learning", 2, ""], ["bandits", 1, "2026-10-05T17:00:00"]]);
+	assert.equal(s.toReturn, 1);
 	assert.equal(s.problems, 2);
 });
 
 test("an empty or older status reads as zeros", () => {
 	const s = paletteState({ ingest: null, pending: null, changes: { proposed: null } }, 0);
-	assert.deepEqual(s, { proposed: [], running: [], ingest: [], pending: 0, sessions: 0, trash: 0, journals: [], toPublish: 0, problems: 0 });
+	assert.deepEqual(s, { proposed: [], running: [], ingest: [], pending: 0, sessions: 0, trash: 0, journals: [], toPublish: 0, checkouts: [], toReturn: 0, problems: 0 });
 	assert.deepEqual(paletteState({ journals: null }, 0).journals, []);
+	assert.deepEqual(paletteState({ checkouts: null }, 0).checkouts, []);
 	assert.deepEqual(paletteState({}, 2).sessions, 2);
 });
 

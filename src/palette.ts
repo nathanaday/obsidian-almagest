@@ -1,5 +1,7 @@
 import { App, ItemView, Modal, Notice, WorkspaceLeaf, debounce } from "obsidian";
 import { saveOpen } from "./change";
+import { CheckoutModal, returnCheckout, startCheckout } from "./checkout";
+import { CHECKOUT, Checkout, day, readingListPath, returnBlocked } from "./checkoutstate";
 import { isSnapshotPath, lastProgressLine } from "./helpers";
 import { JOURNALS, JournalVolume, publishBlocked } from "./journalstate";
 import type AtlasPlugin from "./main";
@@ -31,7 +33,7 @@ interface Started {
 	ref: { id: string; title: string; path: string };
 }
 
-type Action = "ingest" | "lint" | "repair" | "trash";
+type Action = "ingest" | "checkout" | "lint" | "repair" | "trash" | "return";
 
 /**
  * The Atlas palette: the vault's status from one `vault --json` call, the agents it started,
@@ -44,6 +46,8 @@ export class PaletteView extends ItemView {
 	private progress = new Map<string, string>();
 	private lint: LintSummary | null = null;
 	private busy: Action | null = null;
+	/** The folder of the checkout that Return proposes now. */
+	private returning = "";
 	private loading = false;
 	private again = false;
 	private readonly soon = debounce(() => void this.refresh(), EVENT_DELAY, true);
@@ -126,6 +130,7 @@ export class PaletteView extends ItemView {
 		this.renderStatus(root);
 		this.renderRunning(root);
 		this.renderJournals(root);
+		this.renderCheckouts(root);
 		this.renderActions(root);
 	}
 
@@ -186,6 +191,7 @@ export class PaletteView extends ItemView {
 		open.onclick = () => void this.plugin.openSessions();
 		this.row(el, "trash", "Trash", plural(s.trash, "file", "files"));
 		this.row(el, "journals", "Journals", `${s.toPublish} to publish`);
+		this.row(el, "checkouts", "Checkouts", `${s.toReturn} to return`);
 		this.row(el, "problems", "Lint problems", plural(s.problems, "error", "errors"));
 	}
 
@@ -242,10 +248,49 @@ export class PaletteView extends ItemView {
 		button.onclick = () => confirmPublish(this.plugin, vol);
 	}
 
+	private renderCheckouts(root: HTMLElement): void {
+		const s = this.state;
+		if (!s) return;
+		const el = this.section(root, "Checkouts");
+		if (s.checkouts.length === 0) {
+			el.createDiv({ cls: "atlas-palette-quiet", text: `No checkout yet: Checkout asks the librarian for the material on a subject, and copies it into ${CHECKOUT}/.` });
+			return;
+		}
+		for (const c of s.checkouts) this.renderCheckout(el, c);
+	}
+
+	private renderCheckout(parent: HTMLElement, c: Checkout): void {
+		const el = parent.createDiv({ cls: "atlas-palette-checkout" });
+		el.dataset.folder = c.folder;
+		const head = el.createDiv({ cls: "atlas-palette-row" });
+		this.link(head.createSpan({ cls: "atlas-palette-name atlas-palette-request" }), c.request, readingListPath(c));
+		head.createSpan({ cls: "atlas-palette-value", text: plural(c.documents, "document", "documents") });
+		const line = [c.date, `${c.edited} edited`];
+		if (c.returned) line.push(`returned ${day(c.returned)}`);
+		el.createDiv({ cls: "atlas-palette-progress atlas-palette-checkout-line", text: line.join(" · ") });
+
+		const why = returnBlocked(c);
+		const returning = this.busy === "return" && this.returning === c.folder;
+		const button = el.createEl("button", { cls: "atlas-palette-small atlas-palette-return", text: returning ? "Return…" : "Return" });
+		if (why || this.busy || this.plugin.publishing) {
+			button.disabled = true;
+			button.setAttr("title", why || "Another action runs.");
+		} else {
+			button.addClass("mod-cta");
+		}
+		button.onclick = () => {
+			this.returning = c.folder;
+			void this.act("return", () => returnCheckout(this.plugin, c));
+		};
+	}
+
 	private renderActions(root: HTMLElement): void {
 		const el = this.section(root, "Actions");
 		const files = this.state?.ingest.length ?? 0;
 		this.action(el, "ingest", files > 0 ? `Ingest ${plural(files, "file", "files")}` : "Ingest", files > 0 ? "" : "ingest/ holds no file.", () => this.ingest());
+
+		// The modal asks first; the action runs once it has the request.
+		this.actionButton(el, "checkout", "Checkout", "").onclick = () => this.askCheckout();
 
 		this.action(el, "lint", "Wiki lint", "", () => this.runLint());
 		if (this.lint) this.renderLint(el, this.lint);
@@ -256,6 +301,11 @@ export class PaletteView extends ItemView {
 
 	/** A button of an action. why disables it; a running action disables every one. */
 	private action(parent: HTMLElement, name: Action, text: string, why: string, run: () => Promise<void>, note = ""): void {
+		this.actionButton(parent, name, text, why, note).onclick = () => void this.act(name, run);
+	}
+
+	/** The button of an action, with no click handler yet. */
+	private actionButton(parent: HTMLElement, name: Action, text: string, why: string, note = ""): HTMLButtonElement {
 		const wrap = parent.createDiv({ cls: "atlas-palette-action" });
 		wrap.dataset.action = name;
 		const button = wrap.createEl("button", { text: this.busy === name ? `${text}…` : text });
@@ -263,9 +313,9 @@ export class PaletteView extends ItemView {
 			button.disabled = true;
 			button.setAttr("title", why || "Another action runs.");
 		}
-		button.onclick = () => void this.act(name, run);
 		if (why) wrap.createDiv({ cls: "atlas-palette-quiet", text: why });
 		else if (note) wrap.createDiv({ cls: "atlas-palette-quiet atlas-palette-path", text: note });
+		return button;
 	}
 
 	private async act(name: Action, run: () => Promise<void>): Promise<void> {
@@ -309,6 +359,10 @@ export class PaletteView extends ItemView {
 		if (files.length === 0) return;
 		const doc = await this.start(["change", "start", "--kind", "ingest", ...files.map((f) => `--file=${f}`)]);
 		await this.plugin.runAgent(ingestMessage(doc), `Agent · ${doc.title}`, "ingest");
+	}
+
+	private askCheckout(): void {
+		new CheckoutModal(this.app, (request) => void this.act("checkout", () => startCheckout(this.plugin, request))).open();
 	}
 
 	private async runLint(): Promise<void> {

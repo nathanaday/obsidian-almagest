@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ingestMessage, publishMessage, repairMessage, resolveMessage } from "../src/messages";
+import { checkoutMessage, ingestMessage, publishMessage, repairMessage, resolveMessage } from "../src/messages";
 
 const doc = { id: "chg-qhezxf", title: "2026-10-06 Ingest 2 files" };
 
@@ -27,6 +27,11 @@ test("Publish runs wiki-sync on the edition, into its work document", () => {
 	);
 });
 
+test("Checkout runs wiki-checkout on the user's request, on one line", () => {
+	assert.equal(checkoutMessage("reinforcement learning"), "/atlas-obsidian:wiki-checkout Check out the material on: reinforcement learning");
+	assert.equal(checkoutMessage("  policy\n gradients "), "/atlas-obsidian:wiki-checkout Check out the material on: policy gradients");
+});
+
 test("Resolve with an agent names the file, its path, and the documents that link it", () => {
 	const target = { title: "Beta", path: "source-core/documents/Beta.md" };
 	assert.equal(
@@ -44,8 +49,8 @@ test("Resolve with an agent names the file, its path, and the documents that lin
 });
 
 test("every message runs a skill of the atlas-obsidian plugin and stays on one line", () => {
-	for (const m of [ingestMessage(doc), repairMessage(doc), publishMessage({ id: "doc-1", title: "E" }, doc), resolveMessage({ title: "x", path: "x.md" }, [{ title: "y" }])]) {
-		assert.match(m, /^\/atlas-obsidian:wiki-(ingest|review|sync|edit) /);
+	for (const m of [ingestMessage(doc), repairMessage(doc), publishMessage({ id: "doc-1", title: "E" }, doc), resolveMessage({ title: "x", path: "x.md" }, [{ title: "y" }]), checkoutMessage("a\nb")]) {
+		assert.match(m, /^\/atlas-obsidian:wiki-(ingest|review|sync|edit|checkout) /);
 		assert.ok(!m.includes("\n"));
 	}
 });

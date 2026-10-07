@@ -69,7 +69,7 @@ describe("Atlas in Obsidian", () => {
 
 	it("loads in a 10.0 vault with no console error, and adds nothing to the file explorer", { timeout: TIMEOUT }, async () => {
 		const o = await launch();
-		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.atlas.manifest.version)).toBe("10.2.0");
+		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.atlas.manifest.version)).toBe("10.3.0");
 
 		// A topic and a change document: the files that 9.0 marked in the explorer.
 		const change = await propose(o, "Add Alpha", "Alpha");
@@ -618,6 +618,129 @@ describe("Atlas in Obsidian", () => {
 		expect(command).toContain(`claude '/atlas-obsidian:wiki-edit Remove [[Beta]] (${beta}), which `);
 		expect(command).toContain("[[Alpha]]");
 		expect(command).toMatch(/then propose a remove\.'$/);
+		expect(o.errors).toEqual([]);
+	});
+
+	/** Applies three linked topics, and checks out Beta and Alpha with the CLI, as the librarian would. */
+	async function checkOut(o: ObsidianInstance): Promise<{ folder: string; readingList: string; alphaCopy: string; date: string }> {
+		const plan = path.join(o.vault, "..", "topics.json");
+		await writeFile(
+			plan,
+			JSON.stringify({
+				title: "Add three topics",
+				writes: [
+					{ op: "create", type: "topic", kind: "concept", title: "Alpha", fields: { description: "Alpha." }, body: "## Definition\n\nAlpha rests on [[Beta]] and [[Gamma]].\n" },
+					{ op: "create", type: "topic", kind: "concept", title: "Beta", fields: { description: "Beta." }, body: "## Definition\n\nBeta is the base.\n" },
+					{ op: "create", type: "topic", kind: "concept", title: "Gamma", fields: { description: "Gamma." }, body: "## Definition\n\nGamma links [[Alpha]].\n" },
+				],
+			}),
+		);
+		const change = JSON.parse(await o.atlas(["change", "propose", plan, "--json"]));
+		await o.atlas(["change", "apply", change.ref.id, "--json"]);
+		const order = path.join(o.vault, "..", "order.json");
+		await writeFile(
+			order,
+			JSON.stringify({
+				request: "everything on alpha",
+				name: "Alpha study",
+				documents: [
+					{ id: "Beta", why: "the base" },
+					{ id: "Alpha", why: "the subject" },
+				],
+			}),
+		);
+		const { made } = JSON.parse(await o.atlas(["checkout", "make", order, "--json"]));
+		const alphaCopy = made.copies.find((p: string) => p.endsWith("/Alpha (checkout).md"));
+		return { folder: made.folder, readingList: made.reading_list, alphaCopy, date: frontmatter(await o.read(made.reading_list)).checked_out!.slice(0, 10) };
+	}
+
+	it("lists a checkout; an edited copy turns Return on, and Return proposes the edit that Approve applies", { timeout: 120_000 }, async () => {
+		const o = await launch();
+		const { folder, readingList, alphaCopy, date } = await checkOut(o);
+		const palette = await openPalette(o);
+		const checkout = palette.locator(`.atlas-palette-checkout[data-folder="${folder}"]`);
+		const ret = checkout.locator("button.atlas-palette-return");
+		const line = checkout.locator(".atlas-palette-checkout-line");
+		await until("the checkout in the palette", async () => (await checkout.count()) === 1, { describe: () => palette.innerText() });
+		expect(await checkout.locator(".atlas-palette-request").textContent()).toBe("everything on alpha");
+		expect(await checkout.locator(".atlas-palette-value").textContent()).toBe("2 documents");
+		expect(await line.textContent()).toBe(`${date} · 0 edited`);
+		expect(await ret.textContent()).toBe("Return");
+		expect(await ret.isDisabled()).toBe(true);
+		expect(await ret.getAttribute("title")).toBe("No copy is edited.");
+		expect(await row(palette, "checkouts")).toBe("0 to return");
+
+		// The request opens the reading list; it and each copy open with the atlas callout.
+		await checkout.locator(".atlas-palette-request a").click();
+		await until("the reading list", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === readingList);
+		for (const note of [readingList, alphaCopy]) {
+			await open(o, note, "preview");
+			const callout = o.page.locator('.workspace-leaf.mod-active .markdown-reading-view .callout[data-callout="atlas"]');
+			await callout.waitFor({ timeout: 10_000 });
+			expect(await callout.evaluate((el) => getComputedStyle(el).getPropertyValue("--callout-icon").trim())).toBe("lucide-map");
+		}
+
+		// An edit of a copy, as Obsidian saves it, turns Return on after the palette reads the status again.
+		await o.page.evaluate(async (file) => {
+			const app = (window as any).app;
+			const copy = app.vault.getFileByPath(file);
+			await app.vault.modify(copy, `${await app.vault.read(copy)}\nA line the reader added.\n`);
+		}, alphaCopy);
+		await until("Return to turn on", async () => (await ret.isEnabled()) && (await line.textContent()) === `${date} · 1 edited`, { describe: () => palette.innerText() });
+		expect(await row(palette, "checkouts")).toBe("1 to return");
+
+		// Return proposes the change and opens it.
+		await ret.click();
+		const proposed = await until("the proposed change", async () => {
+			const list = JSON.parse(await o.atlas(["vault", "--json"])).status.changes.proposed as { id: string; title: string; path: string }[];
+			return list.length === 1 ? list[0] : undefined;
+		});
+		expect(proposed.title).toBe(`${date} Return ${folder.slice("checkout/".length + 11)}`);
+		await until("the change to open", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === proposed.path, {
+			describe: () => o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path),
+		});
+		expect((await notices(o)).filter((t) => t.includes("left out"))).toEqual([]);
+		await until("the checkout to show its return", async () => (await line.textContent())?.startsWith(`${date} · 1 edited · returned `), { describe: () => palette.innerText() });
+		expect(await ret.isDisabled()).toBe(true);
+		expect(await ret.getAttribute("title")).toMatch(/^Returned \d{4}-\d{2}-\d{2}\.$/);
+		expect(await row(palette, "checkouts")).toBe("0 to return");
+		expect(frontmatter(await o.read(readingList)).returned).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+		// Approve writes the edit into the original, with the links pointed back at the wiki.
+		const widget = o.page.locator(".workspace-leaf.mod-active .atlas-change-card");
+		await widget.locator("button", { hasText: "Approve" }).click({ timeout: 10_000 });
+		await until("the change to apply", async () => (await status(o, proposed.path)).status === "applied", { describe: () => o.read(proposed.path) });
+		const alpha = await o.read("source-core/documents/Alpha.md");
+		expect(alpha).toContain("Alpha rests on [[Beta]] and [[Gamma]].\n\nA line the reader added.\n");
+		expect(alpha).not.toContain("(checkout)");
+		await until("the change's commit", async () => (await o.git(["log", "-1", "--format=%s", "--", "source-core/documents/Alpha.md"])) === `change: Return ${folder.slice("checkout/".length + 11)}\n`, {
+			describe: () => o.git(["log", "--oneline", "-5"]),
+		});
+		expect(o.errors).toEqual([]);
+	});
+
+	it("Checkout asks for the request and starts the librarian in the terminal without Duet", { timeout: TIMEOUT }, async () => {
+		const o = await launch();
+		const out = await stubTerminal(o);
+		const palette = await openPalette(o);
+		expect(await palette.locator(".atlas-palette-section", { hasText: "Checkouts" }).locator(".atlas-palette-quiet").textContent()).toMatch(/^No checkout yet:/);
+		await palette.locator('[data-action="checkout"] button', { hasText: "Checkout" }).click();
+
+		const modal = o.page.locator(".modal", { hasText: "Check out material" });
+		await modal.waitFor({ timeout: 10_000 });
+		const go = modal.locator("button.mod-cta", { hasText: "Check out" });
+		expect(await go.isDisabled()).toBe(true);
+		await modal.locator("input.atlas-checkout-input").fill("   ");
+		expect(await go.isDisabled()).toBe(true);
+		await modal.locator("input.atlas-checkout-input").fill("reinforcement learning");
+		expect(await go.isEnabled()).toBe(true);
+		await modal.locator("input.atlas-checkout-input").press("Enter");
+		await until("the modal to close", async () => (await modal.count()) === 0);
+
+		const command = await terminalCommand(out);
+		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command.endsWith(" && claude '/atlas-obsidian:wiki-checkout Check out the material on: reinforcement learning'")).toBe(true);
+		expect(await notices(o)).toContain("Atlas: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Atlas starts the agent in a terminal.");
 		expect(o.errors).toEqual([]);
 	});
 });
