@@ -23,12 +23,45 @@ export interface Synced {
 }
 
 /**
- * The places to look for the binary, in order, after the setting: the ones the agent
- * plugin's wrapper uses. PATH and the system folders are left out, so another tool's
- * binary never runs in its place.
+ * The protocols this plugin reads: the version of the commands, flags, and JSON of the
+ * binary (`almagest version --json` prints its own). Each side names the update it needs.
+ */
+export const PROTOCOLS = [1];
+
+/** How to install the agent plugin, whose launcher installs the binary. */
+export const INSTALL_AGENT =
+	"Install the Almagest agent plugin: in Claude Code, claude plugin marketplace add nathanaday/almagest, then claude plugin install almagest@nathanaday-almagest, and start one session in the vault. Its first session installs the binary. Or set the binary's path in the Almagest settings.";
+
+/** What `almagest version --json` prints. A binary that prints no protocol reads as 0. */
+export interface BinaryInfo {
+	version: string;
+	protocol?: number;
+}
+
+/**
+ * Why the plugin cannot use the binary, with the update that fixes it; or "" when it can.
+ * info is null when no binary was found or it did not run.
+ */
+export function binaryProblem(info: BinaryInfo | null, found: string | null): string {
+	if (!found) return `Almagest needs its binary, and none is installed. ${INSTALL_AGENT}`;
+	if (!info) return `Almagest cannot run its binary at ${found}. ${INSTALL_AGENT}`;
+	const protocol = info.protocol ?? 0;
+	if (protocol < Math.min(...PROTOCOLS)) {
+		return `almagest ${info.version} is older than this plugin reads. Update the agent plugin (claude plugin update almagest@nathanaday-almagest), then start a session in the vault.`;
+	}
+	if (protocol > Math.max(...PROTOCOLS)) {
+		return `almagest ${info.version} is newer than this plugin reads. Update Almagest in Obsidian's community plugins.`;
+	}
+	return "";
+}
+
+/**
+ * The places to look for the binary after the setting: the link to the binary that the
+ * agent plugin's launcher installed last. PATH and the system folders are left out, so
+ * another tool's binary never runs in its place.
  */
 export function binaryCandidates(home: string): string[] {
-	return [`${home}/.almagest/bin/almagest`, `${home}/go/bin/almagest`];
+	return [`${home}/.almagest/bin/almagest`];
 }
 
 /** The override when it is set, else the first candidate that exists. */

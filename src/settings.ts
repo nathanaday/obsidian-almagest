@@ -1,6 +1,6 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
-import { binaryVersion, findBinary } from "./cli";
-import { SNAPSHOT_QUIET_DEFAULT, quietSeconds } from "./helpers";
+import { binaryInfo, findBinary } from "./cli";
+import { SNAPSHOT_QUIET_DEFAULT, binaryProblem, quietSeconds } from "./helpers";
 import { AGENTS, AGENT_NAMES, AgentConfig, TERMINALS, TERMINAL_NAMES, inherited, preference } from "./agents";
 import type AlmagestPlugin from "./main";
 import { homedir } from "os";
@@ -32,7 +32,7 @@ export class AlmagestSettingTab extends PluginSettingTab {
 
 		const binary = new Setting(containerEl)
 			.setName("Path to the almagest binary")
-			.setDesc("Leave empty to use the binary Almagest finds.")
+			.setDesc("Leave empty to use ~/.almagest/bin/almagest, which the Almagest agent plugin installs.")
 			.addText((text) =>
 				text
 					.setPlaceholder(found ?? "Not found")
@@ -46,15 +46,9 @@ export class AlmagestSettingTab extends PluginSettingTab {
 		const status = binary.descEl.createDiv({ cls: "almagest-setting-status" });
 		const showVersion = async () => {
 			const bin = findBinary(this.plugin.settings.binaryPath);
-			if (!bin) {
-				status.setText("No binary found.");
-				return;
-			}
-			try {
-				status.setText(`Uses ${bin} (${await binaryVersion(bin)}).`);
-			} catch (e) {
-				status.setText(`Cannot run ${bin}: ${(e as Error).message}`);
-			}
+			const info = await binaryInfo(bin);
+			const problem = binaryProblem(info, bin);
+			status.setText(problem || `Uses ${bin} (almagest ${info!.version}).`);
 		};
 		void showVersion();
 

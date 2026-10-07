@@ -2,7 +2,7 @@ import { execFile } from "child_process";
 import { existsSync } from "fs";
 import { homedir } from "os";
 import { Notice } from "obsidian";
-import { binaryCandidates, chooseBinary, errorMessage, movedNotices } from "./helpers";
+import { BinaryInfo, binaryCandidates, chooseBinary, errorMessage, movedNotices } from "./helpers";
 
 export class AlmagestError extends Error {}
 
@@ -44,7 +44,7 @@ function exec(bin: string, args: string[], cwd: string | undefined, answers: num
  * codes that print an answer too, such as 2 of vault trash for a file that others link.
  */
 export async function runAlmagest<T>(bin: string | null, vault: string, args: string[], answers: number[] = []): Promise<T> {
-	if (!bin) throw new AlmagestError("the almagest binary was not found; set its path in the Almagest settings");
+	if (!bin) throw new AlmagestError("the almagest binary is not installed; the Almagest agent plugin installs it (see the Almagest settings)");
 	const out = await exec(bin, [...args, "--vault", vault, "--json"], vault, answers);
 	let parsed: T;
 	try {
@@ -58,9 +58,14 @@ export async function runAlmagest<T>(bin: string | null, vault: string, args: st
 	return parsed;
 }
 
-/** The version line the binary prints, such as "almagest 10.0.0". */
-export async function binaryVersion(bin: string): Promise<string> {
-	return (await exec(bin, ["version"], undefined)).trim();
+/** The version and the protocol the binary prints, or null when it does not run. */
+export async function binaryInfo(bin: string | null): Promise<BinaryInfo | null> {
+	if (!bin) return null;
+	try {
+		return JSON.parse(await exec(bin, ["version", "--json"], undefined)) as BinaryInfo;
+	} catch {
+		return null;
+	}
 }
 
 /** Runs a program with its arguments; for osascript. */

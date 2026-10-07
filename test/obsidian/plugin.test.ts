@@ -69,7 +69,7 @@ describe("Almagest in Obsidian", () => {
 
 	it("loads in an 11.0 vault with no console error, and adds nothing to the file explorer", { timeout: TIMEOUT }, async () => {
 		const o = await launch();
-		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.manifest.version)).toBe("10.4.1");
+		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.manifest.version)).toBe("11.0.0");
 
 		// A topic and a change document: the files that 9.0 marked in the explorer.
 		const change = await propose(o, "Add Alpha", "Alpha");
@@ -137,6 +137,16 @@ describe("Almagest in Obsidian", () => {
 		expect(explorer.sheet).toBe(true);
 		expect(explorer.rules).toBeGreaterThan(10);
 		expect(explorer.styled).toEqual([]);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("says how to get the binary when it cannot run one, and nothing more", { timeout: TIMEOUT }, async () => {
+		const o = await launch({ pluginData: { binaryPath: "/nowhere/almagest" } });
+		await until("the notice", async () => (await notices(o)).some((n) => n.includes("Almagest cannot run its binary at /nowhere/almagest.")), {
+			describe: async () => JSON.stringify(await notices(o)),
+		});
+		const notice = (await notices(o)).find((n) => n.includes("/nowhere/almagest"))!;
+		expect(notice).toContain("claude plugin install almagest@nathanaday-almagest");
 		expect(o.errors).toEqual([]);
 	});
 

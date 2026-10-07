@@ -53,27 +53,30 @@ and Windows: **None**.
 
 ## Obsidian end-to-end tests
 
-Date: 2026-10-06. Obsidian 1.14.4 (the app update, over the 1.8.7 installer), macOS
-(Darwin 25.6.0), Go 1.24.2, Node 22.14.0. Almagest 10.4.1: the working tree over `b888e71`.
+Date: 2026-10-07. Obsidian 1.14.4 (the app update, over the 1.8.7 installer), macOS
+(Darwin 25.6.0), Go 1.24.2, Node 22.14.0. Almagest for Obsidian 11.0.0, with the
+almagest binary of the 11.0.0 release commit.
 
-`cd obsidian && npm run test:obsidian` builds the plugin, builds `almagest` from
-this checkout into a temporary folder, and runs `test/obsidian/plugin.test.ts`. Each test
-makes its own vault with `vault init`, with `ALMAGEST_HOME` in a temporary folder. The
-harness copies `obsidian/dist` over the plugin that `vault init` installs, and sets
-`binaryPath` to the built binary. Then it starts a separate Obsidian with a temporary
+`npm run test:obsidian` builds the plugin, builds `almagest` from the checkout in
+`ALMAGEST_SRC` (default `../almagest`) into a temporary folder, and runs
+`test/obsidian/plugin.test.ts`. Each test makes its own vault with `vault init`, with
+`ALMAGEST_HOME` in a temporary folder. The harness copies `dist/` into the vault as the
+plugin, as the community directory installs it, and sets `binaryPath` to the built
+binary. Then it starts a separate Obsidian with a temporary
 profile (`--user-data-dir`) and drives it with Playwright over the DevTools protocol. The
 user's Obsidian, `~/.almagest`, and vaults stay as they are. `npm test` does not need
 Obsidian. The suite takes about 90 seconds. It passed three runs in a row.
 
 | Test | What it proves |
 | ---- | -------------- |
-| Loads in a 10.0 vault | The plugin loads with version 10.4.1 and no console error. A manual sync runs the binary and shows its notice. With every folder open, no element in the file explorer has an `almagest-` class or a `data-almagest` attribute, and no rule of the plugin's `styles.css` matches an element there. |
-| Reads the layout at Obsidian's start, 10.0 | Obsidian quits and starts again with its metadata index deleted, so the plugin loads at start, as it does for a user. It shows no notice and logs no error. |
-| Reads the layout at Obsidian's start, 9.0 | The same start in a vault whose `Almagest.md` says `layout: 5`. The plugin shows one notice, which names the 9.0 layout. |
+| Loads in an 11.0 vault | The plugin loads with version 11.0.0 and no console error. A manual sync runs the binary and shows its notice. With every folder open, no element in the file explorer has an `almagest-` class or a `data-almagest` attribute, and no rule of the plugin's `styles.css` matches an element there. |
+| A binary it cannot run | With `binaryPath` set to a missing file, the plugin shows one notice that says it cannot run the binary and how to install the agent plugin (`claude plugin install almagest@nathanaday-almagest`), and logs no error. |
+| Reads the layout at Obsidian's start, 11.0 | Obsidian quits and starts again with its metadata index deleted, so the plugin loads at start, as it does for a user. It shows no notice and logs no error. |
+| Reads the layout at Obsidian's start, 9.0 | The same start in a vault whose vault document is `Atlas.md` with `layout: 5`, as 9.0 left it. The plugin shows one notice, which names the 9.0 layout and the 11.0 layout it needs. |
 | Approves a change | `change propose` from the CLI writes a change document. In live preview, the widget shows Approve and Cancel. A click on Approve writes the topic file, sets `status: applied`, and commits `change: Add Alpha`. The widget then shows "Applied <time>." with no buttons. |
 | Cancels a change | In reading view, Cancel opens the modal. The reason typed there goes into `reason`, the status becomes `rejected`, and no topic file is written. The widget shows "Rejected: <reason>". |
 | Quiet snapshots | With `snapshotQuietSeconds: 2`, a note is created and then changed through `app.vault`. One second after each edit, git holds no snapshot, so each edit starts the quiet period again. Then one commit "snapshot: N files edited by hand" holds the last text, and the tree is clean. In some runs the `vault sync --views` that the same edit starts holds the lock; the snapshot then runs again after the next quiet period, as designed. |
-| Offers the migration | In a vault with `layout: 5`, the notice names the 9.0 layout. "Show the migration" opens the dry run in the modal. Migrate sets `layout: 6` and commits `layout: migrate to 10.0`. |
+| Offers the migration | In a vault of Atlas 10.0 (`Atlas.md` with `layout: 6`), the notice names the 10.0 layout. "Show the migration" opens the dry run in the modal, which names the rename of `Atlas.md` to `Almagest.md`. Migrate writes `Almagest.md` with `layout: 7`, removes `Atlas.md`, and commits `layout: migrate to 11.0`. |
 | Opens the palette | The ribbon has one button named "Almagest". The command "Open the Almagest palette" opens the palette in the right sidebar. With two files in `ingest/`, the Ingest row says "2 files", the list names both files, and the button says "Ingest 2 files". The status bar holds no Almagest item. |
 | Ingest without Duet | The terminal setting is `custom`, with a command that writes the command it gets to a file, so no terminal opens. Ingest runs `change start`: one running work document of kind `ingest` with the file in `files`. Obsidian opens that document. The notice says that Duet runs the agents in Obsidian. The command is `cd '<vault>' && claude '<message>'`, with the ingest message that names the document's title and id. The palette lists the running work. |
 | Ingest through Duet's API | A stand-in for Duet's API (version 1) records each call. Ingest calls `newConversation` once, with the ingest message, the title "Agent · <document title>", and `loadUserSetup: true`, and shows no notice about Duet. The palette lists the conversation under Running; the end of its turn takes it off. |

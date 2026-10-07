@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+	PROTOCOLS,
+	binaryProblem,
 	LAYOUT,
 	MIGRATES_FROM,
 	SNAPSHOT_QUIET_DEFAULT,
@@ -38,12 +40,12 @@ import {
 	syncedPaths,
 } from "../src/helpers";
 
-test("chooseBinary prefers the setting, then the first place that exists", () => {
+test("chooseBinary prefers the setting, then the launcher's link", () => {
 	const home = "/Users/a";
 	const found = binaryCandidates(home);
 	assert.equal(found[0], "/Users/a/.almagest/bin/almagest");
 	assert.equal(chooseBinary("~/bin/almagest", found, () => false, home), "/Users/a/bin/almagest");
-	assert.equal(chooseBinary("  ", found, (p) => p === "/Users/a/go/bin/almagest", home), "/Users/a/go/bin/almagest");
+	assert.deepEqual(found, ["/Users/a/.almagest/bin/almagest"], "only the launcher's link: a go install pins no version");
 	assert.ok(!found.some((p) => p.startsWith("/usr/")), "the system folders are left out");
 	assert.equal(chooseBinary("", found, () => true, home), "/Users/a/.almagest/bin/almagest");
 	assert.equal(chooseBinary("", found, () => false, home), null);
@@ -256,4 +258,13 @@ test("any result that moved a note out of wiki-view/ says where it went", () => 
 test("the navigator lists every document type and nothing else", () => {
 	for (const type of ["source", "repository", "topic"]) assert.ok(isDocumentType(type), type);
 	for (const type of ["stub", "chord", "event", "session", "change", undefined]) assert.ok(!isDocumentType(type), String(type));
+});
+
+test("the plugin names the update that lets it use the binary", () => {
+	assert.match(binaryProblem(null, null), /none is installed\. Install the Almagest agent plugin: .*claude plugin install almagest@nathanaday-almagest/);
+	assert.match(binaryProblem(null, "/x/almagest"), /cannot run its binary at \/x\/almagest/);
+	assert.equal(binaryProblem({ version: "11.0.0", protocol: 1 }, "/x"), "");
+	assert.match(binaryProblem({ version: "10.9.0" }, "/x"), /older than this plugin reads\. Update the agent plugin \(claude plugin update almagest@nathanaday-almagest\)/);
+	assert.match(binaryProblem({ version: "12.0.0", protocol: 2 }, "/x"), /newer than this plugin reads\. Update Almagest in Obsidian's community plugins\./);
+	assert.deepEqual(PROTOCOLS, [1]);
 });

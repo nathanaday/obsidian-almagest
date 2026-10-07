@@ -20,9 +20,14 @@ plugin and nothing else. This file holds what the code and the README do not say
   of both.
 - **It never searches `PATH` or the system folders for the binary**, so another
   program's binary never runs in its place. It runs its `binaryPath` setting as given
-  when it is set (`findBinary`, `helpers.ts`), else the first of
-  `~/.almagest/bin/almagest` and `~/go/bin/almagest` that exists. It reads neither
+  when it is set (`findBinary`, `helpers.ts`), else `~/.almagest/bin/almagest`, the link
+  to the binary that the agent plugin's launcher installed last. It reads neither
   `ALMAGEST_BIN` nor `ALMAGEST_HOME`.
+- **It checks the protocol of the binary at load.** `almagest version --json` prints the
+  binary's version and `protocol`, the version of the commands, flags, and JSON that the
+  plugin reads (`cli.Protocol` there). The plugin reads the protocols in `PROTOCOLS`;
+  `binaryProblem` names the update for a missing binary, an older one, and a newer one.
+  Raise the protocol on both sides when a change would make an older plugin misread.
 - **It touches only what it owns.** It adds custom views, ribbon buttons, commands,
   in-document widgets (code block processors), and CSS for its own callouts and
   widgets. It patches no pane of Obsidian's own and styles none. A change note's

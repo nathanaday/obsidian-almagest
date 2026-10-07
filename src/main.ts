@@ -1,9 +1,10 @@
 import { App, FileSystemAdapter, Modal, Notice, Plugin, TAbstractFile, TFile, debounce } from "obsidian";
 import { ChangeRunner, changeProcessor } from "./change";
-import { AlmagestError, findBinary, runAlmagest } from "./cli";
+import { AlmagestError, binaryInfo, findBinary, runAlmagest } from "./cli";
 import {
 	LAYOUT,
 	VAULT_DOCUMENTS,
+	binaryProblem,
 	MIGRATES_FROM,
 	MigrationReport,
 	Synced,
@@ -149,6 +150,7 @@ export default class AlmagestPlugin extends Plugin {
 		this.registerInterval(window.setInterval(() => this.sessionViews().forEach((v) => v.tick()), 30_000));
 		this.app.workspace.onLayoutReady(() => {
 			this.refreshSessions();
+			void this.checkBinary();
 			this.checkLayout();
 			void this.moveLegacyPreferences();
 			this.watchForSnapshots();
@@ -314,6 +316,13 @@ export default class AlmagestPlugin extends Plugin {
 	/** Whether the vault has the layout this plugin reads. */
 	private migrated(): boolean {
 		return this.layout() >= LAYOUT;
+	}
+
+	/** Says once, until the user closes it, what keeps the plugin from its binary. */
+	private async checkBinary(): Promise<void> {
+		const found = findBinary(this.settings.binaryPath);
+		const problem = binaryProblem(await binaryInfo(found), found);
+		if (problem) new Notice(`Almagest: ${problem}`, 0);
 	}
 
 	private checkLayout(): void {

@@ -1,7 +1,7 @@
 {
   "id": "almagest",
   "name": "Almagest",
-  "version": "10.4.1",
+  "version": "11.0.0",
   "minAppVersion": "1.9.0",
   "description": "Review and approve the changes your coding agents make to the wiki in your vault, with a tool palette, change widgets, a tag navigator, and a sessions pane. Needs the Almagest agent plugin.",
   "author": "nathanaday",
