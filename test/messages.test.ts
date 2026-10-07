@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkoutMessage, ingestMessage, publishMessage, repairMessage, resolveMessage } from "../src/messages";
+import { checkoutMessage, draftMessage, ingestMessage, publishMessage, repairMessage, resolveMessage, wikifyMessage } from "../src/messages";
 
 const doc = { id: "chg-qhezxf", title: "2026-10-06 Ingest 2 files" };
 
@@ -48,9 +48,23 @@ test("Resolve with an agent names the file, its path, and the documents that lin
 	assert.ok(!text.includes("[[T10]]"));
 });
 
+test("Create on a new mark runs wiki-edit to draft the topic from the wikified note, into its work document", () => {
+	assert.equal(
+		draftMessage("Momentum", "My note · wikified", { id: "chg-qrjq13", title: "2026-10-06 Draft Momentum" }),
+		"/atlas-obsidian:wiki-edit Draft a topic titled Momentum from [[My note · wikified]] and what the wiki holds; give it a why. Your work document is [[2026-10-06 Draft Momentum]] (chg-qrjq13): report each step with change progress, and propose into it with change propose and id chg-qrjq13.",
+	);
+});
+
+test("Wikify this note runs wiki-wikify on the copy", () => {
+	assert.equal(
+		wikifyMessage("My note · wikified (2)"),
+		"/atlas-obsidian:wiki-wikify Wikify [[My note · wikified (2)]]: mark what the wiki knows and the subjects worth a topic, with wikify mark.",
+	);
+});
+
 test("every message runs a skill of the atlas-obsidian plugin and stays on one line", () => {
-	for (const m of [ingestMessage(doc), repairMessage(doc), publishMessage({ id: "doc-1", title: "E" }, doc), resolveMessage({ title: "x", path: "x.md" }, [{ title: "y" }]), checkoutMessage("a\nb")]) {
-		assert.match(m, /^\/atlas-obsidian:wiki-(ingest|review|sync|edit|checkout) /);
+	for (const m of [ingestMessage(doc), repairMessage(doc), publishMessage({ id: "doc-1", title: "E" }, doc), resolveMessage({ title: "x", path: "x.md" }, [{ title: "y" }]), checkoutMessage("a\nb"), draftMessage("T", "N", doc), wikifyMessage("N")]) {
+		assert.match(m, /^\/atlas-obsidian:wiki-(ingest|review|sync|edit|checkout|wikify) /);
 		assert.ok(!m.includes("\n"));
 	}
 });

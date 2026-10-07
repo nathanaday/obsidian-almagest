@@ -28,6 +28,8 @@ import { volumeOf } from "./journalstate";
 import { PALETTE_ICON, PALETTE_VIEW, PaletteView } from "./palette";
 import { confirmPublishOf } from "./publish";
 import { AtlasSettingTab, AtlasSettings, DEFAULT_SETTINGS } from "./settings";
+import { isWikified } from "./marks";
+import { Wikify, markExtension, markPostProcessor } from "./wikify";
 import { NAV_ICON, TAG_NAV_VIEW, TagNavigator } from "./tagnav";
 
 const SYNC_DELAY = 2000;
@@ -62,6 +64,9 @@ export default class AtlasPlugin extends Plugin {
 	/** The journal volume that a publish captures now, or "". */
 	publishing = "";
 
+	/** The bubbles of wikified notes, and Create. */
+	readonly wikify = new Wikify(this);
+
 	/** The agents the palette started through Duet, while their turn runs. */
 	readonly conversations = new Conversations(
 		() => this.paletteViews().forEach((v) => v.render()),
@@ -76,6 +81,20 @@ export default class AtlasPlugin extends Plugin {
 
 		this.registerMarkdownCodeBlockProcessor("atlas-repo", repoProcessor(this));
 		this.registerMarkdownCodeBlockProcessor("atlas-change", changeProcessor(this, new ChangeRunner(this)));
+
+		this.registerEditorExtension(markExtension(this.wikify));
+		this.registerMarkdownPostProcessor(markPostProcessor(this, this.wikify));
+		this.wikify.register();
+		this.addCommand({
+			id: "accept-link-marks",
+			name: "Accept every link mark in this note",
+			checkCallback: (checking) => {
+				const file = this.app.workspace.getActiveFile();
+				if (!file || !isWikified(file.path)) return false;
+				if (!checking) void this.wikify.acceptAll(file);
+				return true;
+			},
+		});
 
 		this.addRibbonIcon("refresh-cw", "Atlas: sync the vault", () => void this.sync(true));
 		this.addCommand({ id: "sync", name: "Sync the vault", callback: () => void this.sync(true) });

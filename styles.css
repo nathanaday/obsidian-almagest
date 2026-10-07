@@ -1,4 +1,4 @@
-/* Atlas: callouts, the change widget and the change document, the palette and its Publish and Checkout modals, the tag navigator, the repository panel, the sessions pane. Nothing here styles Obsidian's own panes. */
+/* Atlas: callouts, the change widget and the change document, the palette and its Publish and Checkout modals, the bubbles of a wikified note, the tag navigator, the repository panel, the sessions pane. Nothing here styles Obsidian's own panes. */
 
 /* Callouts: the lead callout of each document type and kind, of the views, and of the files Atlas writes for the user (atlas): a journal's publication history, a checkout's copies, reading list, and ledger. */
 .callout[data-callout="source"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-file-image; }
@@ -632,3 +632,63 @@
 .atlas-checkout .atlas-checkout-input {
 	width: 100%;
 }
+
+/* The bubble of a mark in a wikified note, in live preview and reading view: the phrase, a pill with the title, and small buttons. It keeps the line's height. */
+.atlas-mark {
+	--atlas-mark: var(--color-blue-rgb);
+	padding: 0 2px;
+	border-radius: var(--radius-s);
+	background-color: rgba(var(--atlas-mark), 0.08);
+	box-shadow: inset 0 -1px 0 rgba(var(--atlas-mark), 0.45);
+	-webkit-box-decoration-break: clone;
+	box-decoration-break: clone;
+}
+.atlas-mark-new { --atlas-mark: var(--color-green-rgb); }
+.atlas-mark[data-state="drafting"] { --atlas-mark: var(--color-cyan-rgb); }
+.atlas-mark-pill,
+.atlas-mark-drafting,
+.atlas-mark .atlas-mark-button {
+	margin-inline-start: 0.3em;
+	font-family: var(--font-interface);
+	font-size: 0.75em;
+	line-height: 1.4;
+	vertical-align: 0.1em;
+	white-space: nowrap;
+}
+.atlas-mark-pill {
+	padding: 0 0.4em;
+	border-radius: var(--radius-s);
+	color: rgb(var(--atlas-mark));
+	background-color: rgba(var(--atlas-mark), 0.16);
+}
+.atlas-mark-drafting {
+	color: rgb(var(--atlas-mark));
+	font-style: italic;
+	cursor: pointer;
+	animation: atlas-mark-pulse 1.6s ease-in-out infinite;
+}
+@keyframes atlas-mark-pulse {
+	50% { opacity: 0.5; }
+}
+.atlas-mark .atlas-mark-button {
+	display: inline;
+	height: auto;
+	padding: 0 0.45em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	box-shadow: none;
+	color: var(--text-muted);
+	background-color: var(--background-primary);
+	cursor: pointer;
+}
+.atlas-mark .atlas-mark-button + .atlas-mark-button { margin-inline-start: 0.2em; }
+.atlas-mark .atlas-mark-button:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}
+.atlas-mark .atlas-mark-button.mod-cta {
+	border-color: rgba(var(--atlas-mark), 0.5);
+	color: rgb(var(--atlas-mark));
+	background-color: rgba(var(--atlas-mark), 0.1);
+}
+.atlas-mark .atlas-mark-button.mod-cta:hover { background-color: rgba(var(--atlas-mark), 0.22); }

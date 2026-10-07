@@ -3,6 +3,7 @@ import { saveOpen } from "./change";
 import { CheckoutModal, returnCheckout, startCheckout } from "./checkout";
 import { CHECKOUT, Checkout, day, readingListPath, returnBlocked } from "./checkoutstate";
 import { isSnapshotPath, lastProgressLine } from "./helpers";
+import { wikifyBlocked } from "./marks";
 import { JOURNALS, JournalVolume, publishBlocked } from "./journalstate";
 import type AtlasPlugin from "./main";
 import { ingestMessage, repairMessage, resolveMessage } from "./messages";
@@ -33,7 +34,7 @@ interface Started {
 	ref: { id: string; title: string; path: string };
 }
 
-type Action = "ingest" | "checkout" | "lint" | "repair" | "trash" | "return";
+type Action = "ingest" | "checkout" | "lint" | "repair" | "wikify" | "trash" | "return";
 
 /**
  * The Atlas palette: the vault's status from one `vault --json` call, the agents it started,
@@ -296,6 +297,8 @@ export class PaletteView extends ItemView {
 		if (this.lint) this.renderLint(el, this.lint);
 
 		const file = this.app.workspace.getActiveFile();
+		const unwikified = file ? wikifyBlocked(file.path) : "Open a note first.";
+		this.action(el, "wikify", "Wikify this note", unwikified, () => this.plugin.wikify.wikify(file!), file?.path ?? "");
 		this.action(el, "trash", "Safe delete this file", file ? "" : "Open a file first.", () => this.safeDelete(), file?.path ?? "");
 	}
 

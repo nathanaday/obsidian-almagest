@@ -42,3 +42,13 @@ export function resolveMessage(target: { title: string; path: string }, backlink
 	if (more > 0) names.push(`${more} more`);
 	return `/atlas-obsidian:wiki-edit Remove [[${target.title}]] (${target.path}), which ${names.join(", ")} ${backlinks.length === 1 ? "links" : "link"}: point each backlink elsewhere, or drop it, then propose a remove.`;
 }
+
+/** Create on a new mark: an agent drafts the topic from the wikified note into its work document. */
+export function draftMessage(title: string, note: string, doc: WorkDoc): string {
+	return `/atlas-obsidian:wiki-edit Draft a topic titled ${title} from [[${note}]] and what the wiki holds; give it a why. ${report(doc, "into it")}`;
+}
+
+/** Wikify this note: an agent marks the copy with what the wiki knows and the subjects worth a topic. */
+export function wikifyMessage(copy: string): string {
+	return `/atlas-obsidian:wiki-wikify Wikify [[${copy}]]: mark what the wiki knows and the subjects worth a topic, with wikify mark.`;
+}

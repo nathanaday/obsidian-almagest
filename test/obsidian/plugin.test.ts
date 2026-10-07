@@ -69,7 +69,7 @@ describe("Atlas in Obsidian", () => {
 
 	it("loads in a 10.0 vault with no console error, and adds nothing to the file explorer", { timeout: TIMEOUT }, async () => {
 		const o = await launch();
-		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.atlas.manifest.version)).toBe("10.3.0");
+		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.atlas.manifest.version)).toBe("10.4.0");
 
 		// A topic and a change document: the files that 9.0 marked in the explorer.
 		const change = await propose(o, "Add Alpha", "Alpha");
@@ -741,6 +741,262 @@ describe("Atlas in Obsidian", () => {
 		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
 		expect(command.endsWith(" && claude '/atlas-obsidian:wiki-checkout Check out the material on: reinforcement learning'")).toBe(true);
 		expect(await notices(o)).toContain("Atlas: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Atlas starts the agent in a terminal.");
+		expect(o.errors).toEqual([]);
+	});
+
+	// Wikify
+
+	const LECTURE = "notes/Lecture.md";
+	const LECTURE_TEXT = "# Lecture\n\nGradient descent takes a step size. Momentum speeds it up, and the learning rate matters.\n\nCode such as `{{link:Gradient Descent|gradient descent}}` stays text.\n";
+
+	/** Applies two topics, copies notes/Lecture.md with wikify start, and marks the copy with the CLI, as the agent would. */
+	async function wikified(o: ObsidianInstance): Promise<string> {
+		const plan = path.join(o.vault, "..", "topics.json");
+		await writeFile(
+			plan,
+			JSON.stringify({
+				title: "Add two topics",
+				writes: [
+					{ op: "create", type: "topic", kind: "concept", title: "Gradient Descent", fields: { description: "Gradient descent." }, body: "## Definition\n\nGradient descent.\n" },
+					{ op: "create", type: "topic", kind: "concept", title: "Learning Rate Schedule", fields: { description: "A schedule." }, body: "## Definition\n\nA schedule.\n" },
+				],
+			}),
+		);
+		const change = JSON.parse(await o.atlas(["change", "propose", plan, "--json"]));
+		await o.atlas(["change", "apply", change.ref.id, "--json"]);
+		const { copy } = JSON.parse(await o.atlas(["wikify", "start", LECTURE, "--json"]));
+		const marks = path.join(o.vault, "..", "marks.json");
+		await writeFile(
+			marks,
+			JSON.stringify([
+				{ phrase: "gradient descent", link: "Gradient Descent" },
+				{ phrase: "learning rate", link: "Learning Rate Schedule" },
+				{ phrase: "step size", new: "Step Size" },
+				{ phrase: "momentum", new: "Momentum" },
+			]),
+		);
+		const { marked } = JSON.parse(await o.atlas(["wikify", "mark", copy, marks, "--json"]));
+		expect(marked.missing).toEqual([]);
+		expect(await o.read(copy)).toBe(
+			"# Lecture\n\n{{link:Gradient Descent|Gradient descent}} takes a {{new:Step Size|step size}}. {{new:Momentum|Momentum}} speeds it up, and the {{link:Learning Rate Schedule|learning rate}} matters.\n\nCode such as `{{link:Gradient Descent|gradient descent}}` stays text.\n",
+		);
+		return copy;
+	}
+
+	const lecture = async (vault: string) => {
+		await mkdir(path.join(vault, "notes"), { recursive: true });
+		await writeFile(path.join(vault, LECTURE), LECTURE_TEXT);
+	};
+
+	/** The bubbles of the active note in live preview, or in reading view. */
+	function bubbles(o: ObsidianInstance, mode: "source" | "preview") {
+		const view = mode === "source" ? ".markdown-source-view.is-live-preview .cm-content" : ".markdown-reading-view";
+		return o.page.locator(`.workspace-leaf.mod-active ${view} .atlas-mark`);
+	}
+
+	/** What each bubble shows: its phrase, pill, and buttons. */
+	function shown(list: ReturnType<typeof bubbles>) {
+		return list.evaluateAll((els) =>
+			els.map((el) => ({
+				phrase: el.querySelector(".atlas-mark-phrase")?.textContent,
+				pill: el.querySelector(".atlas-mark-pill")?.textContent,
+				buttons: [...el.querySelectorAll("button")].map((b) => b.textContent),
+			})),
+		);
+	}
+
+	const MARKED = [
+		{ phrase: "Gradient descent", pill: "→ Gradient Descent", buttons: ["Accept", "Ignore"] },
+		{ phrase: "step size", pill: "+ Step Size", buttons: ["Create", "Ignore"] },
+		{ phrase: "Momentum", pill: "+ Momentum", buttons: ["Create", "Ignore"] },
+		{ phrase: "learning rate", pill: "→ Learning Rate Schedule", buttons: ["Accept", "Ignore"] },
+	];
+
+	/** Waits until the file holds text, as the editor saves it. */
+	async function saved(o: ObsidianInstance, file: string, text: string): Promise<void> {
+		await until(`${file} to hold ${text}`, async () => (await o.read(file)).includes(text), { describe: () => o.read(file) });
+	}
+
+	it("shows a bubble for each mark of a wikified copy in live preview and reading view; Accept and Ignore replace the mark", { timeout: 120_000 }, async () => {
+		const o = await launch({
+			prepare: async (vault) => {
+				await lecture(vault);
+				await mkdir(path.join(vault, "scratchpad"), { recursive: true });
+				await writeFile(path.join(vault, "scratchpad/Plain.md"), "# Plain\n\nA note that is no copy: {{link:Gradient Descent|gradient descent}} stays text.\n");
+			},
+		});
+		const copy = await wikified(o);
+		expect(copy).toBe("scratchpad/Lecture · wikified.md");
+
+		// A note that is no wikified copy looks as it always did.
+		await open(o, "scratchpad/Plain.md", "source");
+		await o.page.locator(".workspace-leaf.mod-active .markdown-source-view .cm-line", { hasText: "stays text" }).waitFor({ timeout: 10_000 });
+		expect(await o.page.locator(".atlas-mark").count()).toBe(0);
+
+		await open(o, copy, "source");
+		const live = bubbles(o, "source");
+		await until("the bubbles in live preview", async () => (await live.count()) === 4, { describe: async () => `bubbles: ${await live.count()}` });
+		expect(await shown(live)).toEqual(MARKED);
+		expect(await live.evaluateAll((els) => els.map((el) => el.className))).toEqual(["atlas-mark atlas-mark-link", "atlas-mark atlas-mark-new", "atlas-mark atlas-mark-new", "atlas-mark atlas-mark-link"]);
+		// A mark in code is text.
+		expect(await o.page.locator(".workspace-leaf.mod-active .cm-content .cm-line", { hasText: "Code such as" }).textContent()).toContain("{{link:Gradient Descent|gradient descent}}");
+		// The bubble keeps the line's height.
+		const heights = await o.page.evaluate(() => {
+			const lines = [...document.querySelectorAll<HTMLElement>(".workspace-leaf.mod-active .cm-content .cm-line")];
+			const marked = lines.find((l) => l.querySelector(".atlas-mark"))!;
+			const plain = lines.find((l) => l.textContent?.startsWith("Code such as"))!;
+			const lineHeight = parseFloat(getComputedStyle(plain).lineHeight);
+			return { mark: marked.querySelector<HTMLElement>(".atlas-mark")!.getBoundingClientRect().height, lineHeight };
+		});
+		expect(heights.mark).toBeLessThanOrEqual(heights.lineHeight + 1);
+
+		// The cursor in a mark shows its text, to edit.
+		await o.page.evaluate(() => {
+			const editor = (window as any).app.workspace.activeEditor.editor;
+			editor.focus();
+			editor.setCursor(editor.offsetToPos(editor.getValue().indexOf("{{new:Momentum") + 3));
+		});
+		await until("the raw mark at the cursor", async () => (await live.count()) === 3, { describe: async () => `bubbles: ${await live.count()}` });
+		expect(await o.page.locator(".workspace-leaf.mod-active .cm-content").textContent()).toContain("{{new:Momentum|Momentum}}");
+		await o.page.evaluate(() => (window as any).app.workspace.activeEditor.editor.setCursor({ line: 0, ch: 0 }));
+		await until("the bubble again", async () => (await live.count()) === 4);
+
+		// Accept in live preview: the editor writes the link, and undo takes it back.
+		await live.filter({ hasText: "learning rate" }).locator("button", { hasText: "Accept" }).click();
+		await saved(o, copy, "the [[Learning Rate Schedule|learning rate]] matters.");
+		await until("three bubbles", async () => (await live.count()) === 3);
+		await o.page.evaluate(() => (window as any).app.workspace.activeEditor.editor.undo());
+		await saved(o, copy, "the {{link:Learning Rate Schedule|learning rate}} matters.");
+		await live.filter({ hasText: "learning rate" }).locator("button", { hasText: "Accept" }).click();
+		await saved(o, copy, "the [[Learning Rate Schedule|learning rate]] matters.");
+
+		// Ignore: the mark becomes its phrase.
+		await live.filter({ hasText: "step size" }).locator("button", { hasText: "Ignore" }).click();
+		await saved(o, copy, "takes a step size. ");
+		await until("two bubbles", async () => (await live.count()) === 2);
+
+		// Reading view: the same bubbles; Accept writes through the vault.
+		await open(o, copy, "preview");
+		const read = bubbles(o, "preview");
+		await until("the bubbles in reading view", async () => (await read.count()) === 2, { describe: async () => `bubbles: ${await read.count()}` });
+		expect(await shown(read)).toEqual([MARKED[0], MARKED[2]]);
+		expect(await o.page.locator(".workspace-leaf.mod-active .markdown-reading-view code").textContent()).toBe("{{link:Gradient Descent|gradient descent}}");
+		await read.filter({ hasText: "Gradient descent" }).locator("button", { hasText: "Accept" }).click();
+		await saved(o, copy, "# Lecture\n\n[[Gradient Descent|Gradient descent]] takes a step size.");
+		await until("one bubble in reading view", async () => (await read.count()) === 1, { describe: async () => `bubbles: ${await read.count()}` });
+		await read.locator("button", { hasText: "Ignore" }).click();
+		await saved(o, copy, "step size. Momentum speeds it up");
+		expect(await o.read(copy)).toBe(
+			"# Lecture\n\n[[Gradient Descent|Gradient descent]] takes a step size. Momentum speeds it up, and the [[Learning Rate Schedule|learning rate]] matters.\n\nCode such as `{{link:Gradient Descent|gradient descent}}` stays text.\n",
+		);
+		// The original stays as it was.
+		expect(await o.read(LECTURE)).toBe(LECTURE_TEXT);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("accepts every link mark of a wikified copy with one command, in the editor and on disk", { timeout: TIMEOUT }, async () => {
+		const o = await launch({ prepare: lecture });
+		const copy = await wikified(o);
+		const command = () => o.page.evaluate(() => (window as any).app.commands.executeCommandById("atlas:accept-link-marks"));
+		const available = () => o.page.evaluate(() => (window as any).app.commands.findCommand("atlas:accept-link-marks").checkCallback(true));
+
+		await open(o, LECTURE, "source");
+		expect(await available()).toBe(false);
+
+		await open(o, copy, "source");
+		await until("the bubbles", async () => (await bubbles(o, "source").count()) === 4);
+		expect(await available()).toBe(true);
+		await command();
+		await saved(o, copy, "[[Gradient Descent|Gradient descent]] takes a {{new:Step Size|step size}}. {{new:Momentum|Momentum}} speeds it up, and the [[Learning Rate Schedule|learning rate]] matters.");
+		expect(await notices(o)).toContain("Atlas: accepted 2 link marks.");
+		expect(await o.read(copy)).toContain("Code such as `{{link:Gradient Descent|gradient descent}}` stays text.");
+		// One step of undo takes both back.
+		await o.page.evaluate(() => (window as any).app.workspace.activeEditor.editor.undo());
+		await saved(o, copy, "{{link:Gradient Descent|Gradient descent}} takes a");
+		expect(await o.read(copy)).toContain("the {{link:Learning Rate Schedule|learning rate}} matters.");
+
+		// In reading view, the command writes the file.
+		await open(o, copy, "preview");
+		await until("the bubbles in reading view", async () => (await bubbles(o, "preview").count()) === 4);
+		await command();
+		await saved(o, copy, "[[Gradient Descent|Gradient descent]] takes a {{new:Step Size|step size}}. {{new:Momentum|Momentum}} speeds it up, and the [[Learning Rate Schedule|learning rate]] matters.");
+		await until("two bubbles in reading view", async () => (await bubbles(o, "preview").count()) === 2);
+		await command();
+		await until("the notice", async () => (await notices(o)).includes("Atlas: this note holds no link mark."));
+		expect(o.errors).toEqual([]);
+	});
+
+	it("Create on a new mark starts a draft work document and its agent; once the topic exists, Link links it", { timeout: 120_000 }, async () => {
+		const o = await launch({ prepare: lecture });
+		const copy = await wikified(o);
+		const out = await stubTerminal(o);
+		await open(o, copy, "source");
+		const live = bubbles(o, "source");
+		await until("the bubbles", async () => (await live.count()) === 4);
+		const momentum = live.filter({ hasText: "+ Momentum" });
+
+		await momentum.locator("button", { hasText: "Create" }).click();
+		const command = await terminalCommand(out);
+		const doc = await workDoc(o, "Draft Momentum");
+		expect(doc.kind).toBe("draft");
+		expect(doc.title).toMatch(/^\d{4}-\d{2}-\d{2} Draft Momentum$/);
+		const message = `/atlas-obsidian:wiki-edit Draft a topic titled Momentum from [[Lecture · wikified]] and what the wiki holds; give it a why. Your work document is [[${doc.title}]] (${doc.id}): report each step with change progress, and propose into it with change propose and id ${doc.id}.`;
+		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command.endsWith(` && claude '${message.replace(/'/g, "'\\''")}'`)).toBe(true);
+		expect(await notices(o)).toContain("Atlas: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Atlas starts the agent in a terminal.");
+
+		// The bubble shows drafting while the work document runs and waits for the user.
+		await until("drafting", async () => (await momentum.getAttribute("data-state")) === "drafting", { describe: () => momentum.innerHTML() });
+		expect(await shown(momentum)).toEqual([{ phrase: "Momentum", pill: "+ Momentum", buttons: ["Ignore"] }]);
+		expect(await momentum.locator(".atlas-mark-drafting").textContent()).toBe("drafting");
+		expect(await live.filter({ hasText: "+ Step Size" }).getAttribute("data-state")).toBe("new");
+
+		// The agent's proposal, then the user's Approve, as the CLI makes them.
+		const plan = path.join(o.vault, "..", "momentum.json");
+		await writeFile(
+			plan,
+			JSON.stringify({
+				title: "Draft Momentum",
+				writes: [{ op: "create", type: "topic", kind: "concept", title: "Momentum", fields: { description: "Momentum." }, body: "## Definition\n\nMomentum speeds up gradient descent.\n", why: "the lecture names it" }],
+			}),
+		);
+		await o.atlas(["change", "propose", plan, "--id", doc.id, "--json"]);
+		await until("the proposed draft", async () => (await status(o, doc.path)).status === "proposed");
+		await o.page.waitForTimeout(1000);
+		expect(await momentum.getAttribute("data-state")).toBe("drafting");
+		await o.atlas(["change", "apply", doc.id, "--json"]);
+
+		await until("Link", async () => (await momentum.getAttribute("data-state")) === "ready", { describe: () => momentum.innerHTML() });
+		expect(await shown(momentum)).toEqual([{ phrase: "Momentum", pill: "+ Momentum", buttons: ["Link", "Ignore"] }]);
+		await momentum.locator("button", { hasText: "Link" }).click();
+		await saved(o, copy, "step size}}. [[Momentum]] speeds it up");
+		await until("three bubbles", async () => (await live.count()) === 3);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("Wikify this note copies the active note, opens the copy, and starts the agent", { timeout: TIMEOUT }, async () => {
+		const o = await launch({ prepare: lecture });
+		const out = await stubTerminal(o);
+		const palette = await openPalette(o);
+		const button = palette.locator('[data-action="wikify"] button');
+
+		await open(o, "Atlas.md", "source");
+		await until("Wikify to turn off", async () => (await button.isDisabled()) && (await button.getAttribute("title")) === "Wikify takes a note of yours, not Atlas.md.", {
+			describe: () => palette.innerText(),
+		});
+
+		await open(o, LECTURE, "source");
+		await until("Wikify to turn on", async () => await button.isEnabled(), { describe: () => palette.innerText() });
+		expect(await button.textContent()).toBe("Wikify this note");
+		await button.click();
+
+		const command = await terminalCommand(out);
+		const copy = "scratchpad/Lecture · wikified.md";
+		expect(await o.read(copy)).toBe(LECTURE_TEXT);
+		expect(await o.read(LECTURE)).toBe(LECTURE_TEXT);
+		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command.endsWith(" && claude '/atlas-obsidian:wiki-wikify Wikify [[Lecture · wikified]]: mark what the wiki knows and the subjects worth a topic, with wikify mark.'")).toBe(true);
+		await until("the copy to open", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === copy);
 		expect(o.errors).toEqual([]);
 	});
 });
