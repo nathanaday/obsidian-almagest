@@ -1,11 +1,17 @@
-# Publishes the plugin's files when a version tag is pushed. Obsidian's community plugins
-# download main.js, manifest.json, and styles.css from the release whose tag is the
-# version in manifest.json on main, so push the tag, wait for this job, then push main.
+# Releases manifest.json's version when main gets it. main takes changes only through a
+# pull request from preview whose checks pass, so a push to main is a release candidate:
+# when no release has this version yet, this job checks the plugin again, tags the commit,
+# and publishes main.js, manifest.json, and styles.css, which Obsidian's community plugins
+# download. When the version is released already (a change to the docs, say), it stops.
 name: Release
 
 on:
   push:
-    tags: ['[0-9]+.[0-9]+.[0-9]+']
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -17,29 +23,41 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
+      - name: Read the version, and whether it is released
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./manifest.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "$version" >/dev/null 2>&1; then
+            echo "Version $version is released already; nothing to publish."
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.version.outputs.new == 'true'
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
 
-      - name: Check that the tag matches manifest.json and versions.json
-        run: |
-          version=$(node -p "require('./manifest.json').version")
-          if [ "$version" != "$GITHUB_REF_NAME" ]; then
-            echo "The tag $GITHUB_REF_NAME does not match version $version in manifest.json."
-            exit 1
-          fi
-          node -e "const v = require('./versions.json'); if (!v[process.argv[1]]) { console.error('versions.json has no entry for ' + process.argv[1]); process.exit(1); }" "$version"
-
       # A unit test runs the agent's start command in /bin/zsh, the shell of macOS.
-      - run: sudo apt-get update && sudo apt-get install -y zsh
+      - if: steps.version.outputs.new == 'true'
+        run: sudo apt-get update && sudo apt-get install -y zsh
 
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run build
-      - run: npm test
+      - if: steps.version.outputs.new == 'true'
+        run: npm ci
+      - if: steps.version.outputs.new == 'true'
+        run: npm run lint
+      - if: steps.version.outputs.new == 'true'
+        run: npm run build
+      - if: steps.version.outputs.new == 'true'
+        run: npm test
 
       - name: Attest the build provenance
+        if: steps.version.outputs.new == 'true'
         uses: actions/attest@v4
         with:
           subject-path: |
@@ -47,12 +65,14 @@ jobs:
             dist/manifest.json
             dist/styles.css
 
-      - name: Publish the release
+      - name: Tag the commit and publish the release
+        if: steps.version.outputs.new == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            --notes "Almagest for Obsidian $GITHUB_REF_NAME. It needs the almagest binary of the same protocol; see the README." \
-            --verify-tag \
+          gh release create "$VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION" \
+            --notes "Almagest for Obsidian $VERSION. It needs the almagest binary of the same protocol; see the README." \
             dist/main.js dist/manifest.json dist/styles.css

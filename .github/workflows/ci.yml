@@ -1,8 +1,10 @@
+# The checks of every change: on preview, and on each pull request into main, which needs
+# them to pass before it merges.
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [preview]
   pull_request:
 
 jobs:
@@ -23,3 +25,20 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm test
+
+  # main takes pull requests from preview alone; GitHub's rules cannot name the source
+  # branch, so this check, which the ruleset of main requires, does.
+  from-preview:
+    name: from preview
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the source branch
+        env:
+          HEAD: ${{ github.head_ref }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$BASE" = main ] && [ "$HEAD" != preview ]; then
+            echo "main takes pull requests from preview only, not from $HEAD."
+            exit 1
+          fi

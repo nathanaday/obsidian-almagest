@@ -75,3 +75,20 @@ Obsidian, `~/.almagest`, or vaults. TESTED.md lists what each test proves.
 
 To try a build in a real vault, copy `dist/main.js`, `dist/manifest.json`, and
 `dist/styles.css` into the vault's `.obsidian/plugins/almagest/` and reload Obsidian.
+
+## Release
+
+Work happens on `preview`. `main` takes changes only through a pull request from
+`preview` whose checks pass (a ruleset on GitHub). To release X.Y.Z:
+
+1. On `preview`, `npm run set-version X.Y.Z`. It sets the version in `manifest.json`,
+   `package.json`, and `package-lock.json`, and adds X.Y.Z to `versions.json` with the
+   current `minAppVersion`. A unit test holds the four files to one version.
+2. Open a pull request into `main`; CI runs the lint, the build, and the unit tests. Run
+   `npm run test:obsidian` before you merge: CI has no Obsidian to run it in.
+3. Merge it. The release workflow checks the plugin again, tags the commit X.Y.Z (no v),
+   and publishes `main.js`, `manifest.json`, and `styles.css`, which Obsidian's community
+   plugins download. A merge whose version is released already publishes nothing.
+
+Obsidian reads `manifest.json` from `main`. Until the release job ends, about a minute,
+`main` names a version with no release, and an install then fails once.

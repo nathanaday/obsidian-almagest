@@ -8,7 +8,8 @@
     "dev": "node esbuild.config.mjs",
     "test": "node esbuild.config.mjs test && node --test build-test/*.test.cjs",
     "test:obsidian": "npm run build && vitest run test/obsidian",
-    "lint": "npm install --prefix scripts/lint --no-audit --no-fund --silent && npm run --prefix scripts/lint lint"
+    "lint": "npm install --prefix scripts/lint --no-audit --no-fund --silent && npm run --prefix scripts/lint lint",
+    "set-version": "node scripts/set-version.mjs"
   },
   "devDependencies": {
     "@codemirror/state": "6.5.0",
