@@ -10,10 +10,13 @@ export interface ChangeCard {
 	label: string;
 	line: string;
 	counts: string;
+	/** A work document's kind and files: "ingest · 2 files"; "" for any other change. */
+	kind: string;
 	id: string;
-	/** Whether Approve and Cancel show. */
-	actions: boolean;
+	buttons: ChangeButton[];
 }
+
+export type ChangeButton = "approve" | "cancel";
 
 /** The command a widget runs, while it runs. */
 export type ChangeAction = "apply" | "reject";
@@ -34,31 +37,44 @@ const RESULT: Record<string, (fm: Record<string, unknown>) => string> = {
 
 /**
  * The card for a change document's frontmatter. A command that runs for this change
- * (busy) takes the place of its status until the frontmatter changes.
+ * (busy) takes the place of its status until the frontmatter changes. progress is the
+ * last line of the document's Progress section.
  */
-export function changeCard(fm: Record<string, unknown> | null | undefined, busy: ChangeAction | null = null): ChangeCard {
+export function changeCard(fm: Record<string, unknown> | null | undefined, busy: ChangeAction | null = null, progress = ""): ChangeCard {
 	if (!fm || fm.type !== "change") {
-		return { state: "none", label: "Change", line: "This block shows a change. This note is not a change document.", counts: "", id: "", actions: false };
+		return { state: "none", label: "Change", line: "This block shows a change. This note is not a change document.", counts: "", kind: "", id: "", buttons: [] };
 	}
 	const id = typeof fm.id === "string" ? fm.id.trim() : "";
 	const status = typeof fm.status === "string" ? fm.status.trim() : "";
 	const counts = countsLine(fm.counts);
-	const card = { id, counts };
-	if (busy === "apply") return { ...card, state: "busy", label: "Applying", line: "Atlas applies this change.", actions: false };
-	if (busy === "reject") return { ...card, state: "busy", label: "Cancelling", line: "Atlas rejects this change.", actions: false };
+	const card = { id, counts, kind: workKind(fm) };
+	if (busy === "apply") return { ...card, state: "busy", label: "Applying", line: "Atlas applies this change.", buttons: [] };
+	if (busy === "reject") return { ...card, state: "busy", label: "Cancelling", line: "Atlas rejects this change.", buttons: [] };
 	if (status === "proposed") {
-		if (!id) return { ...card, state: "proposed", label: "Proposed", line: "This change has no id, so it cannot be applied from here.", actions: false };
+		if (!id) return { ...card, state: "proposed", label: "Proposed", line: "This change has no id, so it cannot be applied from here.", buttons: [] };
 		return {
 			...card,
 			state: "proposed",
 			label: "Proposed",
 			line: "Review the writes below. Approve applies them in one commit. Cancel rejects the change, and this document stays as the record.",
-			actions: true,
+			buttons: ["approve", "cancel"],
 		};
 	}
+	if (status === "running") {
+		const line = progress.trim() || "The agent starts. Its steps appear here and under Progress.";
+		return { ...card, state: "running", label: "Running", line, buttons: id ? ["cancel"] : [] };
+	}
 	const result = RESULT[status];
-	if (result) return { ...card, state: status, label: capital(status), line: result(fm), actions: false };
-	return { ...card, state: "other", label: status ? capital(status) : "Change", line: status ? `Status: ${status}.` : "This change has no status.", actions: false };
+	if (result) return { ...card, state: status, label: capital(status), line: result(fm), buttons: [] };
+	return { ...card, state: "other", label: status ? capital(status) : "Change", line: status ? `Status: ${status}.` : "This change has no status.", buttons: [] };
+}
+
+/** "ingest · 2 files", "repair", or "" for a change that is no work document. */
+export function workKind(fm: Record<string, unknown>): string {
+	const kind = typeof fm.kind === "string" ? fm.kind.trim() : "";
+	if (!kind) return "";
+	const files = Array.isArray(fm.files) ? fm.files.length : 0;
+	return files > 0 ? `${kind} · ${files} ${files === 1 ? "file" : "files"}` : kind;
 }
 
 /** The reason that change reject records: one line, and a default when the user gave none. */

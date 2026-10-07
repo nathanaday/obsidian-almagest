@@ -221,10 +221,6 @@ export function isLockHeld(message: string): boolean {
 	return /atlas\.lock|holds the lock/.test(message);
 }
 
-export function waitingLabel(n: number): string {
-	return n === 1 ? "Atlas: 1 session waits" : `Atlas: ${n} sessions wait`;
-}
-
 /** The title of a tag's view: "Tag · school › cs513". */
 export function tagTitle(tag: string): string {
 	return "Tag · " + tag.split("/").join(" › ");
@@ -321,12 +317,6 @@ export function groupDocs(docs: TagDoc[]): { name: string; docs: TagDoc[] }[] {
 	}
 	for (const g of out) g.docs.sort((a, b) => a.title.localeCompare(b.title));
 	return out.filter((g) => g.docs.length > 0);
-}
-
-/** An obsidian:// URI that opens the search for every chosen tag. */
-export function searchURI(vault: string, chosen: string[]): string {
-	const query = chosen.map((t) => `tag:#${t}`).join(" ");
-	return `obsidian://search?vault=${encodeURIComponent(vault)}&query=${encodeURIComponent(query)}`;
 }
 
 /** The id and path an atlas-repo code block holds: "doc-abc123 · ~/code/x · …". */

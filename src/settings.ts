@@ -10,7 +10,6 @@ const shortHome = (p: string) => (p.startsWith(homedir() + "/") ? "~" + p.slice(
 export interface AtlasSettings {
 	binaryPath: string;
 	syncOnChange: boolean;
-	tagClick: boolean;
 	/** Seconds with no file event before the edits go into a snapshot commit; 0 turns it off. */
 	snapshotQuietSeconds: number;
 }
@@ -18,7 +17,6 @@ export interface AtlasSettings {
 export const DEFAULT_SETTINGS: AtlasSettings = {
 	binaryPath: "",
 	syncOnChange: true,
-	tagClick: false,
 	snapshotQuietSeconds: SNAPSHOT_QUIET_DEFAULT,
 };
 
@@ -84,16 +82,6 @@ export class AtlasSettingTab extends PluginSettingTab {
 				});
 			});
 
-		new Setting(containerEl)
-			.setName("Open a tag in the Atlas navigator")
-			.setDesc("A click on a #tag in a note opens the Atlas navigator at that tag, in place of Obsidian's search.")
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.tagClick).onChange(async (value) => {
-					this.plugin.settings.tagClick = value;
-					await this.plugin.saveSettings();
-				}),
-			);
-
 		new Setting(containerEl).setName("Agents").setHeading();
 		const agents = containerEl.createDiv();
 		void this.agents(agents);
@@ -114,7 +102,7 @@ export class AtlasSettingTab extends PluginSettingTab {
 		}
 		el.empty();
 		const intro = el.createDiv({ cls: "setting-item-description atlas-setting-intro" });
-		intro.setText(`Start agent and Resume read these. ${shortHome(config.files.global)} holds them for every vault; .atlas/config.json in this vault overrides them, key by key. atlas-obsidian config shows the result.`);
+		intro.setText(`Start agent, Resume, and the palette's agents without Duet read these. ${shortHome(config.files.global)} holds them for every vault; .atlas/config.json in this vault overrides them, key by key. atlas-obsidian config shows the result.`);
 
 		const set = async (key: string, value: string, global: boolean) => {
 			try {

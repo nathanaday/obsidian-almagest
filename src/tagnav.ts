@@ -71,12 +71,6 @@ export class TagNavigator extends ItemView {
 		this.render();
 	}
 
-	/** Starts again at one tag. */
-	show(tag: string): void {
-		this.chosen = [normalTag(tag)];
-		this.render();
-	}
-
 	private add(tag: string): void {
 		if (!this.chosen.includes(tag)) this.chosen.push(tag);
 		this.render();
@@ -116,9 +110,6 @@ export class TagNavigator extends ItemView {
 		const count = `${matches.length} ${matches.length === 1 ? "document holds" : "documents hold"} ${this.chosen.length === 1 ? "this tag" : this.chosen.length === 2 ? "both tags" : `all ${this.chosen.length} tags`}`;
 		root.createDiv({ cls: "atlas-tagnav-count", text: count });
 		const view = this.section(root, "View");
-		const search = view.createEl("button", { text: "Search" });
-		search.setAttr("aria-label", "Find these documents in Obsidian's search");
-		search.onclick = () => this.openSearch();
 		const page = view.createEl("button", { text: "Tag view" });
 		page.setAttr("aria-label", "Open the view of #" + this.chosen[this.chosen.length - 1]);
 		page.onclick = () => void this.openView(this.chosen[this.chosen.length - 1]);
@@ -157,12 +148,6 @@ export class TagNavigator extends ItemView {
 		b.setAttr("title", "#" + tag);
 		b.createSpan({ cls: "atlas-tagnav-tag-count", text: String(count) });
 		b.onclick = () => this.add(tag);
-	}
-
-	private openSearch(): void {
-		const query = this.chosen.map((t) => `tag:#${t}`).join(" ");
-		const search = (this.app as unknown as { internalPlugins?: { getPluginById?(id: string): { instance?: { openGlobalSearch?(q: string): void } } } }).internalPlugins?.getPluginById?.("global-search")?.instance;
-		if (search?.openGlobalSearch) search.openGlobalSearch(query);
 	}
 
 	private async openView(tag: string): Promise<void> {

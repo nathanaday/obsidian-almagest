@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { type AtlasBinary, buildAtlas, frontmatter, launchObsidian, type ObsidianInstance, until } from "./harness";
@@ -69,7 +69,7 @@ describe("Atlas in Obsidian", () => {
 
 	it("loads in a 10.0 vault with no console error, and adds nothing to the file explorer", { timeout: TIMEOUT }, async () => {
 		const o = await launch();
-		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.atlas.manifest.version)).toBe("10.0.0");
+		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.atlas.manifest.version)).toBe("10.1.0");
 
 		// A topic and a change document: the files that 9.0 marked in the explorer.
 		const change = await propose(o, "Add Alpha", "Alpha");
@@ -174,7 +174,7 @@ describe("Atlas in Obsidian", () => {
 		const change = await propose(o, "Add Alpha", "Alpha");
 		await open(o, change.note, "source");
 
-		const widget = o.page.locator(".atlas-change");
+		const widget = o.page.locator(".atlas-change-card");
 		await widget.locator("button", { hasText: "Approve" }).waitFor({ timeout: 10_000 });
 		expect(await widget.getAttribute("data-state")).toBe("proposed");
 		expect(await widget.locator("button", { hasText: "Cancel" }).isVisible()).toBe(true);
@@ -198,7 +198,7 @@ describe("Atlas in Obsidian", () => {
 		const change = await propose(o, "Add Beta", "Beta");
 		await open(o, change.note, "preview");
 
-		const widget = o.page.locator(".markdown-reading-view .atlas-change");
+		const widget = o.page.locator(".markdown-reading-view .atlas-change-card");
 		await widget.locator("button", { hasText: "Cancel" }).click({ timeout: 10_000 });
 		const modal = o.page.locator(".modal", { hasText: "Cancel this change" });
 		await modal.locator("input.atlas-reason-input").fill("Not needed now");
@@ -261,6 +261,236 @@ describe("Atlas in Obsidian", () => {
 		await until("the migration commit", async () => (await o.git(["log", "-1", "--format=%s"])).startsWith("layout: migrate to 10.0"), {
 			describe: () => o.git(["log", "--oneline", "-3"]),
 		});
+		expect(o.errors).toEqual([]);
+	});
+
+	/** Opens the palette from its command and waits for its first status. */
+	async function openPalette(o: ObsidianInstance) {
+		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("atlas:open-palette"));
+		const palette = o.page.locator(".atlas-palette");
+		await until("the palette's status", async () => (await palette.locator('[data-row="ingest"]').count()) > 0, {
+			describe: async () => `palette: ${(await palette.count()) ? await palette.innerText() : "none"}`,
+		});
+		return palette;
+	}
+
+	/** The palette's value in a status row. */
+	function row(palette: ReturnType<ObsidianInstance["page"]["locator"]>, name: string): Promise<string | null> {
+		return palette.locator(`[data-row="${name}"] .atlas-palette-value`).textContent();
+	}
+
+	/** Points the agent's terminal at a command that writes what it would run to a file, so no terminal opens. */
+	async function stubTerminal(o: ObsidianInstance): Promise<string> {
+		const out = path.join(o.vault, "..", "terminal.txt");
+		await o.atlas(["config", "set", "terminal", "custom"]);
+		await o.atlas(["config", "set", "terminal_command", `printf '%s\\n' {command} > '${out}'`]);
+		return out;
+	}
+
+	it("opens the palette in the right sidebar and shows the files in ingest/", { timeout: TIMEOUT }, async () => {
+		const o = await launch({
+			prepare: async (vault) => {
+				await writeFile(path.join(vault, "ingest/Paper one.md"), "# Paper one\n");
+				await writeFile(path.join(vault, "ingest/notes.txt"), "Notes.\n");
+			},
+		});
+		expect(await o.page.locator('.side-dock-ribbon-action[aria-label="Atlas"]').count()).toBe(1);
+		const palette = await openPalette(o);
+		await until("the ingest count", async () => (await row(palette, "ingest")) === "2 files", { describe: () => palette.innerText() });
+		expect(await palette.locator(".atlas-palette-files li").allTextContents()).toEqual(["Paper one.md", "notes.txt"]);
+		expect(await palette.locator('[data-action="ingest"] button').textContent()).toBe("Ingest 2 files");
+		expect(await row(palette, "proposed")).toBe("0");
+		expect(await row(palette, "trash")).toBe("0 files");
+		expect(await o.page.evaluate(() => {
+			const ws = (window as any).app.workspace;
+			return ws.getLeavesOfType("atlas-palette")[0].getRoot() === ws.rightSplit;
+		})).toBe(true);
+		// The palette replaces the status bar item of 10.0.
+		expect(await o.page.locator(".status-bar [class*=atlas-]").count()).toBe(0);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("starts an ingest without Duet: the work document opens, and the agent starts in the terminal", { timeout: TIMEOUT }, async () => {
+		const o = await launch({ prepare: (vault) => writeFile(path.join(vault, "ingest/Paper one.md"), "# Paper one\n") });
+		const out = await stubTerminal(o);
+		const palette = await openPalette(o);
+		const ingest = palette.locator('[data-action="ingest"] button', { hasText: "Ingest 1 file" });
+		await ingest.waitFor({ timeout: 10_000 });
+		await ingest.click();
+
+		const command = await until("the terminal command", async () => (existsSync(out) ? (await readFile(out, "utf8")).trim() : undefined));
+		const status = JSON.parse(await o.atlas(["vault", "--json"])).status;
+		expect(status.changes.running).toHaveLength(1);
+		const doc = status.changes.running[0];
+		expect(doc.kind).toBe("ingest");
+		expect(frontmatter(await o.read(doc.path)).files).toBe("[Paper one.md]");
+		const message = `/atlas-obsidian:wiki-ingest Ingest the files of ingest/ into the wiki. Your work document is [[${doc.title}]] (${doc.id}): report each step with change progress, and propose into it with change propose and id ${doc.id}.`;
+		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command.endsWith(` && claude '${message}'`)).toBe(true);
+
+		expect(await notices(o)).toContain("Atlas: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Atlas starts the agent in a terminal.");
+		expect(await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)).toBe(doc.path);
+		await until("the palette to list the running work", async () => (await row(palette, "running")) === "1", { describe: () => palette.innerText() });
+		expect(await palette.locator(".atlas-palette-link", { hasText: doc.title }).count()).toBe(1);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("starts an ingest through Duet's API, and lists the conversation under Running until its turn ends", { timeout: TIMEOUT }, async () => {
+		const o = await launch({ prepare: (vault) => writeFile(path.join(vault, "ingest/Paper one.md"), "# Paper one\n") });
+		// A stand-in for Duet at the API boundary: it records each call and ends a turn when the test says so.
+		await o.page.evaluate(() => {
+			const w = window as any;
+			const status = new Map<string, string>();
+			const listeners = new Map<string, ((turn: unknown) => void)[]>();
+			w.duetCalls = [];
+			w.duetEnd = (path: string) => {
+				status.set(path, "active");
+				for (const cb of listeners.get(path) ?? []) cb({ path, status: "completed" });
+			};
+			w.app.plugins.plugins.duet = {
+				api: {
+					version: 1,
+					newConversation: async (options: { title: string }) => {
+						w.duetCalls.push(options);
+						const path = `Duet/${options.title}.md`;
+						status.set(path, "working");
+						return { path };
+					},
+					conversationStatus: (path: string) => status.get(path) ?? "none",
+					onTurnEnd: (path: string, cb: (turn: unknown) => void) => {
+						listeners.set(path, [...(listeners.get(path) ?? []), cb]);
+						return () => listeners.set(path, (listeners.get(path) ?? []).filter((x) => x !== cb));
+					},
+				},
+			};
+		});
+		const palette = await openPalette(o);
+		const ingest = palette.locator('[data-action="ingest"] button', { hasText: "Ingest 1 file" });
+		await ingest.waitFor({ timeout: 10_000 });
+		await ingest.click();
+
+		const calls = await until("the conversation", async () => {
+			const c = await o.page.evaluate(() => (window as any).duetCalls);
+			return c.length > 0 ? c : undefined;
+		});
+		const doc = JSON.parse(await o.atlas(["vault", "--json"])).status.changes.running[0];
+		expect(calls).toEqual([
+			{
+				message: `/atlas-obsidian:wiki-ingest Ingest the files of ingest/ into the wiki. Your work document is [[${doc.title}]] (${doc.id}): report each step with change progress, and propose into it with change propose and id ${doc.id}.`,
+				title: `Agent · ${doc.title}`,
+				loadUserSetup: true,
+			},
+		]);
+		const running = palette.locator(".atlas-palette-agent");
+		await until("the Running list", async () => (await running.count()) === 1, { describe: () => palette.innerText() });
+		expect(await running.textContent()).toBe(`ingestAgent · ${doc.title}`);
+
+		await o.page.evaluate((title) => (window as any).duetEnd(`Duet/Agent · ${title}.md`), doc.title);
+		await until("the turn's end to clear the list", async () => (await running.count()) === 0, { describe: () => palette.innerText() });
+		expect(await notices(o)).not.toContain("Atlas: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Atlas starts the agent in a terminal.");
+		await o.page.evaluate(() => delete (window as any).app.plugins.plugins.duet);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("shows a running work document's last step, and Cancel rejects it", { timeout: TIMEOUT }, async () => {
+		const o = await launch();
+		const started = JSON.parse(await o.atlas(["change", "start", "--kind", "repair", "--title", "Fix the links", "--json"]));
+		const { id, path: note } = started.ref;
+		await open(o, note, "source");
+
+		const widget = o.page.locator(".atlas-change-card");
+		await until("the running widget", async () => (await widget.count()) === 1 && (await widget.getAttribute("data-state")) === "running", {
+			describe: async () => ((await widget.count()) ? widget.innerHTML() : "no widget"),
+		});
+		expect(await widget.locator(".atlas-change-label").textContent()).toBe("Running");
+		expect(await widget.locator(".atlas-change-kind").textContent()).toBe("repair");
+		expect(await widget.locator(".atlas-change-line").textContent()).toMatch(/^The agent starts\./);
+		expect(await widget.locator("button").allTextContents()).toEqual(["Cancel"]);
+		// The note's cssclass styles the document; the lead callout gives way to the card.
+		expect(await o.page.locator(".markdown-source-view.atlas-change").count()).toBe(1);
+		expect(await o.page.locator('.markdown-source-view.atlas-change .callout[data-callout="change"]').isVisible()).toBe(false);
+
+		await o.atlas(["change", "progress", id, "matched 3 subjects"]);
+		await o.atlas(["change", "progress", id, "drafted the repairs"]);
+		await until("the last step in the widget", async () => /^\d{2}:\d{2} drafted the repairs$/.test((await widget.locator(".atlas-change-line").textContent()) ?? ""), {
+			describe: async () => `widget: ${await widget.innerHTML()}`,
+		});
+
+		await widget.locator("button", { hasText: "Cancel" }).click();
+		const modal = o.page.locator(".modal", { hasText: "Cancel this change" });
+		expect(await modal.textContent()).toContain("The agent stops when it reports its next step");
+		await modal.locator("button", { hasText: "Cancel the change" }).click();
+		await until("status: rejected", async () => (await status(o, note)).status === "rejected", { describe: () => o.read(note) });
+		expect((await status(o, note)).reason).toBe("cancelled in Obsidian");
+		await until("the widget to show the result", async () => (await widget.getAttribute("data-state")) === "rejected", {
+			describe: async () => `widget: ${await widget.innerHTML()}`,
+		});
+		expect(await widget.locator(".atlas-change-line").textContent()).toBe("Rejected: cancelled in Obsidian");
+		expect(await widget.locator("button").count()).toBe(0);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("safe delete moves a note that nothing links to trash/", { timeout: TIMEOUT }, async () => {
+		const note = "scratchpad/Loose note.md";
+		const o = await launch({
+			prepare: async (vault) => {
+				await mkdir(path.join(vault, "scratchpad"), { recursive: true });
+				await writeFile(path.join(vault, note), "A note nothing links.\n");
+			},
+		});
+		await open(o, note, "source");
+		const palette = await openPalette(o);
+		const button = palette.locator('[data-action="trash"] button');
+		expect(await palette.locator('[data-action="trash"] .atlas-palette-path').textContent()).toBe(note);
+		await button.click();
+
+		await until("the note to leave", () => !existsSync(path.join(o.vault, note)));
+		const [day] = await readdir(path.join(o.vault, "trash"));
+		const moved = `trash/${day}/${note}`;
+		expect(await o.read(moved)).toBe("A note nothing links.\n");
+		// The views sync that the move starts may commit a snapshot after it; the move is a commit of its own.
+		await until("the trash commit", async () => (await o.git(["log", "-1", "--format=%s", "--", moved])) === `trash: ${note}\n`, {
+			describe: () => o.git(["log", "--stat", "-3"]),
+		});
+		await until("the notice", async () => (await notices(o)).includes(`Atlas: Moved ${note} to ${moved}.`), { describe: async () => JSON.stringify(await notices(o)) });
+		await until("the trash count", async () => (await row(palette, "trash")) === "1 file", { describe: () => palette.innerText() });
+		expect(o.errors).toEqual([]);
+	});
+
+	it("safe delete keeps a linked topic and shows its backlinks; Resolve starts an agent", { timeout: TIMEOUT }, async () => {
+		const o = await launch();
+		const plan = path.join(o.vault, "..", "plan.json");
+		await writeFile(
+			plan,
+			JSON.stringify({
+				title: "Add Alpha and Beta",
+				writes: [
+					{ op: "create", type: "topic", kind: "concept", title: "Alpha", fields: { description: "Alpha." }, body: "## Definition\n\nAlpha rests on [[Beta]].\n" },
+					{ op: "create", type: "topic", kind: "concept", title: "Beta", fields: { description: "Beta." }, body: "## Definition\n\nBeta.\n" },
+				],
+			}),
+		);
+		const change = JSON.parse(await o.atlas(["change", "propose", plan, "--json"]));
+		await o.atlas(["change", "apply", change.ref.id, "--json"]);
+		const beta = "source-core/documents/Beta.md";
+		const out = await stubTerminal(o);
+		await open(o, beta, "preview");
+
+		const palette = await openPalette(o);
+		await palette.locator('[data-action="trash"] button').click();
+		const modal = o.page.locator(".modal", { hasText: "Beta stays" });
+		await modal.waitFor({ timeout: 10_000 });
+		const links = await modal.locator("li a").allTextContents();
+		expect(links).toContain("Alpha");
+		expect(await modal.textContent()).toContain(`${links.length === 1 ? "1 document links" : `${links.length} documents link`} ${beta}, so safe delete moved nothing.`);
+		expect(existsSync(path.join(o.vault, beta))).toBe(true);
+		expect(existsSync(path.join(o.vault, "trash"))).toBe(false);
+
+		await modal.locator("button", { hasText: "Resolve with an agent" }).click();
+		const command = await until("the terminal command", async () => (existsSync(out) ? (await readFile(out, "utf8")).trim() : undefined));
+		expect(command).toContain(`claude '/atlas-obsidian:wiki-edit Remove [[Beta]] (${beta}), which `);
+		expect(command).toContain("[[Alpha]]");
+		expect(command).toMatch(/then propose a remove\.'$/);
 		expect(o.errors).toEqual([]);
 	});
 });

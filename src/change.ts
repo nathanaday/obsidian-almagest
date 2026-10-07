@@ -1,6 +1,6 @@
 import { App, MarkdownPostProcessorContext, MarkdownRenderChild, MarkdownView, Modal, Notice, Setting } from "obsidian";
 import { ChangeAction, changeCard, rejectReason } from "./changestate";
-import { countsLine } from "./helpers";
+import { countsLine, lastProgressLine } from "./helpers";
 import type AtlasPlugin from "./main";
 
 interface Preview {
@@ -86,14 +86,14 @@ export class ChangeRunner {
 
 const SETTLE_MS = 5000;
 
-/** Resolves when the metadata cache reads a status other than proposed or applying for
- * the note, or after ms. */
+/** Resolves when the metadata cache reads a decided status for the note (not proposed,
+ * applying, or running), or after ms. */
 function decision(app: App, path: string, ms: number): { done: Promise<void>; stop: () => void } {
 	let stop = () => {};
 	const done = new Promise<void>((resolve) => {
 		const ref = app.metadataCache.on("changed", (file, _data, cache) => {
 			const status = cache.frontmatter?.status;
-			if (file.path === path && status !== "proposed" && status !== "applying") finish();
+			if (file.path === path && !["proposed", "applying", "running"].includes(status)) finish();
 		});
 		const timer = window.setTimeout(() => finish(), ms);
 		function finish(): void {
@@ -106,7 +106,8 @@ function decision(app: App, path: string, ms: number): { done: Promise<void>; st
 	return { done, stop };
 }
 
-async function saveOpen(app: App, path: string): Promise<void> {
+/** Saves the open views of a note, so a click acts on what the user sees. */
+export async function saveOpen(app: App, path: string): Promise<void> {
 	for (const leaf of app.workspace.getLeavesOfType("markdown")) {
 		const view = leaf.view;
 		if (view instanceof MarkdownView && view.file?.path === path) await view.save();
@@ -117,8 +118,13 @@ function warn(warnings: string[] | null | undefined): void {
 	for (const w of warnings ?? []) new Notice(`Atlas: ${w}`, 10_000);
 }
 
-/** The atlas-change block: a card drawn from the frontmatter of the note that holds it. */
+/**
+ * The atlas-change block: a card drawn from the frontmatter of the note that holds it. Its
+ * class is atlas-change-card: atlas-change is the cssclass of the change document itself.
+ */
 class ChangeWidget extends MarkdownRenderChild {
+	private generation = 0;
+
 	constructor(
 		containerEl: HTMLElement,
 		private plugin: AtlasPlugin,
@@ -132,7 +138,7 @@ class ChangeWidget extends MarkdownRenderChild {
 		const { metadataCache, vault } = this.plugin.app;
 		this.registerEvent(
 			metadataCache.on("changed", (file) => {
-				if (file.path === this.path) this.render();
+				if (file.path === this.path) void this.render();
 			}),
 		);
 		this.registerEvent(
@@ -140,8 +146,8 @@ class ChangeWidget extends MarkdownRenderChild {
 				if (oldPath === this.path) this.path = file.path;
 			}),
 		);
-		this.register(this.runner.listen(() => this.render()));
-		this.render();
+		this.register(this.runner.listen(() => void this.render()));
+		void this.render();
 	}
 
 	private frontmatter(): Record<string, unknown> | undefined {
@@ -149,31 +155,43 @@ class ChangeWidget extends MarkdownRenderChild {
 		return file ? this.plugin.app.metadataCache.getFileCache(file)?.frontmatter : undefined;
 	}
 
-	private render(): void {
+	/** The last line of a running change's Progress section, read from the file: the cache holds no body text. */
+	private async progress(fm: Record<string, unknown> | undefined): Promise<string> {
+		const file = fm?.status === "running" ? this.plugin.app.vault.getFileByPath(this.path) : null;
+		return file ? lastProgressLine(await this.plugin.app.vault.read(file)) : "";
+	}
+
+	private async render(): Promise<void> {
+		const generation = ++this.generation;
 		const fm = this.frontmatter();
-		const card = changeCard(fm, this.runner.actionFor(typeof fm?.id === "string" ? fm.id : ""));
+		const progress = await this.progress(fm).catch(() => "");
+		if (generation !== this.generation) return;
+		const card = changeCard(fm, this.runner.actionFor(typeof fm?.id === "string" ? fm.id : ""), progress);
 		const el = this.containerEl;
 		el.empty();
-		el.addClass("atlas-change");
+		el.addClass("atlas-change-card");
 		el.dataset.state = card.state;
 
 		const head = el.createDiv({ cls: "atlas-change-head" });
 		head.createSpan({ cls: "atlas-change-label", text: card.label });
+		if (card.kind) head.createSpan({ cls: "atlas-change-kind", text: card.kind });
 		if (card.counts) head.createSpan({ cls: "atlas-change-counts", text: card.counts });
 		el.createDiv({ cls: "atlas-change-line", text: card.line });
-		if (!card.actions) return;
+		if (card.buttons.length === 0) return;
 
 		const buttons = el.createDiv({ cls: "atlas-change-buttons" });
-		const approve = buttons.createEl("button", { cls: "mod-cta", text: "Approve" });
-		const cancel = buttons.createEl("button", { text: "Cancel" });
-		if (this.runner.busy) {
-			for (const b of [approve, cancel]) {
-				b.disabled = true;
-				b.setAttr("title", "Another change command runs.");
+		const running = card.state === "running";
+		for (const b of card.buttons) {
+			const button = buttons.createEl("button", { cls: b === "approve" ? "mod-cta" : "", text: b === "approve" ? "Approve" : "Cancel" });
+			if (this.runner.busy) {
+				button.disabled = true;
+				button.setAttr("title", "Another change command runs.");
 			}
+			button.onclick =
+				b === "approve"
+					? () => void this.runner.apply(card.id, this.path)
+					: () => new CancelModal(this.plugin.app, running, (reason) => void this.runner.reject(card.id, reason, this.path)).open();
 		}
-		approve.onclick = () => void this.runner.apply(card.id, this.path);
-		cancel.onclick = () => new CancelModal(this.plugin.app, (reason) => void this.runner.reject(card.id, reason, this.path)).open();
 	}
 }
 
@@ -188,14 +206,20 @@ export function changeProcessor(plugin: AtlasPlugin, runner: ChangeRunner) {
 class CancelModal extends Modal {
 	private reason = "";
 
-	constructor(app: App, private done: (reason: string) => void) {
+	constructor(
+		app: App,
+		private running: boolean,
+		private done: (reason: string) => void,
+	) {
 		super(app);
 	}
 
 	onOpen(): void {
 		this.setTitle("Cancel this change");
 		this.contentEl.createEl("p", {
-			text: "Atlas rejects the change. Nothing it would write changes, and its document stays as the record.",
+			text: this.running
+				? "Atlas rejects the work. The agent stops when it reports its next step, and this document stays as the record."
+				: "Atlas rejects the change. Nothing it would write changes, and its document stays as the record.",
 		});
 		const submit = () => {
 			this.close();

@@ -1,4 +1,4 @@
-/* Atlas: callouts, the change widget, the tag navigator, the repository panel, the sessions pane. Nothing here styles Obsidian's own panes. */
+/* Atlas: callouts, the change widget and the change document, the palette, the tag navigator, the repository panel, the sessions pane. Nothing here styles Obsidian's own panes. */
 
 /* Callouts: the lead callout of each document type and kind, and of the views. */
 .callout[data-callout="source"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-file-image; }
@@ -14,8 +14,8 @@
 .callout[data-callout="tag"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-tag; }
 .callout[data-callout="view"] { --callout-color: var(--mono-rgb-100); --callout-icon: lucide-eye; }
 
-/* The change widget: the atlas-change block of a change document. */
-.atlas-change {
+/* The change widget: the atlas-change block of a change document. Its class is atlas-change-card, since atlas-change is the document's own cssclass. */
+.atlas-change-card {
 	--atlas-change: var(--mono-rgb-100);
 	display: flex;
 	flex-direction: column;
@@ -30,14 +30,18 @@
 	font-size: var(--font-ui-small);
 	line-height: var(--line-height-normal);
 }
-.atlas-change[data-state="proposed"] {
+.atlas-change-card[data-state="proposed"] {
 	--atlas-change: var(--color-orange-rgb);
 	background-color: rgba(var(--color-orange-rgb), 0.06);
 }
-.atlas-change[data-state="busy"],
-.atlas-change[data-state="applying"] { --atlas-change: var(--color-blue-rgb); }
-.atlas-change[data-state="applied"] { --atlas-change: var(--color-green-rgb); }
-.atlas-change[data-state="rejected"] { --atlas-change: var(--color-red-rgb); }
+.atlas-change-card[data-state="busy"],
+.atlas-change-card[data-state="applying"] { --atlas-change: var(--color-blue-rgb); }
+.atlas-change-card[data-state="running"] {
+	--atlas-change: var(--color-cyan-rgb);
+	background-color: rgba(var(--color-cyan-rgb), 0.06);
+}
+.atlas-change-card[data-state="applied"] { --atlas-change: var(--color-green-rgb); }
+.atlas-change-card[data-state="rejected"] { --atlas-change: var(--color-red-rgb); }
 .atlas-change-head {
 	display: flex;
 	flex-wrap: wrap;
@@ -51,29 +55,34 @@
 	color: rgb(var(--atlas-change));
 	background-color: rgba(var(--atlas-change), 0.14);
 }
-.atlas-change[data-state="superseded"] .atlas-change-label,
-.atlas-change[data-state="undone"] .atlas-change-label,
-.atlas-change[data-state="none"] .atlas-change-label,
-.atlas-change[data-state="other"] .atlas-change-label {
+.atlas-change-card[data-state="superseded"] .atlas-change-label,
+.atlas-change-card[data-state="undone"] .atlas-change-label,
+.atlas-change-card[data-state="none"] .atlas-change-label,
+.atlas-change-card[data-state="other"] .atlas-change-label {
 	color: var(--text-muted);
 	background-color: var(--background-modifier-hover);
 }
-.atlas-change[data-state="busy"] .atlas-change-label {
+.atlas-change-card[data-state="busy"] .atlas-change-label,
+.atlas-change-card[data-state="running"] .atlas-change-label {
 	animation: atlas-change-pulse 1.6s ease-in-out infinite;
 }
 @keyframes atlas-change-pulse {
 	50% { background-color: rgba(var(--atlas-change), 0.32); }
 }
+.atlas-change-kind,
 .atlas-change-counts {
 	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+.atlas-change-card[data-state="running"] .atlas-change-line {
 	font-variant-numeric: tabular-nums;
 }
 .atlas-change-line {
 	color: var(--text-normal);
 }
-.atlas-change[data-state="none"] .atlas-change-line,
-.atlas-change[data-state="superseded"] .atlas-change-line,
-.atlas-change[data-state="undone"] .atlas-change-line {
+.atlas-change-card[data-state="none"] .atlas-change-line,
+.atlas-change-card[data-state="superseded"] .atlas-change-line,
+.atlas-change-card[data-state="undone"] .atlas-change-line {
 	color: var(--text-muted);
 }
 .atlas-change-buttons {
@@ -81,6 +90,188 @@
 	flex-wrap: wrap;
 	justify-content: flex-end;
 	gap: var(--size-4-2);
+}
+
+/*
+ * A change document: the note's cssclass atlas-change, on Obsidian's reading view and on
+ * its editor. The widget card leads, the Summary reads as a list of operations, and the
+ * Writes, which apply and undo parse, stay quiet.
+ */
+/* The lead callout says what the card says. */
+.markdown-preview-view.atlas-change .callout[data-callout="change"],
+.markdown-source-view.atlas-change .cm-callout:has(.callout[data-callout="change"]) {
+	display: none;
+}
+/* Summary: the operation word of each line as a tag. Only the Summary's lines open with bold text. */
+.markdown-preview-view.atlas-change div:has(> h2[data-heading="Summary"]) + div li > strong:first-of-type,
+.markdown-source-view.atlas-change .HyperMD-list-line .cm-strong:not(.cm-formatting) {
+	padding: 0 0.4em;
+	border-radius: var(--radius-s);
+	font-family: var(--font-interface);
+	font-size: 0.8em;
+	font-weight: var(--font-semibold);
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	color: rgb(var(--color-orange-rgb));
+	background-color: rgba(var(--color-orange-rgb), 0.12);
+}
+.markdown-preview-view.atlas-change div:has(> h2[data-heading="Summary"]) + div li {
+	margin-block: var(--size-2-2);
+}
+/* Progress: the agent's steps, one a line, with their times. */
+.markdown-preview-view.atlas-change div:has(> h2[data-heading="Progress"]) + div li {
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+/* Writes: each write's heading as a quiet row, and its full text small, in a short scrolling box. */
+.markdown-preview-view.atlas-change div:has(> h2[data-heading="Writes"]) ~ div {
+	font-size: var(--font-smaller);
+	color: var(--text-muted);
+}
+.markdown-preview-view.atlas-change h3,
+.markdown-source-view.atlas-change .HyperMD-header-3 {
+	padding-top: var(--size-4-2);
+	border-top: 1px solid var(--background-modifier-border);
+	font-family: var(--font-monospace);
+	font-size: var(--font-smaller);
+	font-weight: var(--font-normal);
+	color: var(--text-muted);
+}
+.markdown-preview-view.atlas-change pre {
+	max-height: 14em;
+	overflow: auto;
+	opacity: 0.85;
+}
+.markdown-preview-view.atlas-change,
+.markdown-source-view.atlas-change {
+	--code-size: var(--font-smallest);
+	--code-normal: var(--text-muted);
+}
+
+/* The tool palette. */
+.atlas-palette {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-4);
+	padding: var(--size-4-2);
+	font-size: var(--font-ui-small);
+}
+.atlas-palette-section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+}
+.atlas-palette-heading {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+.atlas-palette-row {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+.atlas-palette-name {
+	flex: 1;
+	color: var(--text-muted);
+}
+.atlas-palette-value {
+	font-variant-numeric: tabular-nums;
+	color: var(--text-normal);
+}
+.atlas-palette-list {
+	margin: 0;
+	padding-inline-start: var(--size-4-4);
+	list-style: none;
+}
+.atlas-palette-list > li {
+	min-width: 0;
+	padding: var(--size-2-1) 0;
+	overflow-wrap: anywhere;
+}
+.atlas-palette-files > li {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+.atlas-palette-link {
+	color: var(--text-accent);
+	text-decoration: none;
+}
+.atlas-palette-link:hover {
+	text-decoration: underline;
+}
+.atlas-palette-progress,
+.atlas-palette-quiet {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+.atlas-palette-progress {
+	font-variant-numeric: tabular-nums;
+}
+.atlas-palette-path {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.atlas-palette-error {
+	color: rgb(var(--color-red-rgb));
+}
+.atlas-palette-small {
+	height: auto;
+	padding: 1px 8px;
+	font-size: var(--font-ui-smaller);
+}
+.atlas-palette-badge {
+	margin-inline-end: var(--size-4-1);
+	padding: 0 6px;
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-smaller);
+	color: rgb(var(--color-cyan-rgb));
+	background-color: rgba(var(--color-cyan-rgb), 0.14);
+}
+.atlas-palette-finding[data-severity="error"] .atlas-palette-badge {
+	color: rgb(var(--color-red-rgb));
+	background-color: rgba(var(--color-red-rgb), 0.14);
+}
+.atlas-palette-finding[data-severity="warning"] .atlas-palette-badge {
+	color: rgb(var(--color-orange-rgb));
+	background-color: rgba(var(--color-orange-rgb), 0.14);
+}
+.atlas-palette-finding[data-severity="info"] .atlas-palette-badge {
+	color: var(--text-muted);
+	background-color: var(--background-modifier-hover);
+}
+.atlas-palette-action {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+}
+.atlas-palette-action > button {
+	align-self: stretch;
+}
+.atlas-palette-lint {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+	padding: var(--size-4-2);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+}
+.atlas-palette-lint-counts {
+	font-weight: var(--font-semibold);
+}
+
+/* The modal of safe delete, when other documents link the file. */
+.atlas-backlinks-type {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+.atlas-backlinks-buttons {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--size-4-2);
+	margin-top: var(--size-4-4);
 }
 
 /* The sessions pane. */
@@ -197,13 +388,6 @@
 	text-align: center;
 	color: var(--text-on-accent);
 	background-color: rgb(var(--color-orange-rgb));
-}
-.atlas-status-waiting {
-	color: rgb(var(--color-orange-rgb));
-	cursor: pointer;
-}
-.atlas-status-waiting.is-hidden {
-	display: none;
 }
 
 .atlas-setting-status {

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import {
 	AgentConfig,
 	SessionRow,
@@ -62,6 +64,20 @@ test("start runs the user's agent command in the vault", () => {
 	assert.equal(startCommand("/v/My vault", "claude"), `cd '/v/My vault' && claude`);
 	assert.equal(startCommand("/v", " "), `cd '/v' && claude`);
 	assert.equal(startCommand("/v", " my-claude --model x "), `cd '/v' && my-claude --model x`);
+});
+
+test("start passes a prompt as one quoted word, on one line", () => {
+	const message = "/atlas-obsidian:wiki-ingest Your work document is [[2026-10-06 Ingest 2 files]] (chg-qhezxf).";
+	assert.equal(startCommand("/v", "claude", message), `cd '/v' && claude '${message}'`);
+	assert.equal(startCommand("/v", "claude", "  "), `cd '/v' && claude`);
+	assert.equal(startCommand("/v", "codex", "it's\nnext\tline"), `cd '/v' && codex 'it'\\''s next line'`);
+});
+
+test("the shell hands the prompt to the agent as it was written", () => {
+	const prompt = `/atlas-obsidian:wiki-edit Remove [[O'Neil "quotes"]] $HOME \`id\` $(id) ; rm -rf x && echo * \\ !`;
+	const command = startCommand(tmpdir(), "printf %s", prompt);
+	assert.equal(execFileSync("/bin/sh", ["-c", command], { encoding: "utf8" }), prompt);
+	assert.equal(execFileSync("/bin/zsh", ["-c", command], { encoding: "utf8" }), prompt);
 });
 
 test("each terminal runs the command in an interactive shell", () => {

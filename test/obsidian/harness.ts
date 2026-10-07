@@ -128,7 +128,8 @@ export async function launchObsidian(bin: AtlasBinary, { pluginData, prepare }: 
 		},
 		async close() {
 			await running.kill();
-			await rm(root, { recursive: true, force: true });
+			// A sync the plugin started can still write in the vault for a moment.
+			await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 		},
 	};
 	return instance;

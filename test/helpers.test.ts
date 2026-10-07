@@ -26,7 +26,6 @@ import {
 	quietSeconds,
 	relativeTag,
 	repoBlock,
-	searchURI,
 	tagViewPath,
 	TagDoc,
 	topTags,
@@ -37,7 +36,6 @@ import {
 	strayNotices,
 	syncSummary,
 	syncedPaths,
-	waitingLabel,
 } from "../src/helpers";
 
 test("chooseBinary prefers the setting, then the first place that exists", () => {
@@ -116,8 +114,6 @@ test("small labels", () => {
 	assert.ok(!isWatchedPath("wiki-view/View · Home.md"), "a view change never starts a sync");
 	assert.ok(!isWatchedPath(".obsidian/app.json"));
 	assert.ok(!isWatchedPath("source-core/originals/a.png"));
-	assert.equal(waitingLabel(1), "Atlas: 1 session waits");
-	assert.equal(waitingLabel(2), "Atlas: 2 sessions wait");
 	assert.equal(layoutOf({ layout: 3 }), 3);
 	assert.equal(layoutOf({ layout: "2" }), 2);
 	assert.equal(layoutOf(undefined), 0);
@@ -233,7 +229,6 @@ test("narrow finds the documents at the intersection and the tags that occur wit
 		],
 		"topics first, each group by title",
 	);
-	assert.equal(searchURI("My Work", ["cs513", "self-driving"]), "obsidian://search?vault=My%20Work&query=tag%3A%23cs513%20tag%3A%23self-driving");
 });
 
 test("a sync that moved a note out of wiki-view/ says where it went", () => {

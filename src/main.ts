@@ -13,18 +13,18 @@ import {
 	layoutOf,
 	migrationSteps,
 	migrationSummary,
-	normalTag,
 	quietSeconds,
 	strayNotices,
 	syncSummary,
 	syncedPaths,
-	waitingLabel,
 } from "./helpers";
 import { QuietTimer } from "./quiet";
 import { repoProcessor } from "./repo";
 import { SESSIONS_VIEW, SessionsView, sessionGroups } from "./sessions";
 import { AgentConfig, legacyPreferences, startCommand } from "./agents";
+import { Conversations, duetApi } from "./conversations";
 import { openTerminal } from "./launcher";
+import { PALETTE_ICON, PALETTE_VIEW, PaletteView } from "./palette";
 import { AtlasSettingTab, AtlasSettings, DEFAULT_SETTINGS } from "./settings";
 import { NAV_ICON, TAG_NAV_VIEW, TagNavigator } from "./tagnav";
 
@@ -54,7 +54,14 @@ export default class AtlasPlugin extends Plugin {
 	private lastSnapshotError = "";
 
 	private sessionsRibbon: HTMLElement | null = null;
-	private statusItem: HTMLElement | null = null;
+
+	/** The agents the palette started through Duet, while their turn runs. */
+	readonly conversations = new Conversations(
+		() => this.paletteViews().forEach((v) => v.render()),
+		(c, turn) => {
+			if (turn.status === "failed") new Notice(`Atlas: the ${c.label} agent stopped: ${turn.error ?? "its turn failed"}.`, 10_000);
+		},
+	);
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -69,8 +76,10 @@ export default class AtlasPlugin extends Plugin {
 		this.registerView(TAG_NAV_VIEW, (leaf) => new TagNavigator(leaf));
 		this.addRibbonIcon(NAV_ICON, "Atlas: open the Atlas navigator", () => void this.openTags());
 		this.addCommand({ id: "open-tags", name: "Open the Atlas navigator", callback: () => void this.openTags() });
-		// A click on a #tag opens the navigator at it, when the setting asks.
-		this.registerDomEvent(document, "click", (evt) => this.onTagClick(evt), { capture: true });
+
+		this.registerView(PALETTE_VIEW, (leaf) => new PaletteView(leaf, this));
+		this.addRibbonIcon(PALETTE_ICON, "Atlas", () => void this.openPalette());
+		this.addCommand({ id: "open-palette", name: "Open the Atlas palette", callback: () => void this.openPalette() });
 
 		this.addCommand({ id: "start-agent", name: "Start agent", callback: () => void this.startAgent() });
 
@@ -78,9 +87,6 @@ export default class AtlasPlugin extends Plugin {
 		this.sessionsRibbon = this.addRibbonIcon("bot", "Atlas: open the sessions", () => void this.openSessions());
 		this.sessionsRibbon.addClass("atlas-sessions-ribbon");
 		this.addCommand({ id: "open-sessions", name: "Open the sessions", callback: () => void this.openSessions() });
-		this.statusItem = this.addStatusBarItem();
-		this.statusItem.addClass("atlas-status-waiting");
-		this.statusItem.onClickEvent(() => void this.openSessions());
 
 		this.addCommand({ id: "migrate", name: `Migrate this vault to the ${layoutName(LAYOUT)} layout`, callback: () => void this.migrate() });
 
@@ -121,6 +127,7 @@ export default class AtlasPlugin extends Plugin {
 	onunload(): void {
 		if (this.syncTimer !== null) window.clearTimeout(this.syncTimer);
 		this.snapshots.stop();
+		this.conversations.stop();
 	}
 
 	async loadSettings(): Promise<void> {
@@ -139,13 +146,13 @@ export default class AtlasPlugin extends Plugin {
 		await this.saveData({ ...this.legacy, ...this.settings });
 	}
 
-	/** Runs one atlas command in this vault and returns its JSON. */
-	atlas<T>(args: string[]): Promise<T> {
+	/** Runs one atlas command in this vault and returns its JSON; answers are the exit codes that print an answer too. */
+	atlas<T>(args: string[], answers: number[] = []): Promise<T> {
 		const adapter = this.app.vault.adapter;
 		if (!(adapter instanceof FileSystemAdapter)) {
 			return Promise.reject(new AtlasError("this vault is not a folder on disk"));
 		}
-		return runAtlas<T>(findBinary(this.settings.binaryPath), adapter.getBasePath(), args);
+		return runAtlas<T>(findBinary(this.settings.binaryPath), adapter.getBasePath(), args, answers);
 	}
 
 	// Sync
@@ -298,29 +305,9 @@ export default class AtlasPlugin extends Plugin {
 		}
 	}
 
-	// Tags
+	// Views
 
-	private onTagClick(evt: MouseEvent): void {
-		if (!this.settings.tagClick || !(evt.target instanceof Element)) return;
-		const el = evt.target.closest<HTMLElement>("a.tag, .cm-hashtag");
-		if (!el) return;
-		let tag = el.getAttribute("href") ?? el.textContent ?? "";
-		if (el.classList.contains("cm-hashtag")) {
-			// The editor splits a tag into spans: the # and the name.
-			const line = el.closest(".cm-line");
-			const parts = line ? Array.from(line.querySelectorAll<HTMLElement>(".cm-hashtag")) : [el];
-			const i = parts.indexOf(el);
-			const begin = parts[i]?.classList.contains("cm-hashtag-begin") ? i : i - 1;
-			tag = (parts[begin]?.textContent ?? "") + (parts[begin + 1]?.textContent ?? "");
-		}
-		tag = normalTag(tag);
-		if (!tag) return;
-		evt.preventDefault();
-		evt.stopPropagation();
-		void this.openTags(tag);
-	}
-
-	private async openTags(tag?: string): Promise<void> {
+	private async openTags(): Promise<void> {
 		const { workspace } = this.app;
 		let leaf = workspace.getLeavesOfType(TAG_NAV_VIEW)[0];
 		if (!leaf) {
@@ -330,7 +317,25 @@ export default class AtlasPlugin extends Plugin {
 			leaf = left;
 		}
 		await workspace.revealLeaf(leaf);
-		if (tag && leaf.view instanceof TagNavigator) leaf.view.show(tag);
+	}
+
+	async openPalette(): Promise<void> {
+		const { workspace } = this.app;
+		let leaf = workspace.getLeavesOfType(PALETTE_VIEW)[0];
+		if (!leaf) {
+			const right = workspace.getRightLeaf(false);
+			if (!right) return;
+			await right.setViewState({ type: PALETTE_VIEW, active: true });
+			leaf = right;
+		}
+		await workspace.revealLeaf(leaf);
+	}
+
+	private paletteViews(): PaletteView[] {
+		return this.app.workspace
+			.getLeavesOfType(PALETTE_VIEW)
+			.map((leaf) => leaf.view)
+			.filter((v): v is PaletteView => v instanceof PaletteView);
 	}
 
 	// Sessions
@@ -346,8 +351,6 @@ export default class AtlasPlugin extends Plugin {
 		() => {
 			void sessionGroups(this.app, this.staleHours()).then(({ groups }) => {
 				const waiting = groups.open.filter((s) => s.state === "needs you").length;
-				this.statusItem?.setText(waiting > 0 ? waitingLabel(waiting) : "");
-				this.statusItem?.toggleClass("is-hidden", waiting === 0);
 				if (this.sessionsRibbon) {
 					if (waiting > 0) this.sessionsRibbon.dataset.atlasCount = String(waiting);
 					else delete this.sessionsRibbon.dataset.atlasCount;
@@ -408,8 +411,8 @@ export default class AtlasPlugin extends Plugin {
 		new Notice(`Atlas: copied ${what}. Run it in a terminal.`);
 	}
 
-	/** Starts the agent in the vault. */
-	private async startAgent(): Promise<void> {
+	/** Starts the agent in the vault, in a terminal; a prompt is its first message. */
+	private async startAgent(prompt = ""): Promise<void> {
 		const adapter = this.app.vault.adapter;
 		if (!(adapter instanceof FileSystemAdapter)) return;
 		let config: AgentConfig;
@@ -419,10 +422,36 @@ export default class AtlasPlugin extends Plugin {
 			new Notice(`Atlas: cannot read the agent preferences: ${(e as Error).message}`, 8000);
 			return;
 		}
-		await this.runInTerminal(startCommand(adapter.getBasePath(), config.preferences.agent_command), "the agent command", config);
+		await this.runInTerminal(startCommand(adapter.getBasePath(), config.preferences.agent_command, prompt), "the agent command", config);
 	}
 
-	private async openSessions(): Promise<void> {
+	/**
+	 * Starts an agent with a first message: in a Duet conversation, which the palette lists
+	 * while its turn runs, else in a terminal. title names the conversation note; label says
+	 * what the agent does.
+	 */
+	async runAgent(message: string, title: string, label: string): Promise<void> {
+		const api = duetApi(this.app);
+		if (api) {
+			try {
+				const { path } = await api.newConversation({ message, title, loadUserSetup: true });
+				this.conversations.follow(api, path, label);
+				return;
+			} catch (e) {
+				new Notice(`Atlas: Duet did not start the agent (${(e as Error).message}). Atlas starts it in a terminal.`, 10_000);
+			}
+		} else {
+			new Notice("Atlas: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Atlas starts the agent in a terminal.", 10_000);
+		}
+		await this.startAgent(message);
+	}
+
+	/** Drops the conversations whose turn ended while no event came, such as when Duet turned off. */
+	checkConversations(): void {
+		this.conversations.check(duetApi(this.app));
+	}
+
+	async openSessions(): Promise<void> {
 		const { workspace } = this.app;
 		let leaf = workspace.getLeavesOfType(SESSIONS_VIEW)[0];
 		if (!leaf) {

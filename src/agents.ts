@@ -126,10 +126,12 @@ export function resumeCommand(t: ResumeTarget): string {
 
 /**
  * The shell command that starts an agent in a folder. agent is the user's command, as
- * they would type it: "claude", or a shell function of their own.
+ * they would type it: "claude", or a shell function of their own. A prompt becomes the
+ * agent's first message: one quoted word, on one line.
  */
-export function startCommand(dir: string, agent: string): string {
-	return `cd ${shellQuote(dir)} && ${agent.trim() || "claude"}`;
+export function startCommand(dir: string, agent: string, prompt = ""): string {
+	const first = prompt.replace(/[\x00-\x1f\x7f]+/g, " ").trim();
+	return `cd ${shellQuote(dir)} && ${agent.trim() || "claude"}${first ? ` ${shellQuote(first)}` : ""}`;
 }
 
 /** The terminals Atlas opens a command in. */

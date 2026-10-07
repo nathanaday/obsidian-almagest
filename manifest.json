@@ -1,9 +1,9 @@
 {
   "id": "atlas",
   "name": "Atlas",
-  "version": "10.0.0",
+  "version": "10.1.0",
   "minAppVersion": "1.9.0",
-  "description": "Callouts and in-document widgets for Atlas documents, the Atlas navigator, a sessions pane, and quiet snapshots of your edits, through the atlas-obsidian binary.",
+  "description": "The Atlas tool palette, callouts and in-document widgets for Atlas documents, the Atlas navigator, a sessions pane, and quiet snapshots of your edits, through the atlas-obsidian binary.",
   "author": "nathanaday",
   "isDesktopOnly": true
 }

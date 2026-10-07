@@ -19,7 +19,8 @@ function childEnv(): NodeJS.ProcessEnv {
 	return { ...process.env, PATH: path };
 }
 
-function exec(bin: string, args: string[], cwd: string | undefined): Promise<string> {
+/** Runs a program; an exit code in answers is an answer on stdout, not a failure. */
+function exec(bin: string, args: string[], cwd: string | undefined, answers: number[] = []): Promise<string> {
 	return new Promise((resolve, reject) => {
 		execFile(
 			bin,
@@ -27,7 +28,8 @@ function exec(bin: string, args: string[], cwd: string | undefined): Promise<str
 			{ cwd, env: childEnv(), maxBuffer: 32 * 1024 * 1024, timeout: 5 * 60 * 1000 },
 			(err, stdout, stderr) => {
 				if (!err) return resolve(stdout);
-				const code = (err as NodeJS.ErrnoException).code;
+				const code = (err as NodeJS.ErrnoException).code as unknown;
+				if (typeof code === "number" && answers.includes(code)) return resolve(stdout);
 				if (code === "ENOENT") {
 					return reject(new AtlasError(`the atlas-obsidian binary was not found at ${bin}`));
 				}
@@ -37,10 +39,13 @@ function exec(bin: string, args: string[], cwd: string | undefined): Promise<str
 	});
 }
 
-/** Runs one atlas command in the vault and returns its JSON output. */
-export async function runAtlas<T>(bin: string | null, vault: string, args: string[]): Promise<T> {
+/**
+ * Runs one atlas command in the vault and returns its JSON output. answers lists the exit
+ * codes that print an answer too, such as 2 of vault trash for a file that others link.
+ */
+export async function runAtlas<T>(bin: string | null, vault: string, args: string[], answers: number[] = []): Promise<T> {
 	if (!bin) throw new AtlasError("the atlas-obsidian binary was not found; set its path in the Atlas settings");
-	const out = await exec(bin, [...args, "--vault", vault, "--json"], vault);
+	const out = await exec(bin, [...args, "--vault", vault, "--json"], vault, answers);
 	let parsed: T;
 	try {
 		parsed = JSON.parse(out) as T;
