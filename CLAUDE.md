@@ -2,10 +2,9 @@
 
 The Obsidian plugin of Almagest (id `almagest`), in TypeScript. The binary, the agent
 plugin, and the design live in `github.com/nathanaday/almagest`
-(`~/projects/software/almagest`); read its `README.md` and `CLAUDE.md` first. This
-repository held `obsidian/` of that one until 11.0, when the plugin moved here with its
-history, so that Obsidian's community directory reviews a repository that holds the
-plugin and nothing else. This file holds what the code and the README do not say.
+(`~/projects/software/almagest`); read its `README.md` and `CLAUDE.md` first. The plugin
+has a repository of its own because Obsidian's community directory reviews the whole
+repository. This file holds what the code and the README do not say.
 
 ## Rules
 
@@ -15,7 +14,7 @@ plugin and nothing else. This file holds what the code and the README do not say
   the plugin into a vault. When the binary is missing, the plugin says what to install.
 - **The plugin reads the JSON of the CLI.** Every read and write runs the binary:
   `vault --json`, `change apply|reject|start`, `vault trash`, `journal publish`,
-  `checkout return`, `wikify start`, `vault snapshot`, `vault migrate`, `config`. That JSON
+  `checkout return`, `wikify start`, `vault snapshot`, `config`. That JSON
   and those flags are the contract with the binary; a change on either side is a change
   of both.
 - **It never searches `PATH` or the system folders for the binary**, so another
@@ -33,9 +32,9 @@ plugin and nothing else. This file holds what the code and the README do not say
   widgets. It patches no pane of Obsidian's own and styles none. A change note's
   `cssclasses` value (`almagest-change`) styles the note itself, so the widget's class
   is `almagest-change-card`.
-- **The vault document is `Almagest.md`, or `Atlas.md` before 11.0.** The plugin reads
-  the layout from whichever exists (`VAULT_DOCUMENTS`), so in a vault of an earlier
-  release it offers the migration and nothing else.
+- **The plugin acts only in a vault of its layout.** It reads `layout` from
+  `Almagest.md` (`LAYOUT`, 7). In a vault of another layout it shows one notice that
+  names the update, and runs no sync and no snapshot.
 - **Duet hosts the agents when it is on.** Almagest does not copy Duet's code: two copies
   would bind two Yjs hubs to one editor and both wrap `Vault.modify`. The plugin starts
   an agent through Duet's API for other plugins (Duet 0.3.0 or later:

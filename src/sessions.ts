@@ -19,7 +19,7 @@ export interface Session extends SessionRow {
 }
 
 /** Every session document of the vault. */
-export function readSessions(app: App): Session[] {
+function readSessions(app: App): Session[] {
 	const out: Session[] = [];
 	for (const file of markdownFilesIn(app, "sessions")) {
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;

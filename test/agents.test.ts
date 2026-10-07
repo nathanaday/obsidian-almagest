@@ -6,7 +6,6 @@ import {
 	AgentConfig,
 	SessionRow,
 	inherited,
-	legacyPreferences,
 	preference,
 	appleScriptString,
 	configDirOf,
@@ -111,14 +110,3 @@ test("inherited: the global value, else the default", () => {
 	assert.equal(preference(null, "terminal"), "");
 });
 
-test("legacyPreferences moves only the changed settings the vault file lacks", () => {
-	assert.deepEqual(legacyPreferences({ agentCommand: "claude", terminal: "terminal", terminalCommand: "" }, null), []);
-	assert.deepEqual(legacyPreferences({ agentCommand: "claude-work", terminal: "wezterm", terminalCommand: "kitty {command}" }, null), [
-		["agent_commands.claude", "claude-work"],
-		["terminal", "wezterm"],
-		["terminal_command", "kitty {command}"],
-	]);
-	assert.deepEqual(legacyPreferences({ agentCommand: "claude-work", terminal: "wezterm" }, { terminal: "iterm" }), [["agent_commands.claude", "claude-work"]]);
-	assert.deepEqual(legacyPreferences({ terminal: "kitty", terminalCommand: "kitty" }, null), [], "bad values stay behind");
-	assert.deepEqual(legacyPreferences(null, null), []);
-});

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { acceptAll, acceptedLine, decide, draftTitle, findMarks, isWikified, linkFor, locate, mask, parseMark, replacement, wikifyBlocked } from "../src/marks";
+import { acceptAll, acceptedLine, decide, draftTitle, findMarks, isWikified, linkFor, locate, mask, replacement, wikifyBlocked } from "../src/marks";
 
 const fields = (text: string) => findMarks(text).map(({ kind, title, phrase }) => ({ kind, title, phrase }));
 
@@ -75,12 +75,6 @@ test("a mark can sit right after another, and inside braces of other text", () =
 		fields("{{link:A|a}}{{new:B|b}} {{{link:C|c}}}").map((m) => m.title),
 		["A", "B", "C"],
 	);
-});
-
-test("parseMark takes exactly one whole mark", () => {
-	assert.deepEqual(parseMark("{{new:Momentum|momentum}}"), { kind: "new", title: "Momentum", phrase: "momentum", text: "{{new:Momentum|momentum}}" });
-	assert.equal(parseMark(" {{new:Momentum|momentum}}"), null);
-	assert.equal(parseMark("{{new:Momentum|momentum}} and more"), null);
 });
 
 test("Accept and Link write [[Title|phrase]], or [[Title]] when the phrase is the title as written; Ignore writes the phrase", () => {

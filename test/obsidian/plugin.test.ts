@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { type AlmagestBinary, buildAlmagest, frontmatter, launchObsidian, type ObsidianInstance, until } from "./harness";
@@ -67,11 +67,11 @@ describe("Almagest in Obsidian", () => {
 		return o.page.$$eval(".notice", (els) => els.map((e) => e.textContent ?? ""));
 	}
 
-	it("loads in an 11.0 vault with no console error, and adds nothing to the file explorer", { timeout: TIMEOUT }, async () => {
+	it("loads in a vault with no console error, and adds nothing to the file explorer", { timeout: TIMEOUT }, async () => {
 		const o = await launch();
-		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.manifest.version)).toBe("11.0.1");
+		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.manifest.version)).toBe(JSON.parse(await readFile(new URL("../../manifest.json", import.meta.url), "utf8")).version);
 
-		// A topic and a change document: the files that 9.0 marked in the explorer.
+		// A topic and a change document: Almagest's own files, which the explorer shows as Obsidian does.
 		const change = await propose(o, "Add Alpha", "Alpha");
 		await o.almagest(["change", "apply", change.id, "--json"]);
 
@@ -173,11 +173,10 @@ describe("Almagest in Obsidian", () => {
 		expect(o.errors).toEqual([]);
 	});
 
-	/** Sets the layout that the vault document records; before 11.0 the document is Atlas.md. */
+	/** Sets the layout that the vault document records. */
 	const layout = (n: number) => async (vault: string) => {
 		const almagest = path.join(vault, "Almagest.md");
 		await writeFile(almagest, (await readFile(almagest, "utf8")).replace(/^layout: \d+$/m, `layout: ${n}`));
-		if (n < 7) await rename(almagest, path.join(vault, "Atlas.md"));
 	};
 
 	/** Waits until Obsidian has read every file into its metadata cache. */
@@ -186,7 +185,7 @@ describe("Almagest in Obsidian", () => {
 	}
 
 	describe("reads the layout when it loads at Obsidian's start in a vault Obsidian has not indexed", () => {
-		it("11.0: no notice", { timeout: TIMEOUT }, async () => {
+		it("this layout: no notice", { timeout: TIMEOUT }, async () => {
 			const o = await launch();
 			await o.restart({ freshIndex: true });
 			await indexed(o);
@@ -194,11 +193,13 @@ describe("Almagest in Obsidian", () => {
 			expect(o.errors).toEqual([]);
 		});
 
-		it("9.0: the migration notice", { timeout: TIMEOUT }, async () => {
-			const o = await launch({ prepare: layout(5) });
+		it("another layout: one notice that names the update", { timeout: TIMEOUT }, async () => {
+			const o = await launch({ prepare: layout(8) });
 			await o.restart({ freshIndex: true });
 			await indexed(o);
-			expect(await notices(o)).toEqual(["Almagest: this vault has the 9.0 layout. This plugin needs the 11.0 layout.Show the migration"]);
+			expect(await notices(o)).toEqual([
+				"Almagest: this vault has layout 8, and this plugin reads layout 7. Update Almagest in Obsidian's community plugins, and the agent plugin (claude plugin update almagest@nathanaday-almagest).",
+			]);
 			expect(o.errors).toEqual([]);
 		});
 	});
@@ -279,27 +280,6 @@ describe("Almagest in Obsidian", () => {
 		expect(o.errors).toEqual([]);
 	});
 
-	it("offers the migration in a vault of Atlas 10.0", { timeout: TIMEOUT }, async () => {
-		const o = await launch({ prepare: layout(6) });
-		const notice = o.page.locator(".notice", { hasText: "this vault has the 10.0 layout" });
-		await notice.waitFor({ timeout: 10_000 });
-		expect(await notice.textContent()).toContain("This plugin needs the 11.0 layout.");
-
-		await notice.locator("button", { hasText: "Show the migration" }).click();
-		const modal = o.page.locator(".modal", { hasText: "Migrate to the 11.0 layout" });
-		await modal.waitFor({ timeout: 10_000 });
-		expect(await modal.textContent()).toContain("from the 10.0 layout to the 11.0 layout in one commit");
-		expect(await modal.textContent()).toContain("Renames Atlas.md to Almagest.md");
-
-		await modal.locator("button", { hasText: "Migrate" }).click();
-		await until("layout: 7", async () => frontmatter(await o.read("Almagest.md").catch(() => "")).layout === "7", { describe: () => o.git(["status", "--short"]) });
-		expect(existsSync(path.join(o.vault, "Atlas.md"))).toBe(false);
-		await until("the migration commit", async () => (await o.git(["log", "-1", "--format=%s"])).startsWith("layout: migrate to 11.0"), {
-			describe: () => o.git(["log", "--oneline", "-3"]),
-		});
-		expect(o.errors).toEqual([]);
-	});
-
 	/** Opens the palette from its command and waits for its first status. */
 	async function openPalette(o: ObsidianInstance) {
 		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-palette"));
@@ -341,7 +321,7 @@ describe("Almagest in Obsidian", () => {
 			const ws = (window as any).app.workspace;
 			return ws.getLeavesOfType("almagest-palette")[0].getRoot() === ws.rightSplit;
 		})).toBe(true);
-		// The palette replaces the status bar item of 10.0.
+		// Almagest adds nothing to the status bar.
 		expect(await o.page.locator(".status-bar [class*=almagest-]").count()).toBe(0);
 		expect(o.errors).toEqual([]);
 	});

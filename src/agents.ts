@@ -17,14 +17,14 @@ export type SessionState = "working" | "needs you" | "idle" | "ended" | "lost";
 const LIVE = ["running", "waiting", "idle"];
 
 /** How long an ended session stays in the pane's recent group. */
-export const RECENT_MS = 2 * 60 * 60 * 1000;
+const RECENT_MS = 2 * 60 * 60 * 1000;
 
 /**
- * Whether a session is open. With a process id, the process decides; without one (a
- * session a hook recorded before 8.0.2), the status decides while the last event is
- * younger than staleHours.
+ * Whether a session is open. With a process id, the process decides; without one (the
+ * hook found no agent process), the status decides while the last event is younger than
+ * staleHours.
  */
-export function isOpen(row: SessionRow, alive: (pid: number) => boolean, now: Date, staleHours: number): boolean {
+function isOpen(row: SessionRow, alive: (pid: number) => boolean, now: Date, staleHours: number): boolean {
 	if (!LIVE.includes(row.status)) return false;
 	if (row.pid > 0) return alive(row.pid);
 	const t = Date.parse(row.updated);
@@ -32,7 +32,7 @@ export function isOpen(row: SessionRow, alive: (pid: number) => boolean, now: Da
 }
 
 /** The pane's word for an open session's status, or for a closed one. */
-export function sessionState(row: SessionRow, open: boolean): SessionState {
+function sessionState(row: SessionRow, open: boolean): SessionState {
 	if (!open) return row.status === "lost" ? "lost" : "ended";
 	if (row.status === "waiting") return "needs you";
 	if (row.status === "running") return "working";
@@ -192,23 +192,6 @@ export function inherited(config: AgentConfig, key: string): string {
 	if (key === "terminal") return "terminal";
 	if (key.startsWith("agent_commands.")) return key.slice("agent_commands.".length);
 	return "";
-}
-
-/**
- * The keys to move from the plugin settings of 8.0.2 into the vault's config
- * file: the values that differ from the old defaults, for keys the file does not set.
- */
-export function legacyPreferences(saved: Record<string, unknown> | null, vault: Preferences | null): [string, string][] {
-	if (!saved) return [];
-	const out: [string, string][] = [];
-	const take = (key: string, value: unknown, old: string) => {
-		const v = typeof value === "string" ? value.trim() : "";
-		if (v && v !== old && !preference(vault, key)) out.push([key, v]);
-	};
-	take("agent_commands.claude", saved.agentCommand, "claude");
-	if ((TERMINALS as readonly string[]).includes(String(saved.terminal))) take("terminal", saved.terminal, "terminal");
-	if (typeof saved.terminalCommand === "string" && saved.terminalCommand.includes("{command}")) take("terminal_command", saved.terminalCommand, "");
-	return out;
 }
 
 /** The app bundle a terminal needs, by name; Terminal comes with macOS, and custom names its own program. */

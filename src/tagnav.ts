@@ -9,7 +9,7 @@ export const NAV_ICON = "compass";
 const MAX_WITH = 30;
 
 /** Every document of source-core/documents, as the navigator reads it from the metadata cache. */
-export function tagDocs(app: App): TagDoc[] {
+function tagDocs(app: App): TagDoc[] {
 	const out: TagDoc[] = [];
 	for (const file of markdownFilesIn(app, DOCUMENTS)) {
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;

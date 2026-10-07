@@ -1,20 +1,15 @@
-import { App, FileSystemAdapter, Modal, Notice, Plugin, TAbstractFile, TFile, debounce } from "obsidian";
+import { FileSystemAdapter, Notice, Plugin, TAbstractFile, TFile, debounce } from "obsidian";
 import { ChangeRunner, changeProcessor } from "./change";
 import { AlmagestError, binaryInfo, findBinary, runAlmagest } from "./cli";
 import {
 	LAYOUT,
-	VAULT_DOCUMENTS,
+	VAULT_DOCUMENT,
 	binaryProblem,
-	MIGRATES_FROM,
-	MigrationReport,
 	Synced,
 	isLockHeld,
 	isSnapshotPath,
 	isWatchedPath,
-	layoutName,
 	layoutOf,
-	migrationSteps,
-	migrationSummary,
 	quietSeconds,
 	strayNotices,
 	syncSummary,
@@ -23,7 +18,7 @@ import {
 import { QuietTimer } from "./quiet";
 import { repoProcessor } from "./repo";
 import { SESSIONS_VIEW, SessionsView, sessionGroups } from "./sessions";
-import { AgentConfig, legacyPreferences, startCommand } from "./agents";
+import { AgentConfig, startCommand } from "./agents";
 import { Conversations, duetApi } from "./conversations";
 import { openTerminal } from "./launcher";
 import { volumeOf } from "./journalstate";
@@ -35,7 +30,6 @@ import { Wikify, markExtension, markPostProcessor } from "./wikify";
 import { NAV_ICON, TAG_NAV_VIEW, TagNavigator } from "./tagnav";
 
 const SYNC_DELAY = 2000;
-const LEGACY_KEYS = ["agentCommand", "terminal", "terminalCommand"];
 // A change to a path the last sync wrote, this soon after it, is that sync's own write.
 const ECHO_WINDOW = 5000;
 /** How long to wait for Obsidian to see a document the binary wrote. */
@@ -43,8 +37,6 @@ const SEE_MS = 10_000;
 
 export default class AlmagestPlugin extends Plugin {
 	settings: AlmagestSettings = { ...DEFAULT_SETTINGS };
-	/** The agent settings of 8.0.2, kept in data.json until they move to the vault's config file. */
-	private legacy: Record<string, unknown> | null = null;
 
 	private syncing = false;
 	private syncTimer: number | null = null;
@@ -126,8 +118,6 @@ export default class AlmagestPlugin extends Plugin {
 		this.sessionsRibbon.addClass("almagest-sessions-ribbon");
 		this.addCommand({ id: "open-sessions", name: "Open the sessions", callback: () => void this.openSessions() });
 
-		this.addCommand({ id: "migrate", name: `Migrate this vault to the ${layoutName(LAYOUT)} layout`, callback: () => void this.migrate() });
-
 		this.registerEvent(
 			this.app.metadataCache.on("changed", (file) => {
 				if (file.path.startsWith("sessions/")) this.refreshSessions();
@@ -152,7 +142,6 @@ export default class AlmagestPlugin extends Plugin {
 			this.refreshSessions();
 			void this.checkBinary();
 			this.checkLayout();
-			void this.moveLegacyPreferences();
 			this.watchForSnapshots();
 		});
 		// The cache may finish its first read after the layout is ready.
@@ -171,10 +160,8 @@ export default class AlmagestPlugin extends Plugin {
 
 	async loadSettings(): Promise<void> {
 		const saved = (await this.loadData()) as Partial<AlmagestSettings> | null;
-		const old = Object.entries(saved ?? {}).filter(([k]) => LEGACY_KEYS.includes(k));
-		this.legacy = old.length > 0 ? Object.fromEntries(old) : null;
 		this.settings = { ...DEFAULT_SETTINGS };
-		// Only the keys this version knows; an older version's key goes at the next save.
+		// Only the keys this version knows; any other key goes at the next save.
 		for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof AlmagestSettings)[]) {
 			if (saved && saved[key] !== undefined) (this.settings as unknown as Record<string, unknown>)[key] = saved[key];
 		}
@@ -182,7 +169,7 @@ export default class AlmagestPlugin extends Plugin {
 	}
 
 	async saveSettings(): Promise<void> {
-		await this.saveData({ ...this.legacy, ...this.settings });
+		await this.saveData(this.settings);
 	}
 
 	/** Runs one almagest command in this vault and returns its JSON; answers are the exit codes that print an answer too. */
@@ -234,7 +221,7 @@ export default class AlmagestPlugin extends Plugin {
 	}
 
 	private onDocChange(path: string): void {
-		if (!this.settings.syncOnChange || !isWatchedPath(path) || !this.migrated()) return;
+		if (!this.settings.syncOnChange || !isWatchedPath(path) || !this.ready()) return;
 		if (this.syncing) {
 			this.pending.add(path);
 			return;
@@ -281,7 +268,7 @@ export default class AlmagestPlugin extends Plugin {
 	 * after the next quiet period, and any other failure waits for the next edit.
 	 */
 	private async snapshot(): Promise<boolean> {
-		if (!this.migrated()) return false;
+		if (!this.ready()) return false;
 		try {
 			await this.almagest<unknown>(["vault", "snapshot"]);
 			this.lastSnapshotError = "";
@@ -297,25 +284,16 @@ export default class AlmagestPlugin extends Plugin {
 
 	// Layout
 
-	/** The layout the vault document records; this plugin's when there is none to read. */
+	/** The layout the vault document records; this plugin's when there is no vault document. */
 	private layout(): number {
-		const file = this.vaultDocument();
+		const file = this.app.vault.getFileByPath(VAULT_DOCUMENT);
 		if (!file) return LAYOUT;
 		return layoutOf(this.app.metadataCache.getFileCache(file)?.frontmatter);
 	}
 
-	/** The vault document, of this release or an earlier one, or null. */
-	private vaultDocument(): TFile | null {
-		for (const path of VAULT_DOCUMENTS) {
-			const file = this.app.vault.getFileByPath(path);
-			if (file) return file;
-		}
-		return null;
-	}
-
 	/** Whether the vault has the layout this plugin reads. */
-	private migrated(): boolean {
-		return this.layout() >= LAYOUT;
+	private ready(): boolean {
+		return this.layout() === LAYOUT;
 	}
 
 	/** Says once, until the user closes it, what keeps the plugin from its binary. */
@@ -325,39 +303,13 @@ export default class AlmagestPlugin extends Plugin {
 		if (problem) new Notice(`Almagest: ${problem}`, 0);
 	}
 
+	/** Names the update when the vault has another layout than this plugin reads. */
 	private checkLayout(): void {
-		if (this.migrated()) return;
-		const notice = new Notice("", 0);
-		const el = notice.messageEl;
-		const layout = this.layout();
-		const needs = `Almagest: this vault has the ${layoutName(layout)} layout. This plugin needs the ${layoutName(LAYOUT)} layout.`;
-		if (layout < MIGRATES_FROM) {
-			el.createDiv({ text: `${needs} Migrate it to 8.x with release 8.1.1 first (the tag threads-final of almagest, when the project was Atlas).` });
-			return;
-		}
-		el.createDiv({ text: needs });
-		const button = el.createEl("button", { text: "Show the migration", cls: "mod-cta almagest-notice-button" });
-		button.onclick = () => {
-			notice.hide();
-			void this.migrate();
-		};
-	}
-
-	private async migrate(): Promise<void> {
-		try {
-			const report = await this.almagest<MigrationReport>(["vault", "migrate", "--dry-run"]);
-			new MigrationModal(this.app, report, this.layout(), async () => {
-				try {
-					const done = await this.almagest<MigrationReport>(["vault", "migrate"]);
-					new Notice(`Almagest: ${migrationSummary(done)}`, 10_000);
-					for (const line of strayNotices(done)) new Notice(`Almagest: ${line}`, 0);
-				} catch (e) {
-					new Notice(`Almagest: ${(e as Error).message}`, 10_000);
-				}
-			}).open();
-		} catch (e) {
-			new Notice(`Almagest: ${(e as Error).message}`, 10_000);
-		}
+		if (this.ready()) return;
+		new Notice(
+			`Almagest: this vault has layout ${this.layout()}, and this plugin reads layout ${LAYOUT}. Update Almagest in Obsidian's community plugins, and the agent plugin (claude plugin update almagest@nathanaday-almagest).`,
+			0,
+		);
 	}
 
 	// Views
@@ -443,7 +395,7 @@ export default class AlmagestPlugin extends Plugin {
 
 	/** How long a session with no recorded process may go quiet before it counts as gone. */
 	staleHours(): number {
-		const file = this.vaultDocument();
+		const file = this.app.vault.getFileByPath(VAULT_DOCUMENT);
 		const n = Number(file ? this.app.metadataCache.getFileCache(file)?.frontmatter?.stale_hours : 0);
 		return n > 0 ? n : 12;
 	}
@@ -459,20 +411,6 @@ export default class AlmagestPlugin extends Plugin {
 	async setPreference(key: string, value: string, global: boolean): Promise<AgentConfig> {
 		const args = value ? ["config", "set", key, value] : ["config", "unset", key];
 		return this.almagest<AgentConfig>(global ? [...args, "--global"] : args);
-	}
-
-	/** Moves the agent settings of 8.0.2 into the vault's config file, once. */
-	private async moveLegacyPreferences(): Promise<void> {
-		const saved = this.legacy;
-		if (!saved) return;
-		try {
-			const config = await this.agentConfig();
-			for (const [key, value] of legacyPreferences(saved, config.vault)) await this.setPreference(key, value, false);
-			this.legacy = null;
-			await this.saveSettings();
-		} catch (e) {
-			console.warn("Almagest: the agent settings did not move to .almagest/config.json", e);
-		}
 	}
 
 	/** Runs a command in a new terminal; off macOS, or when that fails, copies it. */
@@ -540,54 +478,5 @@ export default class AlmagestPlugin extends Plugin {
 			leaf = right;
 		}
 		await workspace.revealLeaf(leaf);
-	}
-}
-
-/** Shows the dry run of a migration, and runs it on a second click. */
-class MigrationModal extends Modal {
-	constructor(
-		app: App,
-		private report: MigrationReport,
-		private layout: number,
-		private run: () => Promise<void>,
-	) {
-		super(app);
-	}
-
-	onOpen(): void {
-		const r = this.report;
-		const from = r.from || layoutName(this.layout);
-		this.setTitle(`Migrate to the ${layoutName(LAYOUT)} layout`);
-		const el = this.contentEl;
-		el.addClass("almagest-migration");
-		el.createEl("p", { text: `The migration moves ${r.vault} from the ${from} layout to the ${layoutName(LAYOUT)} layout in one commit. git revert takes it back. It:` });
-		const steps = el.createEl("ul");
-		for (const step of migrationSteps(this.layout)) steps.createEl("li", { text: step });
-
-		const list = <T>(items: T[] | null | undefined, title: string, line: (item: T) => string) => {
-			if (!items || items.length === 0) return;
-			const d = el.createEl("details");
-			d.createEl("summary", { text: `${title} (${items.length})` });
-			const ul = d.createEl("ul");
-			for (const item of items) ul.createEl("li", { text: line(item) });
-		};
-		const move = (m: { from: string; to: string }) => `${m.from} → ${m.to}`;
-		list(r.moved, "Files to move", move);
-		list(r.edited, "Files to edit", (p) => p);
-		list(r.strays, "Your notes in views/, to move to ingest/", move);
-		list(r.warnings, "Warnings", (w) => w);
-
-		const buttons = el.createDiv({ cls: "almagest-migration-buttons" });
-		buttons.createEl("button", { text: "Cancel" }).onclick = () => this.close();
-		const go = buttons.createEl("button", { text: "Migrate", cls: "mod-cta" });
-		go.onclick = async () => {
-			go.disabled = true;
-			await this.run();
-			this.close();
-		};
-	}
-
-	onClose(): void {
-		this.contentEl.empty();
 	}
 }

@@ -66,12 +66,6 @@ export function findMarks(text: string): Mark[] {
 	return out;
 }
 
-/** The mark that the whole of s is, or null. */
-export function parseMark(s: string): Omit<Mark, "from" | "to"> | null {
-	const m = new RegExp(`^${MARK.source}$`).exec(s);
-	return m ? { kind: m[1] as MarkKind, title: m[2]!, phrase: m[3]!, text: s } : null;
-}
-
 /** The link a mark becomes: `[[Title]]` when the phrase is the title as written, else `[[Title|phrase]]`, so the note keeps its own spelling. */
 export function linkFor(m: { title: string; phrase: string }): string {
 	return m.title === m.phrase ? `[[${m.title}]]` : `[[${m.title}|${m.phrase}]]`;
@@ -151,7 +145,7 @@ const NOT_YOURS = ["source-core", "changes", "sessions", "wiki-view", "trash"];
 /** Why `wikify start` refuses a path, or "" when it takes it. configDir is Obsidian's folder, `Vault#configDir`. */
 export function wikifyBlocked(path: string, configDir: string): string {
 	if (!/\.md$/i.test(path)) return "Wikify takes a markdown note.";
-	if (path === "Almagest.md" || path === "Atlas.md") return `Wikify takes a note of yours, not ${path}.`;
+	if (path === "Almagest.md") return "Wikify takes a note of yours, not Almagest.md.";
 	const top = path.split("/")[0] ?? "";
 	if (path.includes("/") && (NOT_YOURS.includes(top) || top === configDir)) return `Wikify takes a note of yours, not one in ${top}/.`;
 	return "";

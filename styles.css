@@ -543,20 +543,6 @@
 	color: rgb(var(--color-red-rgb));
 }
 
-/* The migration notice and its report. */
-.almagest-notice-button {
-	margin-top: var(--size-4-2);
-}
-.almagest-migration details {
-	margin-top: var(--size-4-2);
-}
-.almagest-migration-buttons {
-	display: flex;
-	justify-content: flex-end;
-	gap: var(--size-4-2);
-	margin-top: var(--size-4-4);
-}
-
 /* The palette's journal volumes. */
 .almagest-palette-volume {
 	display: flex;

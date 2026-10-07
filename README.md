@@ -67,7 +67,7 @@ With the plugin, Obsidian adds:
     names the links. For a knowledge document that documents link, the list offers
     **Resolve with an agent**: the agent points each link in a document elsewhere and
     proposes the remove. A link in your own notes (the scratchpad, `journals/`,
-    `checkout/`, `threads/`, and the like) is yours to fix; while one stays, the agent
+    `checkout/`, and the like) is yours to fix; while one stays, the agent
     proposes no remove, and you run Safe delete again after you fix it.
   - **Publish** next to a journal volume (marked when the volume has changes) runs
     `almagest journal publish`, then starts a work document and an agent that

@@ -3,10 +3,7 @@ import { test } from "node:test";
 import {
 	PROTOCOLS,
 	binaryProblem,
-	LAYOUT,
-	MIGRATES_FROM,
 	SNAPSHOT_QUIET_DEFAULT,
-	layoutName,
 	asList,
 	binaryCandidates,
 	chooseBinary,
@@ -21,8 +18,6 @@ import {
 	isSnapshotPath,
 	isWatchedPath,
 	layoutOf,
-	migrationSteps,
-	migrationSummary,
 	narrow,
 	normalTag,
 	quietSeconds,
@@ -122,15 +117,6 @@ test("small labels", () => {
 	assert.deepEqual(repoBlock(" doc-abc123 · ~/src/p3-edge \n"), { id: "doc-abc123", path: "~/src/p3-edge" });
 });
 
-test("layout 7 is 11.0, and the binary migrates from 8.x, 9.0, and 10.0", () => {
-	assert.equal(LAYOUT, 7);
-	assert.equal(MIGRATES_FROM, 4);
-	assert.deepEqual(
-		[layoutName(8), layoutName(7), layoutName(6), layoutName(5), layoutName(4), layoutName(3), layoutName(2), layoutName(0)],
-		["11.0", "11.0", "10.0", "9.0", "8.x", "7.x", "6.x", "6.x"],
-	);
-});
-
 test("the folders of layout 10", () => {
 	assert.ok(isDocumentPath("source-core/documents/Lidar.md"));
 	assert.ok(!isDocumentPath("source-core/originals/Lidar.pdf"));
@@ -169,30 +155,6 @@ test("quietSeconds reads the setting and the field", () => {
 	assert.equal(quietSeconds("ten"), 120);
 	assert.equal(quietSeconds(true), 120);
 	assert.equal(quietSeconds(1e12), 86_400, "a timer longer than a day overflows");
-});
-
-test("the migration lists the 11.0 rename, the 10.0 moves before it, and the 9.0 step for an 8.x vault", () => {
-	const from10 = migrationSteps(6);
-	assert.ok(from10[0]?.includes("Atlas.md to Almagest.md"));
-	assert.ok(!from10.some((s) => s.includes("wiki/documents/")));
-	const from9 = migrationSteps(5);
-	assert.equal(from9.length, from10.length + 7);
-	assert.ok(from9.some((s) => s.includes("wiki/documents/ to source-core/documents/")));
-	assert.ok(from9.some((s) => s.includes("wiki/assets/ to source-core/originals/")));
-	assert.ok(from9.some((s) => s.includes("inbox/ to ingest/")));
-	assert.ok(from9.some((s) => s.includes("wiki-view/nav/")));
-	assert.ok(!from9.some((s) => s.includes("threads/")));
-	const from8 = migrationSteps(4);
-	assert.ok(from8[0]?.includes("threads/"));
-	assert.equal(from8.length, from9.length + 1);
-});
-
-test("migrationSummary", () => {
-	assert.equal(
-		migrationSummary({ vault: "Work", commit: "0123456789abcdef", moved: [{ from: "inbox/a.pdf", to: "ingest/a.pdf" }], edited: ["x.md", "y.md"], problems: 1 }),
-		"Migrated to the 11.0 layout in one commit, 0123456. 1 file moved, 2 edited. Lint finds 1 error.",
-	);
-	assert.equal(migrationSummary({ vault: "Work", commit: "abcdef0123", moved: [], edited: null, problems: 0 }), "Migrated to the 11.0 layout in one commit, abcdef0.");
 });
 
 test("a tag holds its children, and a list expands to every ancestor", () => {
