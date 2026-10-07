@@ -1258,8 +1258,14 @@ describe("Almagest in Obsidian", () => {
 				await writeFile(path.join(vault, "tool/sessions/2026-10/waits.md"), session("aaaaaa", "waiting", now - 120_000, "", "## Progress\n\n- 2026-10-07: Read the sources.\n- 2026-10-07: Asked which paper comes first.\n"));
 				await writeFile(path.join(vault, "tool/sessions/2026-10/works.md"), session("cccccc", "running", now - 10_000, "", "", ""));
 				await writeFile(path.join(vault, "tool/sessions/2026-10/closed.md"), session("bbbbbb", "ended", now - 1_200_000, `ended: ${new Date(now - 1_200_000).toISOString()}\n`, "## Progress\n\n- 2026-10-07: Proposed the edits.\n"));
+				// The waiting session runs in a Duet conversation, whose note names its id.
+				await mkdir(path.join(vault, "Conversations"), { recursive: true });
+				await writeFile(path.join(vault, "Conversations/Plan Alpha.md"), "---\nduet: conversation\nagent: claude\nsession: aaaaaa\n---\n\n> [!user]\n> Plan the study.\n");
 			},
 		});
+		// A sync links each session to its conversation, as the plugin's sync after an edit does.
+		await o.almagest(["vault", "sync", "--views"]);
+		expect(await o.read("tool/sessions/2026-10/waits.md")).toContain("> Duet conversation: [[Plan Alpha]]");
 		const out = await stubTerminal(o);
 		const palette = await openPalette(o);
 		await until("the agents line", async () => (await line(palette, "agents")) === "1 needs you · 2 live sessions", { describe: () => palette.innerText() });
@@ -1310,9 +1316,16 @@ describe("Almagest in Obsidian", () => {
 		await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.app.workspace.getLeavesOfType("almagest-palette")[0].view.draw());
 		expect(await closed.isVisible()).toBe(true);
 
-		// The row opens the session.
-		await waits.click();
-		await until("the session to open", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === "tool/sessions/2026-10/waits.md");
+		// A row opens the session's Duet conversation when it has one, else the session's document.
+		const active = () => o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path);
+		await until("the conversation's link", async () => {
+			await o.page.evaluate(() => void (window as any).app.workspace.getLeavesOfType("almagest-palette")[0].view.refresh());
+			await waits.click();
+			return (await active()) === "Conversations/Plan Alpha.md";
+		}, { describe: active });
+		await goTo(palette, "agents");
+		await thread("working").click();
+		await until("the session to open", async () => (await active()) === "tool/sessions/2026-10/works.md", { describe: active });
 		expect(o.errors).toEqual([]);
 	});
 

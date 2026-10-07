@@ -72,9 +72,10 @@ With the plugin, Obsidian adds:
     it is on when a copy is edited and the checkout is not returned. See
     [Checkouts](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#checkouts).
   - **Agents**: **Start an agent**, the agents Almagest started that still work, and the
-    agent sessions of the vault: the open ones, each with its state and its last progress
-    line, then the ones that closed in the last two hours, with **Resume**. A session
-    that needs you counts on the home row.
+    agent sessions of the vault as message threads: the open ones, each with its state
+    and its last progress line, then the ones that closed in the last two hours, folded
+    away, with **Resume**. A thread opens the session's Duet conversation when it runs in
+    one, else the session's document. A session that needs you counts on the home row.
   - **This note**: **Wikify this note** (experimental) copies the open note to
     `scratchpad/`, opens the copy, and starts an agent that marks it (see
     [Wikify a note](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#wikify-a-note-experimental)). **Safe delete this note**

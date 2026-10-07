@@ -14,6 +14,14 @@ export interface Session extends SessionRow {
 	harness_id: string;
 	cwd: string;
 	transcript: string;
+	/** The Duet conversation the session runs in, when the binary linked it and the note is there. */
+	conversation: TFile | null;
+}
+
+/** The note that a session's `conversation` property links, which sync writes from the Duet note's `session`. */
+function conversationOf(app: App, file: TFile): TFile | null {
+	const link = app.metadataCache.getFileCache(file)?.frontmatterLinks?.find((l) => l.key === "conversation")?.link;
+	return link ? app.metadataCache.getFirstLinkpathDest(link, file.path) : null;
 }
 
 /** Every session document of the vault. */
@@ -35,6 +43,7 @@ function readSessions(app: App): Session[] {
 			harness_id: String(fm.harness_id ?? ""),
 			cwd: String(fm.cwd ?? ""),
 			transcript: String(fm.transcript ?? ""),
+			conversation: conversationOf(app, file),
 		});
 	}
 	return out;

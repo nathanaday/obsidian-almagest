@@ -53,6 +53,11 @@ interface Migration {
 /** The word that opens a session's line. */
 const STATE_WORDS: Record<SessionState, string> = { "needs you": "Needs you", working: "Working", idle: "Idle", ended: "Ended", lost: "Lost" };
 
+/** What a session's thread opens: the Duet conversation it runs in, else its session document. */
+function opens(row: Session): string {
+	return row.conversation?.path ?? row.path;
+}
+
 /** A session's title: its description, or "Untitled session" while it has none (the document's name is its date and id). */
 function sessionTitle(row: Session): string {
 	return row.description === row.file.basename ? "Untitled session" : plainLinks(row.description);
@@ -483,7 +488,7 @@ export class PaletteView extends ItemView {
 			const subs = this.subagents.get(row.file.basename) ?? 0;
 			this.thread(live, {
 				title: sessionTitle(row),
-				path: row.path,
+				path: opens(row),
 				state,
 				time: formatAgo(row.updated, now),
 				preview: [STATE_WORDS[state], subs > 0 ? `+${plural(subs, "subagent", "subagents")}` : "", this.progress.get(row.path) ?? ""].filter((x) => x).join(" · "),
@@ -503,7 +508,7 @@ export class PaletteView extends ItemView {
 			for (const { row, state } of recent) {
 				this.thread(closed, {
 					title: sessionTitle(row),
-					path: row.path,
+					path: opens(row),
 					state,
 					time: formatAgo(row.ended || row.updated, now),
 					preview: [STATE_WORDS[state], this.progress.get(row.path) ?? ""].filter((x) => x).join(" · "),
