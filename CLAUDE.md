@@ -29,12 +29,19 @@ repository. This file holds what the code and the README do not say.
   Raise the protocol on both sides when a change would make an older plugin misread.
 - **It touches only what it owns.** It adds one view (the palette) with one ribbon button,
   commands, in-document widgets (code block processors), and CSS for its own callouts and
-  widgets. It patches no pane of Obsidian's own and styles none. A change note's
+  widgets. It patches no pane of Obsidian's own. Its one style there is the colors of its
+  own top folders in the file explorer (`wiki-view`, `journals`, `ingest`, `tool`), behind
+  the `colorFolders` setting, which puts the class `almagest-folder-colors` on the body;
+  the end-to-end test checks that its rules reach nothing else, and nothing when it is off. A change note's
   `cssclasses` value (`almagest-change`) styles the note itself, so the widget's class
   is `almagest-change-card`.
 - **The plugin acts only in a vault of its layout.** It reads `layout` from
-  `Almagest.md` (`LAYOUT`, 7). In a vault of another layout it shows one notice that
-  names the update, and runs no sync and no snapshot.
+  `Almagest.md` (`LAYOUT`, 8). In a vault of another layout it runs no sync and no
+  snapshot, shows one notice, and the palette shows what the vault needs in place of its
+  home: for layout 7 (11.0) a Migrate page, whose dry run (`vault migrate --dry-run`)
+  counts what moves and whose button runs `vault migrate`; for any other, the update.
+  It follows `Almagest.md`'s metadata, so a migration in a terminal clears the notice too.
+  `vault migrate` came with protocol 2, so a binary of protocol 1 is named for update.
 - **Duet hosts the agents when it is on.** Almagest does not copy Duet's code: two copies
   would bind two Yjs hubs to one editor and both wrap `Vault.modify`. The plugin starts
   an agent through Duet's API for other plugins (Duet 0.3.0 or later:

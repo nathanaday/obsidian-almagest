@@ -1,12 +1,15 @@
 // Pure functions: no Obsidian, no Node. The tests cover them.
 
-// The folders of the vault, as vault.go names them.
-export const DOCUMENTS = "source-core/documents/";
+// The folders of the vault, as vault.go names them. tool/ holds what Almagest keeps for itself.
+export const TOOL = "tool";
+export const DOCUMENTS = "tool/source-core/documents/";
+export const SESSIONS = "tool/sessions";
+export const TRASH = "tool/trash";
 const WIKI_VIEW = "wiki-view/";
 const NAV_FOLDER = "wiki-view/nav/";
 export const INGEST = "ingest/";
 
-/** Whether a path lies in source-core/documents. */
+/** Whether a path lies in tool/source-core/documents. */
 export function isDocumentPath(path: string): boolean {
 	return path.startsWith(DOCUMENTS);
 }
@@ -26,7 +29,7 @@ export interface Synced {
  * The protocols this plugin reads: the version of the commands, flags, and JSON of the
  * binary (`almagest version --json` prints its own). Each side names the update it needs.
  */
-export const PROTOCOLS = [1];
+export const PROTOCOLS = [2];
 
 /** How to install the agent plugin, whose launcher installs the binary. */
 const INSTALL_AGENT =
@@ -196,7 +199,7 @@ export function linkTitle(value: unknown): string {
 	return (m?.[1] ?? value).trim();
 }
 
-/** The three types of source-core/documents, as schema.DocumentTypes lists them. */
+/** The three types of tool/source-core/documents, as schema.DocumentTypes lists them. */
 const DOCUMENT_TYPES = ["source", "repository", "topic"];
 
 /** Whether a frontmatter type is one of the document types the navigator lists. */
@@ -368,7 +371,16 @@ export function layoutOf(fields: Record<string, unknown> | undefined): number {
 }
 
 /** The layout this plugin reads, as the vault document records it. */
-export const LAYOUT = 7;
+export const LAYOUT = 8;
+
+/** The layout of 11.0, before tool/ held sessions/, source-core/, and trash/: `almagest vault migrate` takes it to LAYOUT. */
+export const LAYOUT_BEFORE_TOOL = 7;
+
+/** What a vault of another layout needs: its migration, an update, or nothing. */
+export function layoutNeeds(layout: number): "migrate" | "update" | "" {
+	if (layout === LAYOUT) return "";
+	return layout === LAYOUT_BEFORE_TOOL ? "migrate" : "update";
+}
 
 /** The vault document, which records the layout. */
 export const VAULT_DOCUMENT = "Almagest.md";

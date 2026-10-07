@@ -12,12 +12,15 @@ export interface AlmagestSettings {
 	syncOnChange: boolean;
 	/** Seconds with no file event before the edits go into a snapshot commit; 0 turns it off. */
 	snapshotQuietSeconds: number;
+	/** Whether the file explorer colors wiki-view/, journals/, ingest/, and tool/. */
+	colorFolders: boolean;
 }
 
 export const DEFAULT_SETTINGS: AlmagestSettings = {
 	binaryPath: "",
 	syncOnChange: true,
 	snapshotQuietSeconds: SNAPSHOT_QUIET_DEFAULT,
+	colorFolders: true,
 };
 
 /** An agent preference's control key: `agent:<global|vault>:<key>`, the key as almagest config names it. */
@@ -83,6 +86,11 @@ export class AlmagestSettingTab extends PluginSettingTab {
 					validate: (seconds) => (Number.isFinite(seconds) && seconds >= 0 ? undefined : "Enter 0 or more seconds."),
 				},
 			},
+			{
+				name: "Color Almagest's folders",
+				desc: "In the file explorer: what you read (wiki-view/) in cyan, what you write and add (journals/, ingest/) in purple, and what Almagest keeps for itself (tool/) dimmed.",
+				control: { type: "toggle", key: "colorFolders" },
+			},
 			...this.agentGroups(),
 		];
 	}
@@ -104,6 +112,10 @@ export class AlmagestSettingTab extends PluginSettingTab {
 		} else if (key === "syncOnChange") {
 			settings.syncOnChange = Boolean(value);
 			await this.plugin.saveSettings();
+		} else if (key === "colorFolders") {
+			settings.colorFolders = Boolean(value);
+			await this.plugin.saveSettings();
+			this.plugin.colorFolders();
 		} else if (key === "snapshotQuietSeconds") {
 			await this.plugin.setSnapshotQuiet(quietSeconds(value));
 		}

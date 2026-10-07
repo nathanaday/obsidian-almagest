@@ -138,9 +138,12 @@ test("wikify takes a markdown note of the user's", () => {
 	assert.equal(wikifyBlocked("ingest/Paper.MD", ".obsidian"), "");
 	assert.equal(wikifyBlocked("ingest/paper.pdf", ".obsidian"), "Wikify takes a markdown note.");
 	assert.equal(wikifyBlocked("Almagest.md", ".obsidian"), "Wikify takes a note of yours, not Almagest.md.");
-	for (const top of ["source-core", "changes", "sessions", "wiki-view", "trash", ".obsidian"]) {
-		assert.equal(wikifyBlocked(`${top}/sub/Note.md`, ".obsidian"), `Wikify takes a note of yours, not one in ${top}/.`);
+	for (const folder of ["tool/source-core", "changes", "tool/sessions", "wiki-view", "tool/trash", ".obsidian"]) {
+		assert.equal(wikifyBlocked(`${folder}/sub/Note.md`, ".obsidian"), `Wikify takes a note of yours, not one in ${folder}/.`);
 	}
+	// A folder is matched whole and in any case, never by its first part.
+	assert.equal(wikifyBlocked("Tool/Sessions/2026-10/S.md", ".obsidian"), "Wikify takes a note of yours, not one in tool/sessions/.");
+	assert.equal(wikifyBlocked("tool/My notes.md", ".obsidian"), "");
 	assert.equal(wikifyBlocked("changes.md", ".obsidian"), "");
 	// A vault may name Obsidian's folder otherwise; that folder is refused, and .obsidian is then a folder of notes.
 	assert.equal(wikifyBlocked(".config/sub/Note.md", ".config"), "Wikify takes a note of yours, not one in .config/.");

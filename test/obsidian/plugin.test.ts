@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { type AlmagestBinary, buildAlmagest, frontmatter, launchObsidian, type ObsidianInstance, until } from "./harness";
@@ -67,7 +67,7 @@ describe("Almagest in Obsidian", () => {
 		return o.page.$$eval(".notice", (els) => els.map((e) => e.textContent ?? ""));
 	}
 
-	it("loads in a vault with no console error, and adds nothing to the file explorer", { timeout: TIMEOUT }, async () => {
+	it("loads in a vault with no console error, and adds nothing to the file explorer but the colors of its folders", { timeout: TIMEOUT }, async () => {
 		const o = await launch();
 		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.manifest.version)).toBe(JSON.parse(await readFile(new URL("../../manifest.json", import.meta.url), "utf8")).version);
 
@@ -101,42 +101,72 @@ describe("Almagest in Obsidian", () => {
 		);
 		expect(notes).toBeGreaterThanOrEqual(7);
 
-		const explorer = await o.page.evaluate(async () => {
-			const app = (window as any).app;
-			const root: HTMLElement = app.workspace.getLeavesOfType("file-explorer")[0].view.containerEl;
-			const elements = [root, ...root.querySelectorAll<HTMLElement>("*")];
-			const marked = elements
-				.filter((el) => [...el.classList].some((c) => c.startsWith("almagest-")) || [...el.attributes].some((a) => a.name.startsWith("data-almagest")))
-				.map((el) => el.outerHTML.slice(0, 160));
+		// What the plugin adds to the explorer: elements it marks, and the folder rows its
+		// styles reach (each element's closest folder row, by path).
+		const explorer = () =>
+			o.page.evaluate(async () => {
+				const app = (window as any).app;
+				const root: HTMLElement = app.workspace.getLeavesOfType("file-explorer")[0].view.containerEl;
+				const elements = [root, ...root.querySelectorAll<HTMLElement>("*")];
+				const marked = elements
+					.filter((el) => [...el.classList].some((c) => c.startsWith("almagest-")) || [...el.attributes].some((a) => a.name.startsWith("data-almagest")))
+					.map((el) => el.outerHTML.slice(0, 160));
 
-			// The plugin's styles.css, as Obsidian put it in the page.
-			const plugin = app.plugins.plugins.almagest;
-			const css: string = await app.vault.adapter.read(`${plugin.manifest.dir}/styles.css`);
-			const sheet = [...document.querySelectorAll("style")].find((el) => el.textContent === css)?.sheet;
-			const rules: string[] = [];
-			const walk = (list: CSSRuleList) => {
-				for (const rule of list) {
-					if (rule instanceof CSSStyleRule) rules.push(rule.selectorText);
-					else if ("cssRules" in rule) walk((rule as CSSGroupingRule).cssRules);
-				}
-			};
-			if (sheet) walk(sheet.cssRules);
-			const styled = rules.filter((selector) => {
-				const plain = selector.replace(/::?(before|after|placeholder|marker|selection|-webkit-[\w-]+)/g, "");
-				return elements.some((el) => {
-					try {
-						return el.matches(plain);
-					} catch {
-						return false;
+				// The plugin's styles.css, as Obsidian put it in the page.
+				const plugin = app.plugins.plugins.almagest;
+				const css: string = await app.vault.adapter.read(`${plugin.manifest.dir}/styles.css`);
+				const sheet = [...document.querySelectorAll("style")].find((el) => el.textContent === css)?.sheet;
+				const rules: string[] = [];
+				const walk = (list: CSSRuleList) => {
+					for (const rule of list) {
+						if (rule instanceof CSSStyleRule) rules.push(rule.selectorText);
+						else if ("cssRules" in rule) walk((rule as CSSGroupingRule).cssRules);
 					}
-				});
+				};
+				if (sheet) walk(sheet.cssRules);
+				const styled = new Set<string>();
+				for (const selector of rules) {
+					const plain = selector.replace(/::?(before|after|placeholder|marker|selection|-webkit-[\w-]+)/g, "");
+					for (const el of elements) {
+						try {
+							if (el.matches(plain)) styled.add(el.closest<HTMLElement>(".nav-folder-title")?.dataset.path ?? el.outerHTML.slice(0, 80));
+						} catch {
+							// A selector the page cannot match, such as a vendor one.
+						}
+					}
+				}
+				const color = (folder: string) => getComputedStyle(root.querySelector(`.nav-folder-title[data-path="${folder}"]`)!).color;
+				const swatch = (variable: string) => {
+					const probe = document.body.createDiv();
+					probe.style.color = `var(${variable})`;
+					const out = getComputedStyle(probe).color;
+					probe.remove();
+					return out;
+				};
+				return {
+					marked,
+					sheet: !!sheet,
+					rules: rules.length,
+					styled: [...styled].sort(),
+					colors: { "wiki-view": color("wiki-view") === swatch("--color-cyan"), journals: color("journals") === swatch("--color-purple"), ingest: color("ingest") === swatch("--color-purple"), tool: color("tool") === swatch("--text-faint") },
+				};
 			});
-			return { marked, sheet: !!sheet, rules: rules.length, styled };
+		const on = await explorer();
+		expect(on.marked).toEqual([]);
+		expect(on.sheet).toBe(true);
+		expect(on.rules).toBeGreaterThan(10);
+		expect(on.styled).toEqual(["ingest", "journals", "tool", "wiki-view"]);
+		expect(on.colors).toEqual({ "wiki-view": true, journals: true, ingest: true, tool: true });
+
+		// The setting turns the colors off, and then no rule of the plugin reaches the explorer.
+		await o.page.evaluate(async () => {
+			const plugin = (window as any).app.plugins.plugins.almagest;
+			plugin.settings.colorFolders = false;
+			plugin.colorFolders();
 		});
-		expect(explorer.marked).toEqual([]);
-		expect(explorer.sheet).toBe(true);
-		expect(explorer.rules).toBeGreaterThan(10);
-		expect(explorer.styled).toEqual([]);
+		const off = await explorer();
+		expect(off.styled).toEqual([]);
+		expect(off.colors).toEqual({ "wiki-view": false, journals: false, ingest: false, tool: false });
 		expect(o.errors).toEqual([]);
 	});
 
@@ -194,11 +224,21 @@ describe("Almagest in Obsidian", () => {
 		});
 
 		it("another layout: one notice that names the update", { timeout: TIMEOUT }, async () => {
-			const o = await launch({ prepare: layout(8) });
+			const o = await launch({ prepare: layout(9) });
 			await o.restart({ freshIndex: true });
 			await indexed(o);
 			expect(await notices(o)).toEqual([
-				"Almagest: this vault has layout 8, and this plugin reads layout 7. Update Almagest in Obsidian's community plugins, and the agent plugin (claude plugin update almagest@nathanaday-almagest).",
+				"Almagest: this vault has layout 9, and this plugin reads layout 8. Update Almagest in Obsidian's community plugins, and the agent plugin (claude plugin update almagest@nathanaday-almagest).",
+			]);
+			expect(o.errors).toEqual([]);
+		});
+
+		it("the layout of 11.0: one notice that offers the migration", { timeout: TIMEOUT }, async () => {
+			const o = await launch({ prepare: layout(7) });
+			await o.restart({ freshIndex: true });
+			await indexed(o);
+			expect(await notices(o)).toEqual([
+				"Almagest: this vault keeps sessions/, source-core/, and trash/ at its root, and this version keeps them in tool/. Open the Almagest palette to migrate the vault.",
 			]);
 			expect(o.errors).toEqual([]);
 		});
@@ -539,7 +579,7 @@ describe("Almagest in Obsidian", () => {
 		await modal.locator("button.mod-cta", { hasText: "Publish" }).click();
 
 		const command = await terminalCommand(out);
-		const edition = `source-core/documents/${title}.md`;
+		const edition = `tool/source-core/documents/${title}.md`;
 		const fields = frontmatter(await o.read(edition));
 		expect([fields.origin, fields.volume, fields.locator, fields.status]).toEqual(["journal", "cs566-notes", "journals/cs566-notes", "pending"]);
 		expect(await o.git(["log", "-1", "--format=%s", "--", edition])).toBe(`capture: ${title}\n`);
@@ -579,7 +619,7 @@ describe("Almagest in Obsidian", () => {
 
 		const second = await terminalCommand(out, command);
 		const numbered = `${title} (2)`;
-		expect(frontmatter(await o.read(`source-core/documents/${numbered}.md`)).volume).toBe("cs566-notes");
+		expect(frontmatter(await o.read(`tool/source-core/documents/${numbered}.md`)).volume).toBe("cs566-notes");
 		const doc2 = await workDoc(o, `Ingest ${numbered}`);
 		expect(second).toContain(`Absorb the source [[${numbered}]]`);
 		expect(second).toContain(`Your work document is [[${doc2.title}]] (${doc2.id})`);
@@ -613,7 +653,7 @@ describe("Almagest in Obsidian", () => {
 		expect(o.errors).toEqual([]);
 	});
 
-	it("safe delete moves a note that nothing links to trash/", { timeout: TIMEOUT }, async () => {
+	it("safe delete moves a note that nothing links to tool/trash/", { timeout: TIMEOUT }, async () => {
 		const note = "scratchpad/Loose note.md";
 		const o = await launch({
 			prepare: async (vault) => {
@@ -629,8 +669,8 @@ describe("Almagest in Obsidian", () => {
 		await palette.locator('button[data-action="trash"]').click();
 
 		await until("the note to leave", () => !existsSync(path.join(o.vault, note)));
-		const [day] = await readdir(path.join(o.vault, "trash"));
-		const moved = `trash/${day}/${note}`;
+		const [day] = await readdir(path.join(o.vault, "tool/trash"));
+		const moved = `tool/trash/${day}/${note}`;
 		expect(await o.read(moved)).toBe("A note nothing links.\n");
 		// The views sync that the move starts may commit a snapshot after it; the move is a commit of its own.
 		await until("the trash commit", async () => (await o.git(["log", "-1", "--format=%s", "--", moved])) === `trash: ${note}\n`, {
@@ -656,7 +696,7 @@ describe("Almagest in Obsidian", () => {
 		);
 		const change = JSON.parse(await o.almagest(["change", "propose", plan, "--json"]));
 		await o.almagest(["change", "apply", change.ref.id, "--json"]);
-		const beta = "source-core/documents/Beta.md";
+		const beta = "tool/source-core/documents/Beta.md";
 		const mine = "scratchpad/Plan.md";
 		await mkdir(path.join(o.vault, "scratchpad"), { recursive: true });
 		await writeFile(path.join(o.vault, mine), "Read [[Beta]] first.\n");
@@ -775,10 +815,10 @@ describe("Almagest in Obsidian", () => {
 		const widget = o.page.locator(".workspace-leaf.mod-active .almagest-change-card");
 		await widget.locator("button", { hasText: "Approve" }).click({ timeout: 10_000 });
 		await until("the change to apply", async () => (await status(o, proposed.path)).status === "applied", { describe: () => o.read(proposed.path) });
-		const alpha = await o.read("source-core/documents/Alpha.md");
+		const alpha = await o.read("tool/source-core/documents/Alpha.md");
 		expect(alpha).toContain("Alpha rests on [[Beta]] and [[Gamma]].\n\nA line the reader added.\n");
 		expect(alpha).not.toContain("(checkout)");
-		await until("the change's commit", async () => (await o.git(["log", "-1", "--format=%s", "--", "source-core/documents/Alpha.md"])) === `change: Return ${folder.slice("checkout/".length + 11)}\n`, {
+		await until("the change's commit", async () => (await o.git(["log", "-1", "--format=%s", "--", "tool/source-core/documents/Alpha.md"])) === `change: Return ${folder.slice("checkout/".length + 11)}\n`, {
 			describe: () => o.git(["log", "--oneline", "-5"]),
 		});
 		expect(o.errors).toEqual([]);
@@ -1069,9 +1109,9 @@ describe("Almagest in Obsidian", () => {
 			`---\nid: ses-${id}\ntype: session\nharness: claude\nharness_id: ${id}\nstatus: ${status}\nupdated: ${new Date(updated).toISOString()}\n${extra}description: Plan the [[Alpha]] study\n---\n\n${body}`;
 		const o = await launch({
 			prepare: async (vault) => {
-				await mkdir(path.join(vault, "sessions/2026-10"), { recursive: true });
-				await writeFile(path.join(vault, "sessions/2026-10/waits.md"), session("aaaaaa", "waiting", now - 120_000, "", "## Progress\n\n- 2026-10-07: Read the sources.\n- 2026-10-07: Asked which paper comes first.\n"));
-				await writeFile(path.join(vault, "sessions/2026-10/closed.md"), session("bbbbbb", "ended", now - 1_200_000, `ended: ${new Date(now - 1_200_000).toISOString()}\n`, ""));
+				await mkdir(path.join(vault, "tool/sessions/2026-10"), { recursive: true });
+				await writeFile(path.join(vault, "tool/sessions/2026-10/waits.md"), session("aaaaaa", "waiting", now - 120_000, "", "## Progress\n\n- 2026-10-07: Read the sources.\n- 2026-10-07: Asked which paper comes first.\n"));
+				await writeFile(path.join(vault, "tool/sessions/2026-10/closed.md"), session("bbbbbb", "ended", now - 1_200_000, `ended: ${new Date(now - 1_200_000).toISOString()}\n`, ""));
 			},
 		});
 		const out = await stubTerminal(o);
@@ -1098,7 +1138,44 @@ describe("Almagest in Obsidian", () => {
 		expect(existsSync(out)).toBe(false);
 
 		await waits.locator(".almagest-item-title a").click();
-		await until("the session to open", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === "sessions/2026-10/waits.md");
+		await until("the session to open", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === "tool/sessions/2026-10/waits.md");
+		expect(o.errors).toEqual([]);
+	});
+
+	it("migrates an 11.0 vault from the palette: it shows what moves, then one button moves it and opens the home", { timeout: TIMEOUT }, async () => {
+		const session = "---\nid: ses-cccccc\ntype: session\ncreated: 2026-10-01T09:00:00\nupdated: 2026-10-01T10:00:00\nharness: claude\nharness_id: cccccc\nstatus: ended\n---\n\n## Description\n\nWork.\n";
+		const o = await launch({
+			// The vault as 11.0 left it: sessions/, source-core/, and trash/ at the root, and a note that links into one.
+			prepare: async (vault) => {
+				await mkdir(path.join(vault, "tool/sessions/2026-10"), { recursive: true });
+				await writeFile(path.join(vault, "tool/sessions/2026-10/2026-10-01 0900 cccccc.md"), session);
+				for (const dir of ["sessions", "source-core"]) await rename(path.join(vault, "tool", dir), path.join(vault, dir));
+				await rm(path.join(vault, "tool"), { recursive: true });
+				const edit = async (file: string, from: string, to: string) => writeFile(path.join(vault, file), (await readFile(path.join(vault, file), "utf8")).replace(from, to));
+				await edit("Almagest.md", "\nlayout: 8\n", "\nlayout: 7\n");
+				await edit("sessions/Sessions.base", 'file.inFolder("tool/sessions")', 'file.inFolder("sessions")');
+				await edit(".obsidian/app.json", '"tool/source-core/originals"', '"source-core/originals"');
+				await edit(".obsidian/app.json", '"tool/trash/"', '"trash/"');
+				await writeFile(path.join(vault, "scratchpad/Plan.md"), "Read [[sessions/2026-10/2026-10-01 0900 cccccc|the last session]].\n");
+			},
+		});
+		await until("the notice", async () => (await notices(o)).some((t) => t.includes("Open the Almagest palette to migrate the vault")), { describe: async () => JSON.stringify(await notices(o)) });
+		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-palette"));
+		const palette = o.page.locator(".almagest-palette");
+		await until("the migrate page", async () => (await palette.getAttribute("data-page")) === "migrate" && (await palette.locator(".almagest-tile").count()) === 2, { describe: () => palette.innerText() });
+		expect(await palette.locator("[data-area]").count()).toBe(0);
+		expect(await tile(palette, "files move")).toBe("2");
+		expect(await tile(palette, "files change")).toBe("4");
+		await palette.locator('button[data-action="migrate"]').click();
+
+		await until("the home", async () => (await palette.getAttribute("data-page")) === "home" && (await palette.locator('[data-area="ingest"]').count()) === 1, { describe: () => palette.innerText() });
+		await until("the migrated notice", async () => (await notices(o)).some((t) => t.startsWith("Almagest: migrated the vault in one commit: 2 files moved into tool/.")), { describe: async () => JSON.stringify(await notices(o)) });
+		expect((await notices(o)).some((t) => t.includes("Open the Almagest palette to migrate"))).toBe(false);
+		expect(await o.read("tool/sessions/2026-10/2026-10-01 0900 cccccc.md")).toBe(session);
+		expect(existsSync(path.join(o.vault, "sessions"))).toBe(false);
+		expect(await o.read("scratchpad/Plan.md")).toBe("Read [[tool/sessions/2026-10/2026-10-01 0900 cccccc|the last session]].\n");
+		expect(frontmatter(await o.read("Almagest.md")).layout).toBe("8");
+		expect(await o.git(["log", "-1", "--format=%s"])).toBe("layout: move sessions/, source-core/, and trash/ into tool/\n");
 		expect(o.errors).toEqual([]);
 	});
 

@@ -3,7 +3,7 @@ import { saveOpen } from "./change";
 import { CheckoutModal, returnCheckout, startCheckout } from "./checkout";
 import { Checkout, day, readingListPath, returnBlocked } from "./checkoutstate";
 import { SessionGroups, SessionState, plainLinks } from "./agents";
-import { INGEST, formatAgo, isSnapshotPath, lastProgressLine, linkTitle } from "./helpers";
+import { INGEST, SESSIONS, TOOL, TRASH, formatAgo, isSnapshotPath, lastProgressLine, linkTitle } from "./helpers";
 import { wikifyBlocked } from "./marks";
 import { JOURNALS, JournalVolume, publishBlocked } from "./journalstate";
 import type AlmagestPlugin from "./main";
@@ -39,7 +39,15 @@ interface Started {
 	ref: { id: string; title: string; path: string };
 }
 
-type Action = "ingest" | "checkout" | "lint" | "sync" | "repair" | "wikify" | "trash" | "return" | "publish" | "start" | "resume";
+type Action = "ingest" | "checkout" | "lint" | "sync" | "repair" | "wikify" | "trash" | "return" | "publish" | "start" | "resume" | "migrate";
+
+/** What `vault migrate --json` prints under "migration"; a dry run has no commit. */
+interface Migration {
+	moved: { from: string; to: string }[];
+	edited: string[];
+	warnings: string[];
+	commit?: string;
+}
 
 /** Only a session that waits for the user is the user's to act on. */
 const STATE_TONE: Record<SessionState, Tone> = { "needs you": "accent", working: "muted", idle: "muted", ended: "muted", lost: "muted" };
@@ -79,6 +87,8 @@ export class PaletteView extends ItemView {
 	/** The last progress line of each running work document and open session, by path. */
 	private progress = new Map<string, string>();
 	private sessions: SessionGroups<Session> = { open: [], recent: [], older: 0 };
+	/** What the migration would do, while the vault waits for it. */
+	private migration: Migration | null = null;
 	/** The running subagents of each session, by the session's title. */
 	private subagents = new Map<string, number>();
 	private lint: LintSummary | null = null;
@@ -142,6 +152,16 @@ export class PaletteView extends ItemView {
 	}
 
 	private async readStatus(): Promise<void> {
+		const needs = this.plugin.needs();
+		if (needs !== "") {
+			try {
+				this.migration = needs === "migrate" ? (await this.plugin.almagest<{ migration: Migration }>(["vault", "migrate", "--dry-run"])).migration : null;
+				this.error = "";
+			} catch (e) {
+				this.error = (e as Error).message;
+			}
+			return;
+		}
 		try {
 			const out = await this.plugin.almagest<{ status: VaultStatus }>(["vault"]);
 			const { rows, groups } = await sessionGroups(this.app, this.plugin.staleHours());
@@ -172,8 +192,11 @@ export class PaletteView extends ItemView {
 		const root = this.contentEl;
 		root.empty();
 		root.addClass("almagest-palette");
-		root.dataset.page = this.palettePage;
-		if (this.palettePage === "home") this.renderHome(root);
+		const needs = this.plugin.needs();
+		root.dataset.page = needs || this.palettePage;
+		if (needs === "migrate") this.renderMigrate(root);
+		else if (needs === "update") this.renderUpdate(root);
+		else if (this.palettePage === "home") this.renderHome(root);
 		else this.renderPage(root, this.palettePage);
 	}
 
@@ -182,6 +205,50 @@ export class PaletteView extends ItemView {
 		this.palettePage = page;
 		this.draw();
 		this.contentEl.scrollTop = 0;
+	}
+
+	// A vault of another layout: the palette shows what it needs, in place of its home.
+
+	private renderMigrate(root: HTMLElement): void {
+		this.head(root, "folder-input", "Migrate this vault");
+		if (this.error) root.createDiv({ cls: "almagest-error", text: `Almagest: ${this.error}` });
+		const page = root.createDiv({ cls: "almagest-page" });
+		this.lede(page, `This vault keeps sessions/, source-core/, and trash/ at its root. This version of Almagest keeps them in ${TOOL}/, so the root holds only the folders you use. Almagest waits until the vault is migrated.`);
+		const m = this.migration;
+		if (!m) {
+			if (!this.error) this.empty(page, "Reading what the migration would move…");
+			return;
+		}
+		this.tiles(page, [
+			[m.moved.length, m.moved.length === 1 ? "file moves" : "files move"],
+			[m.edited.length, m.edited.length === 1 ? "file changes" : "files change"],
+		]);
+		this.actions(page, (el) => this.button(el, "migrate", "Migrate the vault", "", () => this.migrate(), "cta"));
+		const notes = page.createDiv({ cls: "almagest-quiet" });
+		notes.setText(`One commit, after a snapshot of your edits. The links and Bases that name a moved file follow it; prose, code, and the trash stay as written. ${m.warnings.map((w) => w.charAt(0).toUpperCase() + w.slice(1) + ".").join(" ")}`.trim());
+	}
+
+	private renderUpdate(root: HTMLElement): void {
+		this.head(root, "refresh-cw", "Update Almagest");
+		const page = root.createDiv({ cls: "almagest-page" });
+		this.lede(page, "A newer Almagest wrote this vault. Update Almagest in Obsidian's community plugins, and the agent plugin (claude plugin update almagest@nathanaday-almagest), then reload Obsidian.");
+	}
+
+	private async migrate(): Promise<void> {
+		const { migration } = await this.plugin.almagest<{ migration: Migration }>(["vault", "migrate"]);
+		new Notice(`Almagest: migrated the vault in one commit: ${plural(migration.moved.length, "file", "files")} moved into ${TOOL}/. Start a new agent session in the vault.`, 10_000);
+	}
+
+	/** A page's head: its icon and title, with the way back when there is a home to go to. */
+	private head(root: HTMLElement, icon: string, title: string, back = false): void {
+		const head = root.createDiv({ cls: "almagest-page-head" });
+		if (back) {
+			const button = head.createEl("button", { cls: "almagest-back clickable-icon", attr: { "aria-label": "Back to Almagest" } });
+			setIcon(button, "chevron-left");
+			button.onclick = () => this.show("home");
+		}
+		setIcon(head.createDiv({ cls: "almagest-page-icon" }), icon);
+		head.createDiv({ cls: "almagest-page-title", text: title });
 	}
 
 	// The home: one row per area, each a way into its page.
@@ -225,12 +292,7 @@ export class PaletteView extends ItemView {
 	// A page: its head, its numbers, its actions, and its lists.
 
 	private renderPage(root: HTMLElement, area: Area): void {
-		const head = root.createDiv({ cls: "almagest-page-head" });
-		const back = head.createEl("button", { cls: "almagest-back clickable-icon", attr: { "aria-label": "Back to Almagest" } });
-		setIcon(back, "chevron-left");
-		back.onclick = () => this.show("home");
-		setIcon(head.createDiv({ cls: "almagest-page-icon" }), AREA_ICONS[area]);
-		head.createDiv({ cls: "almagest-page-title", text: AREA_NAMES[area] });
+		this.head(root, AREA_ICONS[area], AREA_NAMES[area], true);
 		if (this.error) root.createDiv({ cls: "almagest-error", text: `Almagest: ${this.error}` });
 		const s = this.state;
 		if (!s) {
@@ -426,7 +488,7 @@ export class PaletteView extends ItemView {
 		}
 		if (older > 0) {
 			const more = page.createDiv({ cls: "almagest-quiet" });
-			this.link(more, `${plural(older, "older session", "older sessions")} in sessions/`, "sessions/Sessions.base");
+			this.link(more, `${plural(older, "older session", "older sessions")} in ${SESSIONS}/`, `${SESSIONS}/Sessions.base`);
 		}
 	}
 
@@ -439,7 +501,7 @@ export class PaletteView extends ItemView {
 	}
 
 	private renderNote(page: HTMLElement, s: PaletteState): void {
-		this.lede(page, "Wikify marks a copy of the open note with what the wiki knows. Safe delete moves the note to trash/ when nothing links it.");
+		this.lede(page, `Wikify marks a copy of the open note with what the wiki knows. Safe delete moves the note to ${TRASH}/ when nothing links it.`);
 		this.tiles(page, [[s.trash, s.trash === 1 ? "file in trash" : "files in trash"]]);
 		const file = this.app.workspace.getActiveFile();
 		if (!file) {

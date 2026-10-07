@@ -12,13 +12,13 @@ test("the palette's status comes from vault --json", () => {
 			{ name: "a.md", size: "6 B", kind: "markdown" },
 			{ name: "b c.txt", size: "2 B", kind: "text" },
 		],
-		pending: [ref("Paper", "source-core/documents/Paper.md", { type: "source" })],
+		pending: [ref("Paper", "tool/source-core/documents/Paper.md", { type: "source" })],
 		changes: {
 			proposed: [ref("2026-10-06 Add B", "changes/2026-10/2026-10-06 Add B.md"), ref("2026-10-05 Add A", "changes/2026-10/2026-10-05 Add A.md")],
 			running: [ref("2026-10-06 Ingest 2 files", "changes/2026-10/2026-10-06 Ingest 2 files.md", { kind: "ingest", status: "running" })],
 			recent: [],
 		},
-		sessions: { running: [ref("s", "sessions/s.md")], waiting: [], idle: [] },
+		sessions: { running: [ref("s", "tool/sessions/s.md")], waiting: [], idle: [] },
 		trash: 3,
 		journals: [
 			{ volume: "cs566-notes", name: "CS566 Notes", notes: 2, edition: "", changed: true },
@@ -54,8 +54,8 @@ test("an empty or older status reads as zeros", () => {
 });
 
 test("noteTitle is the name Obsidian links a file by", () => {
-	assert.equal(noteTitle("source-core/documents/Beta.md"), "Beta");
-	assert.equal(noteTitle("source-core/originals/paper.pdf"), "paper.pdf");
+	assert.equal(noteTitle("tool/source-core/documents/Beta.md"), "Beta");
+	assert.equal(noteTitle("tool/source-core/originals/paper.pdf"), "paper.pdf");
 	assert.equal(noteTitle("Top.md"), "Top");
 });
 
@@ -64,7 +64,7 @@ const finding = (severity: string, check: string, fix: string, title = "Alpha") 
 	severity,
 	fix,
 	message: `${check} in ${title}`,
-	doc: { title, path: `source-core/documents/${title}.md` },
+	doc: { title, path: `tool/source-core/documents/${title}.md` },
 });
 
 test("lint shows its counts, the most severe findings first, and what a change repairs", () => {
@@ -102,15 +102,15 @@ test("isRepairable takes errors and warnings that wiki-edit fixes", () => {
 	assert.ok(!isRepairable(finding("error", "repository-path", "repo-link with the new path, or repo-unlink")));
 });
 
-test("safe delete of a file that nothing links: it moved to trash/", () => {
-	assert.deepEqual(trashOutcome({ path: "scratchpad/n.md", backlinks: [], moved: "trash/2026-10-06/scratchpad/n.md" }), {
+test("safe delete of a file that nothing links: it moved to tool/trash/", () => {
+	assert.deepEqual(trashOutcome({ path: "scratchpad/n.md", backlinks: [], moved: "tool/trash/2026-10-06/scratchpad/n.md" }), {
 		kind: "moved",
-		line: "Moved scratchpad/n.md to trash/2026-10-06/scratchpad/n.md.",
+		line: "Moved scratchpad/n.md to tool/trash/2026-10-06/scratchpad/n.md.",
 	});
 	const viaChange = trashOutcome({
-		path: "source-core/documents/Beta.md",
+		path: "tool/source-core/documents/Beta.md",
 		backlinks: [],
-		moved: "trash/2026-10-06/source-core/documents/Beta.md",
+		moved: "tool/trash/2026-10-06/source-core/documents/Beta.md",
 		change: ref("2026-10-06 Delete Beta", "changes/2026-10/2026-10-06 Delete Beta.md"),
 	});
 	assert.equal(viaChange.kind, "moved");
@@ -118,19 +118,19 @@ test("safe delete of a file that nothing links: it moved to trash/", () => {
 });
 
 test("safe delete of a file that others link: it stays, with its backlinks", () => {
-	const alpha = ref("Alpha", "source-core/documents/Alpha.md", { type: "topic" });
-	const out = trashOutcome({ path: "source-core/documents/Beta.md", backlinks: [alpha], moved: "" });
-	assert.deepEqual(out, { kind: "linked", path: "source-core/documents/Beta.md", title: "Beta", backlinks: [alpha], yours: [], agent: true });
+	const alpha = ref("Alpha", "tool/source-core/documents/Alpha.md", { type: "topic" });
+	const out = trashOutcome({ path: "tool/source-core/documents/Beta.md", backlinks: [alpha], moved: "" });
+	assert.deepEqual(out, { kind: "linked", path: "tool/source-core/documents/Beta.md", title: "Beta", backlinks: [alpha], yours: [], agent: true });
 });
 
 test("a link outside the knowledge documents is the user's, and an agent resolves only a document that documents link", () => {
-	const alpha = ref("Alpha", "source-core/documents/Alpha.md", { type: "topic" });
+	const alpha = ref("Alpha", "tool/source-core/documents/Alpha.md", { type: "topic" });
 	const week = ref("Week 1", "journals/cs566/Week 1.md");
 	const copy = ref("Beta (checkout)", "checkout/2026-10-06 Study/Beta (checkout).md");
-	const mixed = trashOutcome({ path: "source-core/documents/Beta.md", backlinks: [alpha, week, copy], moved: "" });
+	const mixed = trashOutcome({ path: "tool/source-core/documents/Beta.md", backlinks: [alpha, week, copy], moved: "" });
 	assert.ok(mixed.kind === "linked" && mixed.agent);
 	assert.deepEqual((mixed as { yours: unknown }).yours, [week, copy]);
-	const onlyYours = trashOutcome({ path: "source-core/documents/Beta.md", backlinks: [week], moved: "" });
+	const onlyYours = trashOutcome({ path: "tool/source-core/documents/Beta.md", backlinks: [week], moved: "" });
 	assert.ok(onlyYours.kind === "linked" && !onlyYours.agent);
 	const aNote = trashOutcome({ path: "scratchpad/Plan.md", backlinks: [alpha], moved: "" });
 	assert.ok(aNote.kind === "linked" && !aNote.agent && aNote.yours.length === 0);
@@ -158,7 +158,7 @@ test("the palette's home names each area's state in one line, with a chip only w
 	const busy = paletteState(
 		{
 			ingest: [{ name: "a.pdf" }, { name: "b.md" }],
-			pending: [ref("Paper", "source-core/documents/Paper.md")],
+			pending: [ref("Paper", "tool/source-core/documents/Paper.md")],
 			changes: { proposed: [ref("Add A", "changes/a.md")], running: [ref("Ingest", "changes/i.md"), ref("Repair", "changes/r.md")] },
 			problems: 3,
 			journals: [{ volume: "cs566", name: "CS566", notes: 2, changed: true }],

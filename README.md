@@ -42,9 +42,9 @@ updates itself: Obsidian's community plugins do that.
   Almagest settings, or in the Duet plugin when Duet is on.
 - **Clipboard.** Off macOS, or when no terminal opens, the plugin copies the agent's
   command to the clipboard for you to paste. It never reads the clipboard.
-- **Vault files.** The plugin reads the folders Almagest keeps (`source-core/documents/`,
-  `sessions/`, and `changes/`) to show the documents, sessions, and changes. It lists no
-  other folder.
+- **Vault files.** The plugin reads the folders Almagest keeps (`tool/source-core/documents/`,
+  `tool/sessions/`, and `changes/`) to show the documents, sessions, and changes. It lists
+  no other folder.
 - **Network.** The plugin makes no network request. The agents you start use their own.
 - **Telemetry, accounts, payment.** None.
 
@@ -78,7 +78,7 @@ With the plugin, Obsidian adds:
   - **This note**: **Wikify this note** (experimental) copies the open note to
     `scratchpad/`, opens the copy, and starts an agent that marks it (see
     [Wikify a note](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#wikify-a-note-experimental)). **Safe delete this note**
-    runs `almagest vault trash` on it. When nothing links it, it moves to `trash/`; a
+    runs `almagest vault trash` on it. When nothing links it, it moves to `tool/trash/`; a
     topic, a source, or a repository leaves through a change that applies at once, so
     `change undo` in a terminal brings it back, and no agent can undo it. When files link
     it, nothing moves, and a list names the links. For a knowledge document that
@@ -101,6 +101,14 @@ With the plugin, Obsidian adds:
 - **The repository panel** in each repository document: the branch, the head, and the
   uncommitted files of the linked repository.
 - Colors and icons for the callouts of Almagest documents.
+- **Folder colors** in the file explorer: what you read (`wiki-view/`) in cyan, what you
+  write and add (`journals/`, `ingest/`) in purple, and what Almagest keeps for itself
+  (`tool/`) dimmed. The setting "Color Almagest's folders" turns them off.
+- **Migrate an 11.0 vault.** In a vault that keeps `sessions/`, `source-core/`, and
+  `trash/` at its root, a notice and the palette offer the migration: the palette shows
+  how many files move and change, and **Migrate the vault** runs `almagest vault migrate`,
+  which moves them into `tool/` in one commit. See the
+  [guide](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#update).
 - A sync of the views a few seconds after you edit a note.
 
 ## License

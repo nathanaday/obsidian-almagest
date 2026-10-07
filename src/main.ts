@@ -4,6 +4,7 @@ import { AlmagestError, binaryInfo, findBinary, runAlmagest } from "./cli";
 import {
 	LAYOUT,
 	VAULT_DOCUMENT,
+	layoutNeeds,
 	binaryProblem,
 	Synced,
 	isLockHeld,
@@ -25,6 +26,9 @@ import { PALETTE_ICON, PALETTE_VIEW, PaletteView } from "./palette";
 import { confirmPublishOf } from "./publish";
 import { AlmagestSettingTab, AlmagestSettings, DEFAULT_SETTINGS } from "./settings";
 import { isWikified } from "./marks";
+
+/** The class on the body that colors Almagest's folders in the file explorer (styles.css). */
+const FOLDER_COLORS = "almagest-folder-colors";
 import { Wikify, markExtension, markPostProcessor } from "./wikify";
 
 const SYNC_DELAY = 2000;
@@ -65,6 +69,10 @@ export default class AlmagestPlugin extends Plugin {
 			if (turn.status === "failed") new Notice(`Almagest: the ${c.label} agent stopped: ${turn.error ?? "its turn failed"}.`, 10_000);
 		},
 	);
+
+	private layoutNotice: Notice | null = null;
+	/** The layout the notice and the palettes last followed; null before the first read. */
+	private knownLayout: number | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -108,6 +116,7 @@ export default class AlmagestPlugin extends Plugin {
 
 		this.registerEvent(
 			this.app.metadataCache.on("changed", (file) => {
+				if (file.path === VAULT_DOCUMENT) this.onLayoutChange();
 				this.onDocChange(file.path);
 			}),
 		);
@@ -122,14 +131,17 @@ export default class AlmagestPlugin extends Plugin {
 				this.onDocChange(oldPath);
 			}),
 		);
+		this.colorFolders();
 		this.app.workspace.onLayoutReady(() => {
 			void this.checkBinary();
-			this.checkLayout();
+			this.onLayoutChange();
 			this.watchForSnapshots();
 		});
 	}
 
 	onunload(): void {
+		document.body.removeClass(FOLDER_COLORS);
+		this.layoutNotice?.hide();
 		if (this.syncTimer !== null) window.clearTimeout(this.syncTimer);
 		this.snapshots.stop();
 		this.conversations.stop();
@@ -269,8 +281,13 @@ export default class AlmagestPlugin extends Plugin {
 	}
 
 	/** Whether the vault has the layout this plugin reads. */
-	private ready(): boolean {
+	ready(): boolean {
 		return this.layout() === LAYOUT;
+	}
+
+	/** What the vault needs before the plugin works in it: its migration, an update, or nothing. */
+	needs(): "migrate" | "update" | "" {
+		return layoutNeeds(this.layout());
 	}
 
 	/** Says once, until the user closes it, what keeps the plugin from its binary. */
@@ -280,13 +297,39 @@ export default class AlmagestPlugin extends Plugin {
 		if (problem) new Notice(`Almagest: ${problem}`, 0);
 	}
 
-	/** Names the update when the vault has another layout than this plugin reads. */
+	/** Says, until the layout changes or the user closes it, what a vault of another layout needs. */
 	private checkLayout(): void {
-		if (this.ready()) return;
-		new Notice(
-			`Almagest: this vault has layout ${this.layout()}, and this plugin reads layout ${LAYOUT}. Update Almagest in Obsidian's community plugins, and the agent plugin (claude plugin update almagest@nathanaday-almagest).`,
-			0,
-		);
+		this.layoutNotice?.hide();
+		this.layoutNotice = null;
+		const needs = this.needs();
+		if (needs === "migrate") {
+			this.layoutNotice = new Notice("Almagest: this vault keeps sessions/, source-core/, and trash/ at its root, and this version keeps them in tool/. Open the Almagest palette to migrate the vault.", 0);
+		} else if (needs === "update") {
+			this.layoutNotice = new Notice(
+				`Almagest: this vault has layout ${this.layout()}, and this plugin reads layout ${LAYOUT}. Update Almagest in Obsidian's community plugins, and the agent plugin (claude plugin update almagest@nathanaday-almagest).`,
+				0,
+			);
+		}
+	}
+
+	/**
+	 * Follows the layout the vault document records, at the start and after a migration
+	 * here or in a terminal: the notice and the palettes follow it once per change.
+	 */
+	private onLayoutChange(): void {
+		const file = this.app.vault.getFileByPath(VAULT_DOCUMENT);
+		// Obsidian has not read the vault document yet; its "changed" event follows.
+		if (file && !this.app.metadataCache.getFileCache(file)) return;
+		const layout = this.layout();
+		if (layout === this.knownLayout) return;
+		this.knownLayout = layout;
+		this.checkLayout();
+		this.paletteViews().forEach((v) => void v.refresh());
+	}
+
+	/** Colors the folders of Almagest in the file explorer, while the setting is on. */
+	colorFolders(): void {
+		document.body.toggleClass(FOLDER_COLORS, this.settings.colorFolders);
 	}
 
 	// Views

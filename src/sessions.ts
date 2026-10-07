@@ -1,7 +1,7 @@
 import { App, Notice, TFile } from "obsidian";
 import { homedir } from "os";
 import { SessionRow, groupSessions, resumeCommand } from "./agents";
-import { expandHome } from "./helpers";
+import { SESSIONS, expandHome } from "./helpers";
 import { findTranscript, liveAgents, resumePlace } from "./launcher";
 import type AlmagestPlugin from "./main";
 import { markdownFilesIn } from "./vaultfiles";
@@ -19,7 +19,7 @@ export interface Session extends SessionRow {
 /** Every session document of the vault. */
 function readSessions(app: App): Session[] {
 	const out: Session[] = [];
-	for (const file of markdownFilesIn(app, "sessions")) {
+	for (const file of markdownFilesIn(app, SESSIONS)) {
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
 		if (!fm || fm.type !== "session") continue;
 		out.push({

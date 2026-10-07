@@ -1,4 +1,4 @@
-/* Almagest: callouts, the change widget and the change document, the palette and its Publish and Checkout modals, the bubbles of a wikified note, and the repository panel. Nothing here styles Obsidian's own panes. */
+/* Almagest: callouts, the change widget and the change document, the palette and its Publish and Checkout modals, the bubbles of a wikified note, the repository panel, and the colors of Almagest's folders in the file explorer. Nothing else here styles Obsidian's own panes. */
 
 /* Callouts: the lead callout of each document type and kind, of the views, and of the files Almagest writes for the user (almagest): a journal's publication history, a checkout's copies, reading list, and ledger. */
 .callout[data-callout="source"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-file-image; }
@@ -549,3 +549,21 @@
 	background-color: rgba(var(--almagest-mark), 0.1);
 }
 .almagest-mark .almagest-mark-button.mod-cta:hover { background-color: rgba(var(--almagest-mark), 0.22); }
+
+/* Almagest's folders in the file explorer, while the setting puts the class on the body: what the user reads (wiki-view/) in cyan, what the user writes and adds (journals/, ingest/) in purple, and what Almagest keeps for itself (tool/) dimmed. Only these top folders. */
+body.almagest-folder-colors .nav-folder-title[data-path="wiki-view"] {
+	--almagest-folder: var(--color-cyan);
+}
+body.almagest-folder-colors .nav-folder-title:is([data-path="journals"], [data-path="ingest"]) {
+	--almagest-folder: var(--color-purple);
+}
+body.almagest-folder-colors .nav-folder-title:is([data-path="wiki-view"], [data-path="journals"], [data-path="ingest"]) {
+	color: var(--almagest-folder);
+	font-weight: var(--font-semibold);
+}
+body.almagest-folder-colors .nav-folder-title:is([data-path="wiki-view"], [data-path="journals"], [data-path="ingest"]) .nav-folder-collapse-indicator {
+	color: var(--almagest-folder);
+}
+body.almagest-folder-colors .nav-folder-title[data-path="tool"] {
+	color: var(--text-faint);
+}
