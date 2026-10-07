@@ -1,7 +1,7 @@
 import { App, MarkdownPostProcessorContext, MarkdownRenderChild, MarkdownView, Modal, Notice, Setting } from "obsidian";
 import { ChangeAction, changeCard, rejectReason } from "./changestate";
 import { countsLine, lastProgressLine } from "./helpers";
-import type AtlasPlugin from "./main";
+import type AlmagestPlugin from "./main";
 
 interface Preview {
 	ref?: { title?: string };
@@ -18,7 +18,7 @@ export class ChangeRunner {
 	private current: { id: string; action: ChangeAction } | null = null;
 	private listeners = new Set<() => void>();
 
-	constructor(private plugin: AtlasPlugin) {}
+	constructor(private plugin: AlmagestPlugin) {}
 
 	/** The command that runs for this change, if one does. */
 	actionFor(id: string): ChangeAction | null {
@@ -39,18 +39,18 @@ export class ChangeRunner {
 		await this.run(id, "apply", sourcePath, async () => {
 			// An edit typed a moment ago goes into the change.
 			await saveOpen(this.plugin.app, sourcePath);
-			const p = await this.plugin.atlas<Preview>(["change", "apply", id]);
+			const p = await this.plugin.almagest<Preview>(["change", "apply", id]);
 			const counts = countsLine(p.counts);
 			const commit = p.commit ? ` Commit ${p.commit.slice(0, 7)}.` : "";
-			new Notice(`Atlas: applied ${p.ref?.title ?? id}${counts ? `: ${counts}` : ""}.${commit}`);
+			new Notice(`Almagest: applied ${p.ref?.title ?? id}${counts ? `: ${counts}` : ""}.${commit}`);
 			warn(p.warnings);
 		});
 	}
 
 	async reject(id: string, reason: string, sourcePath: string): Promise<void> {
 		await this.run(id, "reject", sourcePath, async () => {
-			const p = await this.plugin.atlas<Preview>(["change", "reject", id, "--reason", rejectReason(reason)]);
-			new Notice(`Atlas: rejected ${p.ref?.title ?? id}.`);
+			const p = await this.plugin.almagest<Preview>(["change", "reject", id, "--reason", rejectReason(reason)]);
+			new Notice(`Almagest: rejected ${p.ref?.title ?? id}.`);
 			warn(p.warnings);
 		});
 	}
@@ -61,7 +61,7 @@ export class ChangeRunner {
 	 */
 	private async run(id: string, action: ChangeAction, sourcePath: string, fn: () => Promise<void>): Promise<void> {
 		if (this.current) {
-			new Notice("Atlas: a change command runs. Wait for it to finish.");
+			new Notice("Almagest: a change command runs. Wait for it to finish.");
 			return;
 		}
 		this.current = { id, action };
@@ -71,7 +71,7 @@ export class ChangeRunner {
 			await fn();
 			await decided.done;
 		} catch (e) {
-			new Notice(`Atlas: ${(e as Error).message}`, 10_000);
+			new Notice(`Almagest: ${(e as Error).message}`, 10_000);
 		} finally {
 			decided.stop();
 			this.current = null;
@@ -115,19 +115,19 @@ export async function saveOpen(app: App, path: string): Promise<void> {
 }
 
 function warn(warnings: string[] | null | undefined): void {
-	for (const w of warnings ?? []) new Notice(`Atlas: ${w}`, 10_000);
+	for (const w of warnings ?? []) new Notice(`Almagest: ${w}`, 10_000);
 }
 
 /**
- * The atlas-change block: a card drawn from the frontmatter of the note that holds it. Its
- * class is atlas-change-card: atlas-change is the cssclass of the change document itself.
+ * The almagest-change block: a card drawn from the frontmatter of the note that holds it. Its
+ * class is almagest-change-card: almagest-change is the cssclass of the change document itself.
  */
 class ChangeWidget extends MarkdownRenderChild {
 	private generation = 0;
 
 	constructor(
 		containerEl: HTMLElement,
-		private plugin: AtlasPlugin,
+		private plugin: AlmagestPlugin,
 		private runner: ChangeRunner,
 		private path: string,
 	) {
@@ -169,17 +169,17 @@ class ChangeWidget extends MarkdownRenderChild {
 		const card = changeCard(fm, this.runner.actionFor(typeof fm?.id === "string" ? fm.id : ""), progress);
 		const el = this.containerEl;
 		el.empty();
-		el.addClass("atlas-change-card");
+		el.addClass("almagest-change-card");
 		el.dataset.state = card.state;
 
-		const head = el.createDiv({ cls: "atlas-change-head" });
-		head.createSpan({ cls: "atlas-change-label", text: card.label });
-		if (card.kind) head.createSpan({ cls: "atlas-change-kind", text: card.kind });
-		if (card.counts) head.createSpan({ cls: "atlas-change-counts", text: card.counts });
-		el.createDiv({ cls: "atlas-change-line", text: card.line });
+		const head = el.createDiv({ cls: "almagest-change-head" });
+		head.createSpan({ cls: "almagest-change-label", text: card.label });
+		if (card.kind) head.createSpan({ cls: "almagest-change-kind", text: card.kind });
+		if (card.counts) head.createSpan({ cls: "almagest-change-counts", text: card.counts });
+		el.createDiv({ cls: "almagest-change-line", text: card.line });
 		if (card.buttons.length === 0) return;
 
-		const buttons = el.createDiv({ cls: "atlas-change-buttons" });
+		const buttons = el.createDiv({ cls: "almagest-change-buttons" });
 		const running = card.state === "running";
 		for (const b of card.buttons) {
 			const button = buttons.createEl("button", { cls: b === "approve" ? "mod-cta" : "", text: b === "approve" ? "Approve" : "Cancel" });
@@ -195,8 +195,8 @@ class ChangeWidget extends MarkdownRenderChild {
 	}
 }
 
-/** Renders every atlas-change code block, in reading view and in live preview. */
-export function changeProcessor(plugin: AtlasPlugin, runner: ChangeRunner) {
+/** Renders every almagest-change code block, in reading view and in live preview. */
+export function changeProcessor(plugin: AlmagestPlugin, runner: ChangeRunner) {
 	return (_source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
 		ctx.addChild(new ChangeWidget(el, plugin, runner, ctx.sourcePath));
 	};
@@ -218,8 +218,8 @@ class CancelModal extends Modal {
 		this.setTitle("Cancel this change");
 		this.contentEl.createEl("p", {
 			text: this.running
-				? "Atlas rejects the work. The agent stops when it reports its next step, and this document stays as the record."
-				: "Atlas rejects the change. Nothing it would write changes, and its document stays as the record.",
+				? "Almagest rejects the work. The agent stops when it reports its next step, and this document stays as the record."
+				: "Almagest rejects the change. Nothing it would write changes, and its document stays as the record.",
 		});
 		const submit = () => {
 			this.close();
@@ -230,7 +230,7 @@ class CancelModal extends Modal {
 			.setDesc("Optional. One line.")
 			.addText((text) => {
 				text.setPlaceholder("Why not").onChange((v) => (this.reason = v));
-				text.inputEl.addClass("atlas-reason-input");
+				text.inputEl.addClass("almagest-reason-input");
 				text.inputEl.addEventListener("keydown", (e) => {
 					if (e.key === "Enter" && !e.isComposing) {
 						e.preventDefault();

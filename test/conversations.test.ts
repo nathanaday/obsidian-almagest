@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { Conversations, duetApi } from "../src/conversations";
 import type { ConversationStatus, DuetApi, TurnEnd } from "../src/duet";
 
-/** A Duet that records what Atlas asks of it; the test ends turns by hand. */
+/** A Duet that records what Almagest asks of it; the test ends turns by hand. */
 function fakeDuet(initial: ConversationStatus = "working") {
 	const status = new Map<string, ConversationStatus>();
 	const listeners = new Map<string, ((t: TurnEnd) => void)[]>();

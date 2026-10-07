@@ -2,7 +2,7 @@ import { RangeSetBuilder, StateEffect, Text } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { MarkdownPostProcessorContext, MarkdownRenderChild, MarkdownView, Notice, TFile, debounce, editorInfoField, editorLivePreviewField } from "obsidian";
 import { saveOpen } from "./change";
-import type AtlasPlugin from "./main";
+import type AlmagestPlugin from "./main";
 import { Decision, Mark, acceptAll, acceptedLine, decide as decideMark, draftTitle, findMarks, isWikified, linkFor, linkMarks, locate, replacement, wikifyBlocked } from "./marks";
 import { draftMessage, wikifyMessage } from "./messages";
 import { noteTitle } from "./palettestate";
@@ -18,7 +18,7 @@ type MarkFields = Pick<Mark, "kind" | "title" | "phrase" | "text">;
 type BubbleState = { kind: "link" } | { kind: "gone" } | { kind: "new" } | { kind: "drafting"; path: string } | { kind: "ready" };
 
 const DRAFTING = ["running", "proposed", "applying"];
-const CHANGED = "Atlas: this mark changed since it showed. Nothing was replaced.";
+const CHANGED = "Almagest: this mark changed since it showed. Nothing was replaced.";
 const REFRESH_MS = 300;
 
 /** The state behind every bubble: what each mark offers, and Create. */
@@ -32,7 +32,7 @@ export class Wikify {
 	private drafts: Map<string, string> | null = null;
 	private readonly soon = debounce(() => this.refresh(), REFRESH_MS, true);
 
-	constructor(private plugin: AtlasPlugin) {}
+	constructor(private plugin: AlmagestPlugin) {}
 
 	/** Draws the bubbles again when a note that a title could resolve to, or a draft, changes. */
 	register(): void {
@@ -102,11 +102,11 @@ export class Wikify {
 		try {
 			// The agent reads the note as the user sees it.
 			await saveOpen(this.plugin.app, sourcePath);
-			const { ref } = await this.plugin.atlas<{ ref: { id: string; title: string; path: string } }>(["change", "start", "--kind", "draft", "--title", `Draft ${title}`]);
+			const { ref } = await this.plugin.almagest<{ ref: { id: string; title: string; path: string } }>(["change", "start", "--kind", "draft", "--title", `Draft ${title}`]);
 			this.started.set(title, ref.path);
 			await this.plugin.runAgent(draftMessage(title, noteTitle(sourcePath), ref), `Agent · ${ref.title}`, "draft");
 		} catch (e) {
-			new Notice(`Atlas: ${(e as Error).message}`, 10_000);
+			new Notice(`Almagest: ${(e as Error).message}`, 10_000);
 		} finally {
 			this.creating.delete(title);
 			this.refresh();
@@ -155,7 +155,7 @@ export class Wikify {
 		await saveOpen(this.plugin.app, file.path);
 		// A path that begins with a dash would read as an option.
 		const arg = file.path.startsWith("-") ? `./${file.path}` : file.path;
-		const { copy } = await this.plugin.atlas<{ copy: string }>(["wikify", "start", arg]);
+		const { copy } = await this.plugin.almagest<{ copy: string }>(["wikify", "start", arg]);
 		await this.plugin.openWhenSeen(copy, true);
 		const title = noteTitle(copy);
 		await this.plugin.runAgent(wikifyMessage(title), `Agent · ${title}`, "wikify");
@@ -165,13 +165,13 @@ export class Wikify {
 /** Draws a bubble: the phrase, the pill, and the buttons that the state offers. */
 function drawBubble(el: HTMLElement, w: Wikify, mark: MarkFields, state: BubbleState, decide: (d: Decision) => void, sourcePath: string): void {
 	el.empty();
-	el.className = `atlas-mark atlas-mark-${mark.kind}`;
+	el.className = `almagest-mark almagest-mark-${mark.kind}`;
 	el.dataset.state = state.kind;
 	el.dataset.title = mark.title;
-	el.createSpan({ cls: "atlas-mark-phrase", text: mark.phrase });
-	el.createSpan({ cls: "atlas-mark-pill", text: `${mark.kind === "link" ? "→" : "+"} ${mark.title}` });
+	el.createSpan({ cls: "almagest-mark-phrase", text: mark.phrase });
+	el.createSpan({ cls: "almagest-mark-pill", text: `${mark.kind === "link" ? "→" : "+"} ${mark.title}` });
 	const button = (text: string, run: () => void, cta = false) => {
-		const b = el.createEl("button", { cls: cta ? "atlas-mark-button mod-cta" : "atlas-mark-button", text });
+		const b = el.createEl("button", { cls: cta ? "almagest-mark-button mod-cta" : "almagest-mark-button", text });
 		b.dataset.action = text.toLowerCase();
 		// The editor keeps its selection: a press on a button is no click in the text.
 		b.addEventListener("mousedown", (e) => e.preventDefault());
@@ -186,13 +186,13 @@ function drawBubble(el: HTMLElement, w: Wikify, mark: MarkFields, state: BubbleS
 			button("Accept", () => decide("accept"), true);
 			break;
 		case "gone":
-			el.createSpan({ cls: "atlas-mark-gone", text: "no note", attr: { title: `No note is titled ${mark.title} now.` } });
+			el.createSpan({ cls: "almagest-mark-gone", text: "no note", attr: { title: `No note is titled ${mark.title} now.` } });
 			break;
 		case "new":
 			button("Create", () => void w.create(mark.title, sourcePath), true);
 			break;
 		case "drafting": {
-			const label = el.createSpan({ cls: "atlas-mark-drafting", text: "drafting" });
+			const label = el.createSpan({ cls: "almagest-mark-drafting", text: "drafting" });
 			if (state.path) {
 				label.setAttr("title", state.path);
 				label.addEventListener("mousedown", (e) => e.preventDefault());
@@ -250,7 +250,7 @@ class MarkWidget extends WidgetType {
 	/** A click on a button is the bubble's; a click on the phrase puts the cursor in the mark, which shows its text. */
 	ignoreEvent(event: Event): boolean {
 		const target = event.target as HTMLElement | null;
-		return !!target?.closest?.(".atlas-mark-button, .atlas-mark-drafting");
+		return !!target?.closest?.(".almagest-mark-button, .almagest-mark-drafting");
 	}
 }
 
@@ -332,7 +332,7 @@ class MarkBubbles extends MarkdownRenderChild {
 	constructor(
 		containerEl: HTMLElement,
 		private w: Wikify,
-		private plugin: AtlasPlugin,
+		private plugin: AlmagestPlugin,
 		private ctx: MarkdownPostProcessorContext,
 		private bubbles: Bubble[],
 	) {
@@ -372,13 +372,13 @@ class MarkBubbles extends MarkdownRenderChild {
 }
 
 /** Replaces each mark in the rendered text of a wikified note with a bubble. Code stays text. */
-export function markPostProcessor(plugin: AtlasPlugin, w: Wikify) {
+export function markPostProcessor(plugin: AlmagestPlugin, w: Wikify) {
 	return (el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
 		if (!isWikified(ctx.sourcePath)) return;
 		const nodes: globalThis.Text[] = [];
 		const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
 			acceptNode: (n) =>
-				n.parentElement?.closest("code, pre, .atlas-mark") ? NodeFilter.FILTER_REJECT : n.nodeValue?.includes("{{") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
+				n.parentElement?.closest("code, pre, .almagest-mark") ? NodeFilter.FILTER_REJECT : n.nodeValue?.includes("{{") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
 		});
 		for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n as globalThis.Text);
 		const bubbles: Bubble[] = [];

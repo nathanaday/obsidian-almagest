@@ -2,26 +2,26 @@ import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import { binaryVersion, findBinary } from "./cli";
 import { SNAPSHOT_QUIET_DEFAULT, quietSeconds } from "./helpers";
 import { AGENTS, AGENT_NAMES, AgentConfig, TERMINALS, TERMINAL_NAMES, inherited, preference } from "./agents";
-import type AtlasPlugin from "./main";
+import type AlmagestPlugin from "./main";
 import { homedir } from "os";
 
 const shortHome = (p: string) => (p.startsWith(homedir() + "/") ? "~" + p.slice(homedir().length) : p);
 
-export interface AtlasSettings {
+export interface AlmagestSettings {
 	binaryPath: string;
 	syncOnChange: boolean;
 	/** Seconds with no file event before the edits go into a snapshot commit; 0 turns it off. */
 	snapshotQuietSeconds: number;
 }
 
-export const DEFAULT_SETTINGS: AtlasSettings = {
+export const DEFAULT_SETTINGS: AlmagestSettings = {
 	binaryPath: "",
 	syncOnChange: true,
 	snapshotQuietSeconds: SNAPSHOT_QUIET_DEFAULT,
 };
 
-export class AtlasSettingTab extends PluginSettingTab {
-	constructor(app: App, private plugin: AtlasPlugin) {
+export class AlmagestSettingTab extends PluginSettingTab {
+	constructor(app: App, private plugin: AlmagestPlugin) {
 		super(app, plugin);
 	}
 
@@ -31,8 +31,8 @@ export class AtlasSettingTab extends PluginSettingTab {
 		const found = findBinary("");
 
 		const binary = new Setting(containerEl)
-			.setName("Path to the atlas-obsidian binary")
-			.setDesc("Leave empty to use the binary Atlas finds.")
+			.setName("Path to the almagest binary")
+			.setDesc("Leave empty to use the binary Almagest finds.")
 			.addText((text) =>
 				text
 					.setPlaceholder(found ?? "Not found")
@@ -43,7 +43,7 @@ export class AtlasSettingTab extends PluginSettingTab {
 						void showVersion();
 					}),
 			);
-		const status = binary.descEl.createDiv({ cls: "atlas-setting-status" });
+		const status = binary.descEl.createDiv({ cls: "almagest-setting-status" });
 		const showVersion = async () => {
 			const bin = findBinary(this.plugin.settings.binaryPath);
 			if (!bin) {
@@ -60,7 +60,7 @@ export class AtlasSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Keep the views fresh")
-			.setDesc("Runs atlas-obsidian vault sync --views two seconds after a note changes, so the views, the statuses, and the callouts follow your edits.")
+			.setDesc("Runs almagest vault sync --views two seconds after a note changes, so the views, the statuses, and the callouts follow your edits.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncOnChange).onChange(async (value) => {
 					this.plugin.settings.syncOnChange = value;
@@ -70,7 +70,7 @@ export class AtlasSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Snapshot after a quiet period")
-			.setDesc("Seconds with no file change before Atlas commits your edits to the vault's history. 0 turns it off.")
+			.setDesc("Seconds with no file change before Almagest commits your edits to the vault's history. 0 turns it off.")
 			.addText((text) => {
 				text.inputEl.type = "number";
 				text.inputEl.min = "0";
@@ -97,18 +97,18 @@ export class AtlasSettingTab extends PluginSettingTab {
 			config = await this.plugin.agentConfig();
 		} catch (e) {
 			el.empty();
-			el.createDiv({ cls: "setting-item-description", text: `Atlas cannot read the agent preferences: ${(e as Error).message}` });
+			el.createDiv({ cls: "setting-item-description", text: `Almagest cannot read the agent preferences: ${(e as Error).message}` });
 			return;
 		}
 		el.empty();
-		const intro = el.createDiv({ cls: "setting-item-description atlas-setting-intro" });
-		intro.setText(`Start agent, Resume, and the palette's agents without Duet read these. ${shortHome(config.files.global)} holds them for every vault; .atlas/config.json in this vault overrides them, key by key. atlas-obsidian config shows the result.`);
+		const intro = el.createDiv({ cls: "setting-item-description almagest-setting-intro" });
+		intro.setText(`Start agent, Resume, and the palette's agents without Duet read these. ${shortHome(config.files.global)} holds them for every vault; .almagest/config.json in this vault overrides them, key by key. almagest config shows the result.`);
 
 		const set = async (key: string, value: string, global: boolean) => {
 			try {
 				await this.plugin.setPreference(key, value, global);
 			} catch (e) {
-				new Notice(`Atlas: ${(e as Error).message}`, 8000);
+				new Notice(`Almagest: ${(e as Error).message}`, 8000);
 			}
 			void this.agents(el);
 		};

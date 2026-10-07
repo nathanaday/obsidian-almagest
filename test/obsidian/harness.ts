@@ -9,20 +9,25 @@ import { type Browser, chromium, type Page } from "playwright-core";
 const OBSIDIAN = process.env.OBSIDIAN_BINARY ?? "/Applications/Obsidian.app/Contents/MacOS/Obsidian";
 /** Obsidian's own data folder, where it keeps the app updates that it downloaded. */
 const OBSIDIAN_DATA = process.env.OBSIDIAN_DATA ?? path.join(homedir(), "Library/Application Support/obsidian");
-const REPO = fileURLToPath(new URL("../../../", import.meta.url));
-const PLUGIN_BUILD = path.join(REPO, "obsidian/dist");
+const REPO = fileURLToPath(new URL("../../", import.meta.url));
+const PLUGIN_BUILD = path.join(REPO, "dist");
+/** A checkout of the almagest repository, which holds the binary the plugin runs. */
+const ALMAGEST_SRC = process.env.ALMAGEST_SRC ?? path.join(REPO, "../almagest");
 const PLUGIN_FILES = ["main.js", "manifest.json", "styles.css"];
 
-export interface AtlasBinary {
+export interface AlmagestBinary {
 	path: string;
 	remove(): Promise<void>;
 }
 
-/** Builds atlas-obsidian from this checkout into a temporary folder. */
-export async function buildAtlas(): Promise<AtlasBinary> {
-	const dir = await mkdtemp(path.join(tmpdir(), "atlas-e2e-bin-"));
-	const bin = path.join(dir, "atlas-obsidian");
-	await run("go", ["build", "-o", bin, "./cmd/atlas-obsidian"], { cwd: REPO });
+/** Builds almagest from the checkout in ALMAGEST_SRC (by default ../almagest) into a temporary folder. */
+export async function buildAlmagest(): Promise<AlmagestBinary> {
+	await stat(path.join(ALMAGEST_SRC, "cmd/almagest")).catch(() => {
+		throw new Error(`no almagest checkout at ${ALMAGEST_SRC}; clone github.com/nathanaday/almagest beside this repository, or set ALMAGEST_SRC`);
+	});
+	const dir = await mkdtemp(path.join(tmpdir(), "almagest-e2e-bin-"));
+	const bin = path.join(dir, "almagest");
+	await run("go", ["build", "-o", bin, "./cmd/almagest"], { cwd: ALMAGEST_SRC });
 	return { path: bin, remove: () => rm(dir, { recursive: true, force: true }) };
 }
 
@@ -32,8 +37,8 @@ export interface ObsidianInstance {
 	vault: string;
 	/** The console errors and uncaught exceptions of the vault window since the plugin loaded. */
 	errors: string[];
-	/** Runs atlas-obsidian in the vault, as the plugin does, and returns its output. */
-	atlas(args: string[]): Promise<string>;
+	/** Runs almagest in the vault, as the plugin does, and returns its output. */
+	almagest(args: string[]): Promise<string>;
 	git(args: string[]): Promise<string>;
 	read(file: string): Promise<string>;
 	/**
@@ -53,30 +58,31 @@ export interface LaunchOptions {
 }
 
 /**
- * Makes a vault with `atlas-obsidian vault init`, installs the plugin from obsidian/dist,
- * and opens the vault in a separate Obsidian with its own profile. ATLAS_HOME points at a
- * temporary folder. The user's own Obsidian, ~/.atlas, and vaults are not touched.
+ * Makes a vault with `almagest vault init`, installs the plugin from obsidian/dist,
+ * and opens the vault in a separate Obsidian with its own profile. ALMAGEST_HOME points at a
+ * temporary folder. The user's own Obsidian, ~/.almagest, and vaults are not touched.
  */
-export async function launchObsidian(bin: AtlasBinary, { pluginData, prepare }: LaunchOptions = {}): Promise<ObsidianInstance> {
+export async function launchObsidian(bin: AlmagestBinary, { pluginData, prepare }: LaunchOptions = {}): Promise<ObsidianInstance> {
 	await stat(path.join(PLUGIN_BUILD, "main.js")).catch(() => {
-		throw new Error("obsidian/dist has no build. Run npm run test:obsidian, which builds it first.");
+		throw new Error("dist has no build. Run npm run test:obsidian, which builds it first.");
 	});
-	const root = await mkdtemp(path.join(tmpdir(), "atlas-e2e-"));
+	const root = await mkdtemp(path.join(tmpdir(), "almagest-e2e-"));
 	const vault = path.join(root, "vault");
 	const profile = path.join(root, "profile");
-	const home = path.join(root, "atlas-home");
-	const pluginDir = path.join(vault, ".obsidian/plugins/atlas");
-	const env: NodeJS.ProcessEnv = { ...process.env, ATLAS_HOME: home };
-	delete env.ATLAS_VAULT;
+	const home = path.join(root, "almagest-home");
+	const pluginDir = path.join(vault, ".obsidian/plugins/almagest");
+	const env: NodeJS.ProcessEnv = { ...process.env, ALMAGEST_HOME: home };
+	delete env.ALMAGEST_VAULT;
 
-	const atlas = (args: string[]) => run(bin.path, [...args, "--vault", vault], { cwd: vault, env });
+	const almagest = (args: string[]) => run(bin.path, [...args, "--vault", vault], { cwd: vault, env });
 	const git = (args: string[]) => run("git", args, { cwd: vault, env });
 
 	let app: Running | undefined;
 	try {
 		await mkdir(home);
 		await run(bin.path, ["vault", "init", "--path", vault, "--name", "Test"], { cwd: root, env });
-		// vault init installs the plugin that the binary holds; the test runs the one in obsidian/dist.
+		// The test installs the plugin under test, as the community directory does for a user.
+		await mkdir(pluginDir, { recursive: true });
 		for (const file of PLUGIN_FILES) await copyFile(path.join(PLUGIN_BUILD, file), path.join(pluginDir, file));
 		await writeFile(path.join(pluginDir, "data.json"), JSON.stringify({ binaryPath: bin.path, ...pluginData }, null, 2));
 		await prepare?.(vault);
@@ -87,7 +93,7 @@ export async function launchObsidian(bin: AtlasBinary, { pluginData, prepare }: 
 		await copyAppUpdate(profile);
 		await writeFile(
 			path.join(profile, "obsidian.json"),
-			JSON.stringify({ vaults: { atlastest0000001: { path: vault, ts: Date.now(), open: true } } }),
+			JSON.stringify({ vaults: { almagesttest0000001: { path: vault, ts: Date.now(), open: true } } }),
 		);
 
 		app = await start(profile, env);
@@ -96,12 +102,12 @@ export async function launchObsidian(bin: AtlasBinary, { pluginData, prepare }: 
 			// The plugin is not in community-plugins.json yet, so turning on community plugins loads nothing,
 			// and enablePluginAndSave loads it exactly once.
 			plugins.setEnable(true);
-			await plugins.enablePluginAndSave("atlas");
+			await plugins.enablePluginAndSave("almagest");
 		});
 		await pluginLoaded(app);
 		// Obsidian saves its configuration a moment later; a restart needs it on disk.
 		const enabled = path.join(vault, ".obsidian/community-plugins.json");
-		await until("Obsidian to save the enabled plugin", async () => (await readFile(enabled, "utf8").catch(() => "")).includes('"atlas"'));
+		await until("Obsidian to save the enabled plugin", async () => (await readFile(enabled, "utf8").catch(() => "")).includes('"almagest"'));
 		await closeSettings(app.browser, app.page);
 	} catch (error) {
 		await app?.kill();
@@ -114,7 +120,7 @@ export async function launchObsidian(bin: AtlasBinary, { pluginData, prepare }: 
 		page: running.page,
 		vault,
 		errors: running.errors,
-		atlas,
+		almagest,
 		git,
 		read: (file) => readFile(path.join(vault, file), "utf8"),
 		async restart({ between, freshIndex = false } = {}) {
@@ -184,9 +190,9 @@ async function start(profile: string, env: NodeJS.ProcessEnv): Promise<Running> 
 
 async function pluginLoaded({ page, errors }: Running): Promise<void> {
 	try {
-		await page.waitForFunction(() => !!(window as any).app.plugins.plugins.atlas?._loaded, undefined, { timeout: 10_000 });
+		await page.waitForFunction(() => !!(window as any).app.plugins.plugins.almagest?._loaded, undefined, { timeout: 10_000 });
 	} catch {
-		throw new Error(`The Atlas plugin did not load in 10 seconds. Console errors:\n${errors.join("\n") || "none"}`);
+		throw new Error(`The Almagest plugin did not load in 10 seconds. Console errors:\n${errors.join("\n") || "none"}`);
 	}
 }
 

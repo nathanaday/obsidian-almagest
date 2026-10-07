@@ -28,7 +28,7 @@ export interface Synced {
  * binary never runs in its place.
  */
 export function binaryCandidates(home: string): string[] {
-	return [`${home}/.atlas/bin/atlas-obsidian`, `${home}/go/bin/atlas-obsidian`];
+	return [`${home}/.almagest/bin/almagest`, `${home}/go/bin/almagest`];
 }
 
 /** The override when it is set, else the first candidate that exists. */
@@ -49,11 +49,11 @@ export function expandHome(path: string, home: string): string {
 	return path;
 }
 
-/** The message after "atlas: " on the last line of stderr that has one. */
+/** The message after "almagest: " on the last line of stderr that has one. */
 export function errorMessage(stderr: string): string {
 	const lines = stderr.split("\n").map((l) => l.trim()).filter((l) => l !== "");
 	for (let i = lines.length - 1; i >= 0; i--) {
-		if (lines[i].startsWith("atlas: ")) return lines[i].slice("atlas: ".length);
+		if (lines[i].startsWith("almagest: ")) return lines[i].slice("almagest: ".length);
 	}
 	return lines[lines.length - 1] ?? "";
 }
@@ -218,7 +218,7 @@ export function quietSeconds(value: unknown): number {
 
 /** Whether an error of the binary says another write holds the vault's lock. */
 export function isLockHeld(message: string): boolean {
-	return /atlas\.lock|holds the lock/.test(message);
+	return /almagest\.lock|holds the lock/.test(message);
 }
 
 /** The title of a tag's view: "Tag · school › cs513". */
@@ -251,7 +251,7 @@ export function expandTags(list: string[]): string[] {
 	return [...out];
 }
 
-/** One document as the Atlas navigator sees it. */
+/** One document as the Almagest navigator sees it. */
 export interface TagDoc {
 	path: string;
 	title: string;
@@ -319,7 +319,7 @@ export function groupDocs(docs: TagDoc[]): { name: string; docs: TagDoc[] }[] {
 	return out.filter((g) => g.docs.length > 0);
 }
 
-/** The id and path an atlas-repo code block holds: "doc-abc123 · ~/code/x · …". */
+/** The id and path an almagest-repo code block holds: "doc-abc123 · ~/code/x · …". */
 export function repoBlock(source: string): { id: string; path: string } {
 	const [id, path] = source.trim().split(" · ");
 	return { id: (id ?? "").trim(), path: (path ?? "").trim() };
@@ -331,8 +331,14 @@ export function layoutOf(fields: Record<string, unknown> | undefined): number {
 	return Number.isFinite(n) ? n : 0;
 }
 
-/** The layout this plugin reads: the folders of 10.0. */
-export const LAYOUT = 6;
+/** The layout this plugin reads: the names of 11.0. */
+export const LAYOUT = 7;
+
+/**
+ * The vault document: Almagest.md, or the Atlas.md of the releases before 11.0, which the
+ * migration renames.
+ */
+export const VAULT_DOCUMENTS = ["Almagest.md", "Atlas.md"];
 
 /** The oldest layout the binary migrates from: 8.x. */
 export const MIGRATES_FROM = 4;
@@ -345,25 +351,30 @@ export interface MigrationReport {
 	edited?: string[] | null;
 	warnings?: string[] | null;
 	commit?: string;
-	plugin?: string;
 	strays?: { from: string; to: string }[] | null;
 	problems?: number;
 }
 
-/** What the migration to 10.0 does to a vault of this layout, one step a line. */
+/** What the migration to 11.0 does to a vault of this layout, one step a line. */
 export function migrationSteps(layout: number): string[] {
 	const steps: string[] = [];
 	if (layout === 4) {
-		steps.push("Moves the thread documents of 8.x (stubs, specs, task lists, verifications, chords, and events) and the chord canvases to threads/, an archive Atlas does not read.");
+		steps.push("Moves the thread documents of 8.x (stubs, specs, task lists, verifications, chords, and events) and the chord canvases to threads/, an archive Almagest does not read.");
+	}
+	if (layout <= 5) {
+		steps.push(
+			"Moves wiki/documents/ to source-core/documents/.",
+			"Moves wiki/assets/ to source-core/originals/, and any other file of wiki/ to source-core/.",
+			"Moves inbox/ to ingest/.",
+			"Removes views/ and writes the views again in wiki-view/, with the tag views in wiki-view/nav/. A note of yours in views/ goes to ingest/.",
+			"Rewrites each link, embed, and Base that names one of these folders. Prose that names a folder stays as you wrote it.",
+			"Sets origin: ingest on each source that came from the inbox.",
+			"Sends new attachments to source-core/originals/ and keeps wiki-view/ out of Obsidian's search, unless you chose other settings.",
+		);
 	}
 	steps.push(
-		"Moves wiki/documents/ to source-core/documents/.",
-		"Moves wiki/assets/ to source-core/originals/, and any other file of wiki/ to source-core/.",
-		"Moves inbox/ to ingest/.",
-		"Removes views/ and writes the views again in wiki-view/, with the tag views in wiki-view/nav/. A note of yours in views/ goes to ingest/.",
-		"Rewrites each link, embed, and Base that names one of these folders. Prose that names a folder stays as you wrote it.",
-		"Sets origin: ingest on each source that came from the inbox.",
-		"Sends new attachments to source-core/originals/ and keeps wiki-view/ out of Obsidian's search, unless you chose other settings.",
+		"Renames Atlas.md to Almagest.md and .atlas/ to .almagest/, and points the links to [[Atlas]] at [[Almagest]].",
+		"Gives the change and repository blocks, the change documents' class, and the callouts of checkouts and publication histories the name Almagest. Your own text stays as you wrote it.",
 	);
 	return steps;
 }
@@ -375,13 +386,13 @@ export function migrationSummary(r: MigrationReport): string {
 	const edited = r.edited?.length ?? 0;
 	if (moved || edited) parts.push(`${plural(moved, "file", "files")} moved, ${edited} edited.`);
 	if (r.problems) parts.push(`Lint finds ${plural(r.problems, "error", "errors")}.`);
-	if (r.plugin) parts.push(`The Obsidian plugin is now ${r.plugin}; reload Obsidian to use it.`);
 	return parts.join(" ");
 }
 
 /** What a layout version is called. */
 export function layoutName(layout: number): string {
-	if (layout >= LAYOUT) return "10.0";
+	if (layout >= LAYOUT) return "11.0";
+	if (layout === 6) return "10.0";
 	if (layout === 5) return "9.0";
 	if (layout === 4) return "8.x";
 	return layout === 3 ? "7.x" : "6.x";

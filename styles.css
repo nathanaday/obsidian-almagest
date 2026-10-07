@@ -1,6 +1,6 @@
-/* Atlas: callouts, the change widget and the change document, the palette and its Publish and Checkout modals, the bubbles of a wikified note, the tag navigator, the repository panel, the sessions pane. Nothing here styles Obsidian's own panes. */
+/* Almagest: callouts, the change widget and the change document, the palette and its Publish and Checkout modals, the bubbles of a wikified note, the tag navigator, the repository panel, the sessions pane. Nothing here styles Obsidian's own panes. */
 
-/* Callouts: the lead callout of each document type and kind, of the views, and of the files Atlas writes for the user (atlas): a journal's publication history, a checkout's copies, reading list, and ledger. */
+/* Callouts: the lead callout of each document type and kind, of the views, and of the files Almagest writes for the user (almagest): a journal's publication history, a checkout's copies, reading list, and ledger. */
 .callout[data-callout="source"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-file-image; }
 .callout[data-callout="repository"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-git-branch; }
 .callout[data-callout="repository-missing"] { --callout-color: var(--color-red-rgb); --callout-icon: lucide-git-branch-plus; }
@@ -10,82 +10,82 @@
 .callout[data-callout="overview"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-map; }
 .callout[data-callout="session"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-bot; }
 .callout[data-callout="change"] { --callout-color: var(--color-orange-rgb); --callout-icon: lucide-git-pull-request; }
-.callout[data-callout="atlas"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-map; }
+.callout[data-callout="almagest"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-map; }
 .callout[data-callout="tag"] { --callout-color: var(--color-cyan-rgb); --callout-icon: lucide-tag; }
 .callout[data-callout="view"] { --callout-color: var(--mono-rgb-100); --callout-icon: lucide-eye; }
 
-/* The change widget: the atlas-change block of a change document. Its class is atlas-change-card, since atlas-change is the document's own cssclass. */
-.atlas-change-card {
-	--atlas-change: var(--mono-rgb-100);
+/* The change widget: the almagest-change block of a change document. Its class is almagest-change-card, since almagest-change is the document's own cssclass. */
+.almagest-change-card {
+	--almagest-change: var(--mono-rgb-100);
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-2);
 	margin: var(--size-4-2) 0;
 	padding: var(--size-4-3) var(--size-4-4);
 	border: 1px solid var(--background-modifier-border);
-	border-inline-start: 3px solid rgb(var(--atlas-change));
+	border-inline-start: 3px solid rgb(var(--almagest-change));
 	border-radius: var(--radius-m);
 	background-color: var(--background-primary-alt);
 	font-family: var(--font-interface);
 	font-size: var(--font-ui-small);
 	line-height: var(--line-height-normal);
 }
-.atlas-change-card[data-state="proposed"] {
-	--atlas-change: var(--color-orange-rgb);
+.almagest-change-card[data-state="proposed"] {
+	--almagest-change: var(--color-orange-rgb);
 	background-color: rgba(var(--color-orange-rgb), 0.06);
 }
-.atlas-change-card[data-state="busy"],
-.atlas-change-card[data-state="applying"] { --atlas-change: var(--color-blue-rgb); }
-.atlas-change-card[data-state="running"] {
-	--atlas-change: var(--color-cyan-rgb);
+.almagest-change-card[data-state="busy"],
+.almagest-change-card[data-state="applying"] { --almagest-change: var(--color-blue-rgb); }
+.almagest-change-card[data-state="running"] {
+	--almagest-change: var(--color-cyan-rgb);
 	background-color: rgba(var(--color-cyan-rgb), 0.06);
 }
-.atlas-change-card[data-state="applied"] { --atlas-change: var(--color-green-rgb); }
-.atlas-change-card[data-state="rejected"] { --atlas-change: var(--color-red-rgb); }
-.atlas-change-head {
+.almagest-change-card[data-state="applied"] { --almagest-change: var(--color-green-rgb); }
+.almagest-change-card[data-state="rejected"] { --almagest-change: var(--color-red-rgb); }
+.almagest-change-head {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--size-4-2);
 }
-.atlas-change-label {
+.almagest-change-label {
 	padding: 0 var(--size-4-2);
 	border-radius: var(--radius-s);
 	font-weight: var(--font-semibold);
-	color: rgb(var(--atlas-change));
-	background-color: rgba(var(--atlas-change), 0.14);
+	color: rgb(var(--almagest-change));
+	background-color: rgba(var(--almagest-change), 0.14);
 }
-.atlas-change-card[data-state="superseded"] .atlas-change-label,
-.atlas-change-card[data-state="undone"] .atlas-change-label,
-.atlas-change-card[data-state="none"] .atlas-change-label,
-.atlas-change-card[data-state="other"] .atlas-change-label {
+.almagest-change-card[data-state="superseded"] .almagest-change-label,
+.almagest-change-card[data-state="undone"] .almagest-change-label,
+.almagest-change-card[data-state="none"] .almagest-change-label,
+.almagest-change-card[data-state="other"] .almagest-change-label {
 	color: var(--text-muted);
 	background-color: var(--background-modifier-hover);
 }
-.atlas-change-card[data-state="busy"] .atlas-change-label,
-.atlas-change-card[data-state="running"] .atlas-change-label {
-	animation: atlas-change-pulse 1.6s ease-in-out infinite;
+.almagest-change-card[data-state="busy"] .almagest-change-label,
+.almagest-change-card[data-state="running"] .almagest-change-label {
+	animation: almagest-change-pulse 1.6s ease-in-out infinite;
 }
-@keyframes atlas-change-pulse {
-	50% { background-color: rgba(var(--atlas-change), 0.32); }
+@keyframes almagest-change-pulse {
+	50% { background-color: rgba(var(--almagest-change), 0.32); }
 }
-.atlas-change-kind,
-.atlas-change-counts {
+.almagest-change-kind,
+.almagest-change-counts {
 	color: var(--text-muted);
 	font-variant-numeric: tabular-nums;
 }
-.atlas-change-card[data-state="running"] .atlas-change-line {
+.almagest-change-card[data-state="running"] .almagest-change-line {
 	font-variant-numeric: tabular-nums;
 }
-.atlas-change-line {
+.almagest-change-line {
 	color: var(--text-normal);
 }
-.atlas-change-card[data-state="none"] .atlas-change-line,
-.atlas-change-card[data-state="superseded"] .atlas-change-line,
-.atlas-change-card[data-state="undone"] .atlas-change-line {
+.almagest-change-card[data-state="none"] .almagest-change-line,
+.almagest-change-card[data-state="superseded"] .almagest-change-line,
+.almagest-change-card[data-state="undone"] .almagest-change-line {
 	color: var(--text-muted);
 }
-.atlas-change-buttons {
+.almagest-change-buttons {
 	display: flex;
 	flex-wrap: wrap;
 	justify-content: flex-end;
@@ -93,18 +93,18 @@
 }
 
 /*
- * A change document: the note's cssclass atlas-change, on Obsidian's reading view and on
+ * A change document: the note's cssclass almagest-change, on Obsidian's reading view and on
  * its editor. The widget card leads, the Summary reads as a list of operations, and the
  * Writes, which apply and undo parse, stay quiet.
  */
 /* The lead callout says what the card says. */
-.markdown-preview-view.atlas-change .callout[data-callout="change"],
-.markdown-source-view.atlas-change .cm-callout:has(.callout[data-callout="change"]) {
+.markdown-preview-view.almagest-change .callout[data-callout="change"],
+.markdown-source-view.almagest-change .cm-callout:has(.callout[data-callout="change"]) {
 	display: none;
 }
 /* Summary: the operation word of each line as a tag. Only the Summary's lines open with bold text. */
-.markdown-preview-view.atlas-change div:has(> h2[data-heading="Summary"]) + div li > strong:first-of-type,
-.markdown-source-view.atlas-change .HyperMD-list-line .cm-strong:not(.cm-formatting) {
+.markdown-preview-view.almagest-change div:has(> h2[data-heading="Summary"]) + div li > strong:first-of-type,
+.markdown-source-view.almagest-change .HyperMD-list-line .cm-strong:not(.cm-formatting) {
 	padding: 0 0.4em;
 	border-radius: var(--radius-s);
 	font-family: var(--font-interface);
@@ -115,21 +115,21 @@
 	color: rgb(var(--color-orange-rgb));
 	background-color: rgba(var(--color-orange-rgb), 0.12);
 }
-.markdown-preview-view.atlas-change div:has(> h2[data-heading="Summary"]) + div li {
+.markdown-preview-view.almagest-change div:has(> h2[data-heading="Summary"]) + div li {
 	margin-block: var(--size-2-2);
 }
 /* Progress: the agent's steps, one a line, with their times. */
-.markdown-preview-view.atlas-change div:has(> h2[data-heading="Progress"]) + div li {
+.markdown-preview-view.almagest-change div:has(> h2[data-heading="Progress"]) + div li {
 	color: var(--text-muted);
 	font-variant-numeric: tabular-nums;
 }
 /* Writes: each write's heading as a quiet row, and its full text small, in a short scrolling box. */
-.markdown-preview-view.atlas-change div:has(> h2[data-heading="Writes"]) ~ div {
+.markdown-preview-view.almagest-change div:has(> h2[data-heading="Writes"]) ~ div {
 	font-size: var(--font-smaller);
 	color: var(--text-muted);
 }
-.markdown-preview-view.atlas-change h3,
-.markdown-source-view.atlas-change .HyperMD-header-3 {
+.markdown-preview-view.almagest-change h3,
+.markdown-source-view.almagest-change .HyperMD-header-3 {
 	padding-top: var(--size-4-2);
 	border-top: 1px solid var(--background-modifier-border);
 	font-family: var(--font-monospace);
@@ -137,92 +137,92 @@
 	font-weight: var(--font-normal);
 	color: var(--text-muted);
 }
-.markdown-preview-view.atlas-change pre {
+.markdown-preview-view.almagest-change pre {
 	max-height: 14em;
 	overflow: auto;
 	opacity: 0.85;
 }
-.markdown-preview-view.atlas-change,
-.markdown-source-view.atlas-change {
+.markdown-preview-view.almagest-change,
+.markdown-source-view.almagest-change {
 	--code-size: var(--font-smallest);
 	--code-normal: var(--text-muted);
 }
 
 /* The tool palette. */
-.atlas-palette {
+.almagest-palette {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-4);
 	padding: var(--size-4-2);
 	font-size: var(--font-ui-small);
 }
-.atlas-palette-section {
+.almagest-palette-section {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-2-2);
 }
-.atlas-palette-heading {
+.almagest-palette-heading {
 	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 }
-.atlas-palette-row {
+.almagest-palette-row {
 	display: flex;
 	align-items: center;
 	gap: var(--size-4-2);
 }
-.atlas-palette-name {
+.almagest-palette-name {
 	flex: 1;
 	color: var(--text-muted);
 }
-.atlas-palette-value {
+.almagest-palette-value {
 	font-variant-numeric: tabular-nums;
 	color: var(--text-normal);
 }
-.atlas-palette-list {
+.almagest-palette-list {
 	margin: 0;
 	padding-inline-start: var(--size-4-4);
 	list-style: none;
 }
-.atlas-palette-list > li {
+.almagest-palette-list > li {
 	min-width: 0;
 	padding: var(--size-2-1) 0;
 	overflow-wrap: anywhere;
 }
-.atlas-palette-files > li {
+.almagest-palette-files > li {
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 }
-.atlas-palette-link {
+.almagest-palette-link {
 	color: var(--text-accent);
 	text-decoration: none;
 }
-.atlas-palette-link:hover {
+.almagest-palette-link:hover {
 	text-decoration: underline;
 }
-.atlas-palette-progress,
-.atlas-palette-quiet {
+.almagest-palette-progress,
+.almagest-palette-quiet {
 	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
 }
-.atlas-palette-progress {
+.almagest-palette-progress {
 	font-variant-numeric: tabular-nums;
 }
-.atlas-palette-path {
+.almagest-palette-path {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-.atlas-palette-error {
+.almagest-palette-error {
 	color: rgb(var(--color-red-rgb));
 }
-.atlas-palette-small {
+.almagest-palette-small {
 	height: auto;
 	padding: 1px 8px;
 	font-size: var(--font-ui-smaller);
 }
-.atlas-palette-badge {
+.almagest-palette-badge {
 	margin-inline-end: var(--size-4-1);
 	padding: 0 6px;
 	border-radius: var(--radius-s);
@@ -230,27 +230,27 @@
 	color: rgb(var(--color-cyan-rgb));
 	background-color: rgba(var(--color-cyan-rgb), 0.14);
 }
-.atlas-palette-finding[data-severity="error"] .atlas-palette-badge {
+.almagest-palette-finding[data-severity="error"] .almagest-palette-badge {
 	color: rgb(var(--color-red-rgb));
 	background-color: rgba(var(--color-red-rgb), 0.14);
 }
-.atlas-palette-finding[data-severity="warning"] .atlas-palette-badge {
+.almagest-palette-finding[data-severity="warning"] .almagest-palette-badge {
 	color: rgb(var(--color-orange-rgb));
 	background-color: rgba(var(--color-orange-rgb), 0.14);
 }
-.atlas-palette-finding[data-severity="info"] .atlas-palette-badge {
+.almagest-palette-finding[data-severity="info"] .almagest-palette-badge {
 	color: var(--text-muted);
 	background-color: var(--background-modifier-hover);
 }
-.atlas-palette-action {
+.almagest-palette-action {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-2-1);
 }
-.atlas-palette-action > button {
+.almagest-palette-action > button {
 	align-self: stretch;
 }
-.atlas-palette-lint {
+.almagest-palette-lint {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-2-2);
@@ -258,16 +258,16 @@
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 }
-.atlas-palette-lint-counts {
+.almagest-palette-lint-counts {
 	font-weight: var(--font-semibold);
 }
 
 /* The modal of safe delete, when other documents link the file. */
-.atlas-backlinks-type {
+.almagest-backlinks-type {
 	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
 }
-.atlas-backlinks-buttons {
+.almagest-backlinks-buttons {
 	display: flex;
 	justify-content: flex-end;
 	gap: var(--size-4-2);
@@ -275,86 +275,86 @@
 }
 
 /* The sessions pane. */
-.atlas-sessions {
+.almagest-sessions {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-2);
 	padding: var(--size-4-2);
 }
-.atlas-sessions-empty {
+.almagest-sessions-empty {
 	color: var(--text-muted);
 	padding: var(--size-4-2);
 }
-.atlas-session {
-	--atlas-session: var(--mono-rgb-100);
+.almagest-session {
+	--almagest-session: var(--mono-rgb-100);
 	padding: var(--size-4-2) var(--size-4-3);
 	border: 1px solid var(--background-modifier-border);
-	border-inline-start: 3px solid rgb(var(--atlas-session));
+	border-inline-start: 3px solid rgb(var(--almagest-session));
 	border-radius: var(--radius-m);
 	cursor: pointer;
 	font-size: var(--font-ui-small);
 }
 /* Working: green, with a pulse on the status. Needs you: orange. Idle: the accent, at rest. Ended: gray. */
-.atlas-session[data-state="working"] {
-	--atlas-session: var(--color-green-rgb);
+.almagest-session[data-state="working"] {
+	--almagest-session: var(--color-green-rgb);
 }
-.atlas-session[data-state="working"] .atlas-session-status {
-	animation: atlas-pulse 1.6s ease-in-out infinite;
+.almagest-session[data-state="working"] .almagest-session-status {
+	animation: almagest-pulse 1.6s ease-in-out infinite;
 }
-.atlas-session[data-state="waiting"] {
-	--atlas-session: var(--color-orange-rgb);
+.almagest-session[data-state="waiting"] {
+	--almagest-session: var(--color-orange-rgb);
 	background-color: rgba(var(--color-orange-rgb), 0.06);
 }
-.atlas-session[data-state="idle"] {
-	--atlas-session: var(--color-blue-rgb);
+.almagest-session[data-state="idle"] {
+	--almagest-session: var(--color-blue-rgb);
 }
-.atlas-session[data-state="ended"] {
-	--atlas-session: var(--mono-rgb-100);
+.almagest-session[data-state="ended"] {
+	--almagest-session: var(--mono-rgb-100);
 	opacity: 0.65;
 }
-.atlas-session[data-state="ended"]:hover {
+.almagest-session[data-state="ended"]:hover {
 	opacity: 1;
 }
-@keyframes atlas-pulse {
-	50% { background-color: rgba(var(--atlas-session), 0.32); }
+@keyframes almagest-pulse {
+	50% { background-color: rgba(var(--almagest-session), 0.32); }
 }
-.atlas-sessions-heading {
+.almagest-sessions-heading {
 	margin-top: var(--size-4-3);
 	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 }
-.atlas-sessions-more {
+.almagest-sessions-more {
 	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
 	cursor: pointer;
 }
-.atlas-sessions-more:hover {
+.almagest-sessions-more:hover {
 	color: var(--text-muted);
 }
-.atlas-session:hover {
+.almagest-session:hover {
 	background-color: var(--background-modifier-hover);
 }
-.atlas-session-top {
+.almagest-session-top {
 	display: flex;
 	align-items: center;
 	gap: var(--size-4-2);
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 }
-.atlas-session-status {
+.almagest-session-status {
 	flex-shrink: 0;
 	padding: 0 6px;
 	border-radius: var(--radius-s);
-	color: rgb(var(--atlas-session));
-	background-color: rgba(var(--atlas-session), 0.14);
+	color: rgb(var(--almagest-session));
+	background-color: rgba(var(--almagest-session), 0.14);
 }
-.atlas-session-ago {
+.almagest-session-ago {
 	margin-inline-start: auto;
 	white-space: nowrap;
 }
-.atlas-session-title {
+.almagest-session-title {
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -363,7 +363,7 @@
 	font-weight: var(--font-semibold);
 	color: var(--text-normal);
 }
-.atlas-session-resume {
+.almagest-session-resume {
 	flex-shrink: 0;
 	height: auto;
 	padding: 1px 8px;
@@ -371,11 +371,11 @@
 }
 
 /* A count on the sessions ribbon icon while a session waits. */
-.atlas-sessions-ribbon {
+.almagest-sessions-ribbon {
 	position: relative;
 }
-.atlas-sessions-ribbon[data-atlas-count]::after {
-	content: attr(data-atlas-count);
+.almagest-sessions-ribbon[data-almagest-count]::after {
+	content: attr(data-almagest-count);
 	position: absolute;
 	top: 0;
 	right: 0;
@@ -390,38 +390,38 @@
 	background-color: rgb(var(--color-orange-rgb));
 }
 
-.atlas-setting-status {
+.almagest-setting-status {
 	margin-top: var(--size-4-1);
 	color: var(--text-faint);
 }
 
 /* The tag navigator. */
-.atlas-tagnav {
+.almagest-tagnav {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-3);
 	padding: var(--size-4-2);
 	font-size: var(--font-ui-small);
 }
-.atlas-tagnav-path {
+.almagest-tagnav-path {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--size-2-3);
 }
-.atlas-tagnav-path::before {
+.almagest-tagnav-path::before {
 	content: none;
 }
-.atlas-tagnav-home {
+.almagest-tagnav-home {
 	font-size: var(--font-ui-smaller);
 }
-.atlas-tagnav-tag > span:first-child,
-.atlas-tagnav-chip > span:first-child {
+.almagest-tagnav-tag > span:first-child,
+.almagest-tagnav-chip > span:first-child {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-.atlas-tagnav-chip {
+.almagest-tagnav-chip {
 	display: inline-flex;
 	max-width: 100%;
 	min-width: 0;
@@ -432,53 +432,53 @@
 	color: rgb(var(--color-purple-rgb));
 	background-color: rgba(var(--color-purple-rgb), 0.14);
 }
-.atlas-tagnav-x {
+.almagest-tagnav-x {
 	padding: 0 6px;
 	background: transparent;
 	box-shadow: none;
 	color: inherit;
 }
-.atlas-tagnav-hint,
-.atlas-tagnav-count {
+.almagest-tagnav-hint,
+.almagest-tagnav-count {
 	color: var(--text-muted);
 }
-.atlas-tagnav-section {
+.almagest-tagnav-section {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-2-2);
 }
-.atlas-tagnav-label {
+.almagest-tagnav-label {
 	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 }
-.atlas-tagnav-items {
+.almagest-tagnav-items {
 	display: flex;
 	flex-wrap: wrap;
 	gap: var(--size-2-2);
 }
-.atlas-tagnav-items > button {
+.almagest-tagnav-items > button {
 	font-size: var(--font-ui-smaller);
 }
-.atlas-tagnav-tag {
+.almagest-tagnav-tag {
 	display: inline-flex;
 	max-width: 100%;
 	min-width: 0;
 	gap: var(--size-2-2);
 	padding: var(--size-2-1) var(--size-4-2);
 }
-.atlas-tagnav-tag-count,
-.atlas-tagnav-doc-meta {
+.almagest-tagnav-tag-count,
+.almagest-tagnav-doc-meta {
 	color: var(--text-faint);
 	font-variant-numeric: tabular-nums;
 }
-.atlas-tagnav-group-name {
+.almagest-tagnav-group-name {
 	margin-bottom: var(--size-2-2);
 	font-weight: var(--font-semibold);
 	color: var(--text-muted);
 }
-.atlas-tagnav-doc {
+.almagest-tagnav-doc {
 	display: flex;
 	justify-content: space-between;
 	gap: var(--size-4-2);
@@ -486,71 +486,71 @@
 	border-radius: var(--radius-s);
 	cursor: pointer;
 }
-.atlas-tagnav-doc:hover {
+.almagest-tagnav-doc:hover {
 	background-color: var(--background-modifier-hover);
 }
-.atlas-tagnav-empty {
+.almagest-tagnav-empty {
 	color: var(--text-muted);
 }
 
 /* The live status panel of a repository. */
-.atlas-repo {
+.almagest-repo {
 	padding: var(--size-4-2) var(--size-4-3);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	font-size: var(--font-ui-small);
 }
-.atlas-repo-head {
+.almagest-repo-head {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--size-4-2);
 }
-.atlas-repo-branch {
+.almagest-repo-branch {
 	font-weight: var(--font-semibold);
 }
-.atlas-repo-sha {
+.almagest-repo-sha {
 	font-family: var(--font-monospace);
 	color: var(--text-muted);
 }
-.atlas-repo-sync,
-.atlas-repo-clean,
-.atlas-repo-note,
-.atlas-repo-ago,
-.atlas-repo-loading {
+.almagest-repo-sync,
+.almagest-repo-clean,
+.almagest-repo-note,
+.almagest-repo-ago,
+.almagest-repo-loading {
 	color: var(--text-muted);
 }
-.atlas-repo-refresh {
+.almagest-repo-refresh {
 	margin-inline-start: auto;
 	font-size: var(--font-ui-smaller);
 }
-.atlas-repo-dirty,
-.atlas-repo-clean {
+.almagest-repo-dirty,
+.almagest-repo-clean {
 	margin-top: var(--size-4-2);
 }
-.atlas-repo-commit {
+.almagest-repo-commit {
 	display: flex;
 	gap: var(--size-4-2);
 	margin-top: var(--size-2-2);
 }
-.atlas-repo-subject {
+.almagest-repo-subject {
 	flex: 1;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-.atlas-repo-error {
+.almagest-repo-error {
 	color: rgb(var(--color-red-rgb));
 }
 
 /* The migration notice and its report. */
-.atlas-notice-button {
+.almagest-notice-button {
 	margin-top: var(--size-4-2);
 }
-.atlas-migration details {
+.almagest-migration details {
 	margin-top: var(--size-4-2);
 }
-.atlas-migration-buttons {
+.almagest-migration-buttons {
 	display: flex;
 	justify-content: flex-end;
 	gap: var(--size-4-2);
@@ -558,36 +558,36 @@
 }
 
 /* The palette's journal volumes. */
-.atlas-palette-volume {
+.almagest-palette-volume {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-2-1);
 	padding: var(--size-2-3) 0;
 }
-.atlas-palette-volume + .atlas-palette-volume {
+.almagest-palette-volume + .almagest-palette-volume {
 	border-top: 1px solid var(--background-modifier-border);
 }
-.atlas-palette-volume-name {
+.almagest-palette-volume-name {
 	color: var(--text-normal);
 	overflow-wrap: anywhere;
 }
-.atlas-palette-volume .atlas-palette-changed {
+.almagest-palette-volume .almagest-palette-changed {
 	color: rgb(var(--color-orange-rgb));
 	background-color: rgba(var(--color-orange-rgb), 0.14);
 }
-.atlas-palette-edition {
+.almagest-palette-edition {
 	overflow-wrap: anywhere;
 }
-.atlas-palette-publish {
+.almagest-palette-publish {
 	align-self: flex-start;
 }
-.atlas-palette-publish:disabled {
+.almagest-palette-publish:disabled {
 	opacity: 0.5;
 	cursor: default;
 }
 
 /* The modal of Publish. */
-.atlas-publish-title {
+.almagest-publish-title {
 	padding: var(--size-4-2) var(--size-4-3);
 	border-inline-start: 3px solid rgb(var(--color-cyan-rgb));
 	border-radius: var(--radius-s);
@@ -595,11 +595,11 @@
 	font-weight: var(--font-semibold);
 	overflow-wrap: anywhere;
 }
-.atlas-publish-quiet {
+.almagest-publish-quiet {
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 }
-.atlas-publish-buttons {
+.almagest-publish-buttons {
 	display: flex;
 	justify-content: flex-end;
 	gap: var(--size-4-2);
@@ -607,49 +607,49 @@
 }
 
 /* The palette's checkouts. */
-.atlas-palette-checkout {
+.almagest-palette-checkout {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-2-1);
 	padding: var(--size-2-3) 0;
 }
-.atlas-palette-checkout + .atlas-palette-checkout {
+.almagest-palette-checkout + .almagest-palette-checkout {
 	border-top: 1px solid var(--background-modifier-border);
 }
-.atlas-palette-request {
+.almagest-palette-request {
 	min-width: 0;
 	overflow-wrap: anywhere;
 }
-.atlas-palette-return {
+.almagest-palette-return {
 	align-self: flex-start;
 }
-.atlas-palette-return:disabled {
+.almagest-palette-return:disabled {
 	opacity: 0.5;
 	cursor: default;
 }
 
 /* The modal of Checkout. */
-.atlas-checkout .atlas-checkout-input {
+.almagest-checkout .almagest-checkout-input {
 	width: 100%;
 }
 
 /* The bubble of a mark in a wikified note, in live preview and reading view: the phrase, a pill with the title, and small buttons. It keeps the line's height. */
-.atlas-mark {
-	--atlas-mark: var(--color-blue-rgb);
+.almagest-mark {
+	--almagest-mark: var(--color-blue-rgb);
 	padding: 0 2px;
 	border-radius: var(--radius-s);
-	background-color: rgba(var(--atlas-mark), 0.08);
-	box-shadow: inset 0 -1px 0 rgba(var(--atlas-mark), 0.45);
+	background-color: rgba(var(--almagest-mark), 0.08);
+	box-shadow: inset 0 -1px 0 rgba(var(--almagest-mark), 0.45);
 	-webkit-box-decoration-break: clone;
 	box-decoration-break: clone;
 }
-.atlas-mark-new { --atlas-mark: var(--color-green-rgb); }
-.atlas-mark[data-state="drafting"] { --atlas-mark: var(--color-cyan-rgb); }
-.atlas-mark[data-state="gone"] { --atlas-mark: var(--color-orange-rgb); }
-.atlas-mark-pill,
-.atlas-mark-drafting,
-.atlas-mark-gone,
-.atlas-mark .atlas-mark-button {
+.almagest-mark-new { --almagest-mark: var(--color-green-rgb); }
+.almagest-mark[data-state="drafting"] { --almagest-mark: var(--color-cyan-rgb); }
+.almagest-mark[data-state="gone"] { --almagest-mark: var(--color-orange-rgb); }
+.almagest-mark-pill,
+.almagest-mark-drafting,
+.almagest-mark-gone,
+.almagest-mark .almagest-mark-button {
 	margin-inline-start: 0.3em;
 	font-family: var(--font-interface);
 	font-size: 0.75em;
@@ -657,26 +657,26 @@
 	vertical-align: 0.1em;
 	white-space: nowrap;
 }
-.atlas-mark-pill {
+.almagest-mark-pill {
 	padding: 0 0.4em;
 	border-radius: var(--radius-s);
-	color: rgb(var(--atlas-mark));
-	background-color: rgba(var(--atlas-mark), 0.16);
+	color: rgb(var(--almagest-mark));
+	background-color: rgba(var(--almagest-mark), 0.16);
 }
-.atlas-mark-drafting {
-	color: rgb(var(--atlas-mark));
+.almagest-mark-drafting {
+	color: rgb(var(--almagest-mark));
 	font-style: italic;
 	cursor: pointer;
-	animation: atlas-mark-pulse 1.6s ease-in-out infinite;
+	animation: almagest-mark-pulse 1.6s ease-in-out infinite;
 }
-.atlas-mark-gone {
-	color: rgb(var(--atlas-mark));
+.almagest-mark-gone {
+	color: rgb(var(--almagest-mark));
 	font-style: italic;
 }
-@keyframes atlas-mark-pulse {
+@keyframes almagest-mark-pulse {
 	50% { opacity: 0.5; }
 }
-.atlas-mark .atlas-mark-button {
+.almagest-mark .almagest-mark-button {
 	display: inline;
 	height: auto;
 	padding: 0 0.45em;
@@ -687,14 +687,14 @@
 	background-color: var(--background-primary);
 	cursor: pointer;
 }
-.atlas-mark .atlas-mark-button + .atlas-mark-button { margin-inline-start: 0.2em; }
-.atlas-mark .atlas-mark-button:hover {
+.almagest-mark .almagest-mark-button + .almagest-mark-button { margin-inline-start: 0.2em; }
+.almagest-mark .almagest-mark-button:hover {
 	color: var(--text-normal);
 	background-color: var(--background-modifier-hover);
 }
-.atlas-mark .atlas-mark-button.mod-cta {
-	border-color: rgba(var(--atlas-mark), 0.5);
-	color: rgb(var(--atlas-mark));
-	background-color: rgba(var(--atlas-mark), 0.1);
+.almagest-mark .almagest-mark-button.mod-cta {
+	border-color: rgba(var(--almagest-mark), 0.5);
+	color: rgb(var(--almagest-mark));
+	background-color: rgba(var(--almagest-mark), 0.1);
 }
-.atlas-mark .atlas-mark-button.mod-cta:hover { background-color: rgba(var(--atlas-mark), 0.22); }
+.almagest-mark .almagest-mark-button.mod-cta:hover { background-color: rgba(var(--almagest-mark), 0.22); }

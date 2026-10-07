@@ -4,7 +4,7 @@ import { homedir } from "os";
 import { Notice } from "obsidian";
 import { binaryCandidates, chooseBinary, errorMessage, movedNotices } from "./helpers";
 
-export class AtlasError extends Error {}
+export class AlmagestError extends Error {}
 
 /** The binary to run: the setting, else the first known place that has one. */
 export function findBinary(override: string): string | null {
@@ -31,34 +31,34 @@ function exec(bin: string, args: string[], cwd: string | undefined, answers: num
 				const code = (err as NodeJS.ErrnoException).code as unknown;
 				if (typeof code === "number" && answers.includes(code)) return resolve(stdout);
 				if (code === "ENOENT") {
-					return reject(new AtlasError(`the atlas-obsidian binary was not found at ${bin}`));
+					return reject(new AlmagestError(`the almagest binary was not found at ${bin}`));
 				}
-				reject(new AtlasError(errorMessage(String(stderr)) || err.message));
+				reject(new AlmagestError(errorMessage(String(stderr)) || err.message));
 			},
 		);
 	});
 }
 
 /**
- * Runs one atlas command in the vault and returns its JSON output. answers lists the exit
+ * Runs one almagest command in the vault and returns its JSON output. answers lists the exit
  * codes that print an answer too, such as 2 of vault trash for a file that others link.
  */
-export async function runAtlas<T>(bin: string | null, vault: string, args: string[], answers: number[] = []): Promise<T> {
-	if (!bin) throw new AtlasError("the atlas-obsidian binary was not found; set its path in the Atlas settings");
+export async function runAlmagest<T>(bin: string | null, vault: string, args: string[], answers: number[] = []): Promise<T> {
+	if (!bin) throw new AlmagestError("the almagest binary was not found; set its path in the Almagest settings");
 	const out = await exec(bin, [...args, "--vault", vault, "--json"], vault, answers);
 	let parsed: T;
 	try {
 		parsed = JSON.parse(out) as T;
 	} catch {
-		throw new AtlasError(`atlas-obsidian ${args[0]} did not print JSON`);
+		throw new AlmagestError(`almagest ${args[0]} did not print JSON`);
 	}
 	// A write that moved a note of the user's out of wiki-view/ says where it went, whichever
 	// button ran it.
-	for (const line of movedNotices(parsed)) new Notice(`Atlas: ${line}`, 0);
+	for (const line of movedNotices(parsed)) new Notice(`Almagest: ${line}`, 0);
 	return parsed;
 }
 
-/** The version line the binary prints, such as "atlas-obsidian 10.0.0". */
+/** The version line the binary prints, such as "almagest 10.0.0". */
 export async function binaryVersion(bin: string): Promise<string> {
 	return (await exec(bin, ["version"], undefined)).trim();
 }

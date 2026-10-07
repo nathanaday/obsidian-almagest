@@ -1,10 +1,10 @@
 import { App, ButtonComponent, MarkdownView, Modal, Notice, Setting } from "obsidian";
 import { CHECKOUT, Checkout, Returned, checkoutTitle, oneLine, skippedLine } from "./checkoutstate";
-import type AtlasPlugin from "./main";
+import type AlmagestPlugin from "./main";
 import { checkoutMessage } from "./messages";
 
 /** Starts the librarian on a request: in Duet, else in a terminal. */
-export function startCheckout(plugin: AtlasPlugin, request: string): Promise<void> {
+export function startCheckout(plugin: AlmagestPlugin, request: string): Promise<void> {
 	return plugin.runAgent(checkoutMessage(request), checkoutTitle(request), "checkout");
 }
 
@@ -12,16 +12,16 @@ export function startCheckout(plugin: AtlasPlugin, request: string): Promise<voi
  * Proposes the edited copies of a checkout as one change, and opens the change. A notice
  * names the copies that the return left out.
  */
-export async function returnCheckout(plugin: AtlasPlugin, c: Checkout): Promise<void> {
+export async function returnCheckout(plugin: AlmagestPlugin, c: Checkout): Promise<void> {
 	// An edit typed a moment ago returns with its copy.
 	for (const leaf of plugin.app.workspace.getLeavesOfType("markdown")) {
 		const view = leaf.view;
 		if (view instanceof MarkdownView && view.file?.path.startsWith(`${c.folder}/`)) await view.save();
 	}
-	const { returned } = await plugin.atlas<{ returned: Returned }>([CHECKOUT, "return", c.folder]);
+	const { returned } = await plugin.almagest<{ returned: Returned }>([CHECKOUT, "return", c.folder]);
 	const line = skippedLine(returned.skipped);
-	if (line) new Notice(`Atlas: ${line}`, 15_000);
-	if (returned.warning) new Notice(`Atlas: ${returned.warning}`, 15_000);
+	if (line) new Notice(`Almagest: ${line}`, 15_000);
+	if (returned.warning) new Notice(`Almagest: ${returned.warning}`, 15_000);
 	if (returned.change?.ref) await plugin.openWhenSeen(returned.change.ref.path, true);
 }
 
@@ -39,7 +39,7 @@ export class CheckoutModal extends Modal {
 	onOpen(): void {
 		this.setTitle("Check out material");
 		const el = this.contentEl;
-		el.addClass("atlas-checkout");
+		el.addClass("almagest-checkout");
 		el.createEl("p", {
 			text: `The librarian finds the documents that serve your request and copies them into ${CHECKOUT}/, with a reading list. Edit the copies as you like. Return proposes your edits to the wiki as a change.`,
 		});
@@ -58,7 +58,7 @@ export class CheckoutModal extends Modal {
 					this.request = v;
 					go?.setDisabled(oneLine(v) === "");
 				});
-				text.inputEl.addClass("atlas-checkout-input");
+				text.inputEl.addClass("almagest-checkout-input");
 				text.inputEl.addEventListener("keydown", (e) => {
 					if (e.key === "Enter" && !e.isComposing) {
 						e.preventDefault();

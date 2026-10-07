@@ -1,7 +1,7 @@
 import { App, ItemView, TFile, WorkspaceLeaf, debounce } from "obsidian";
 import { TagDoc, asList, groupDocs, isDocumentPath, isDocumentType, narrow, normalTag, relativeTag, tagViewPath, topTags } from "./helpers";
 
-export const TAG_NAV_VIEW = "atlas-tag-navigator";
+export const TAG_NAV_VIEW = "almagest-tag-navigator";
 /** Not "tags", which is the icon of Obsidian's own Tags pane. */
 export const NAV_ICON = "compass";
 
@@ -30,7 +30,7 @@ export function tagDocs(app: App): TagDoc[] {
 }
 
 /**
- * The Atlas navigator: pick a tag, then the tags that occur with it, to any depth; below,
+ * The Almagest navigator: pick a tag, then the tags that occur with it, to any depth; below,
  * the documents that hold every chosen tag. It reads the metadata cache and writes
  * nothing.
  */
@@ -47,7 +47,7 @@ export class TagNavigator extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return "Atlas navigator";
+		return "Almagest navigator";
 	}
 
 	getIcon(): string {
@@ -84,31 +84,31 @@ export class TagNavigator extends ItemView {
 	render(): void {
 		const root = this.contentEl;
 		root.empty();
-		root.addClass("atlas-tagnav");
+		root.addClass("almagest-tagnav");
 		const docs = tagDocs(this.app);
-		const path = root.createDiv({ cls: "atlas-tagnav-path" });
-		const home = path.createEl("button", { cls: "atlas-tagnav-home", text: "All tags" });
+		const path = root.createDiv({ cls: "almagest-tagnav-path" });
+		const home = path.createEl("button", { cls: "almagest-tagnav-home", text: "All tags" });
 		home.onclick = () => {
 			this.chosen = [];
 			this.render();
 		};
 		for (const t of this.chosen) {
-			const chip = path.createSpan({ cls: "atlas-tagnav-chip" });
+			const chip = path.createSpan({ cls: "almagest-tagnav-chip" });
 			chip.createSpan({ text: "#" + t });
 			chip.setAttr("title", "#" + t);
-			const x = chip.createEl("button", { cls: "atlas-tagnav-x", text: "×", attr: { "aria-label": `Remove ${t}` } });
+			const x = chip.createEl("button", { cls: "almagest-tagnav-x", text: "×", attr: { "aria-label": `Remove ${t}` } });
 			x.onclick = () => this.drop(t);
 		}
 		if (this.chosen.length === 0) {
-			root.createDiv({ cls: "atlas-tagnav-hint", text: "Choose a tag, then narrow by the tags that occur with it." });
+			root.createDiv({ cls: "almagest-tagnav-hint", text: "Choose a tag, then narrow by the tags that occur with it." });
 			const list = this.section(root, "Tags");
 			for (const f of topTags(docs)) this.tagButton(list, f.tag, f.count);
-			if (docs.length === 0) root.createDiv({ cls: "atlas-tagnav-empty", text: "No document holds a tag yet." });
+			if (docs.length === 0) root.createDiv({ cls: "almagest-tagnav-empty", text: "No document holds a tag yet." });
 			return;
 		}
 		const { matches, with: facets } = narrow(docs, this.chosen);
 		const count = `${matches.length} ${matches.length === 1 ? "document holds" : "documents hold"} ${this.chosen.length === 1 ? "this tag" : this.chosen.length === 2 ? "both tags" : `all ${this.chosen.length} tags`}`;
-		root.createDiv({ cls: "atlas-tagnav-count", text: count });
+		root.createDiv({ cls: "almagest-tagnav-count", text: count });
 		const view = this.section(root, "View");
 		const page = view.createEl("button", { text: "Tag view" });
 		page.setAttr("aria-label", "Open the view of #" + this.chosen[this.chosen.length - 1]);
@@ -118,15 +118,15 @@ export class TagNavigator extends ItemView {
 			for (const f of facets.slice(0, MAX_WITH)) this.tagButton(list, f.tag, f.count, relativeTag(f.tag, this.chosen));
 		}
 		for (const group of groupDocs(matches)) {
-			const g = root.createDiv({ cls: "atlas-tagnav-group" });
-			g.createDiv({ cls: "atlas-tagnav-group-name", text: `${group.name} (${group.docs.length})` });
+			const g = root.createDiv({ cls: "almagest-tagnav-group" });
+			g.createDiv({ cls: "almagest-tagnav-group-name", text: `${group.name} (${group.docs.length})` });
 			for (const d of group.docs) {
-				const row = g.createDiv({ cls: "atlas-tagnav-doc" });
+				const row = g.createDiv({ cls: "almagest-tagnav-doc" });
 				row.dataset.type = d.type;
 				row.setAttr("title", d.description);
-				row.createSpan({ cls: "atlas-tagnav-doc-title", text: d.title });
+				row.createSpan({ cls: "almagest-tagnav-doc-title", text: d.title });
 				const meta = [d.kind || d.type, d.status].filter((x) => x).join(" · ");
-				row.createSpan({ cls: "atlas-tagnav-doc-meta", text: meta });
+				row.createSpan({ cls: "almagest-tagnav-doc-meta", text: meta });
 				row.onclick = (evt) => {
 					const file = this.app.vault.getAbstractFileByPath(d.path);
 					if (file instanceof TFile) void this.app.workspace.getLeaf(evt.metaKey || evt.ctrlKey).openFile(file);
@@ -137,16 +137,16 @@ export class TagNavigator extends ItemView {
 
 	/** A labeled section; returns the element its items go in. */
 	private section(root: HTMLElement, label: string): HTMLElement {
-		const el = root.createDiv({ cls: "atlas-tagnav-section" });
-		el.createDiv({ cls: "atlas-tagnav-label", text: label });
-		return el.createDiv({ cls: "atlas-tagnav-items" });
+		const el = root.createDiv({ cls: "almagest-tagnav-section" });
+		el.createDiv({ cls: "almagest-tagnav-label", text: label });
+		return el.createDiv({ cls: "almagest-tagnav-items" });
 	}
 
 	private tagButton(parent: HTMLElement, tag: string, count: number, label = "#" + tag): void {
-		const b = parent.createEl("button", { cls: "atlas-tagnav-tag" });
+		const b = parent.createEl("button", { cls: "almagest-tagnav-tag" });
 		b.createSpan({ text: label });
 		b.setAttr("title", "#" + tag);
-		b.createSpan({ cls: "atlas-tagnav-tag-count", text: String(count) });
+		b.createSpan({ cls: "almagest-tagnav-tag-count", text: String(count) });
 		b.onclick = () => this.add(tag);
 	}
 

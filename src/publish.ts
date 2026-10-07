@@ -1,6 +1,6 @@
 import { App, Modal, Notice } from "obsidian";
 import { JOURNALS, JournalVolume, editionTitle, journalVolumes, numbered, publishBlocked } from "./journalstate";
-import type AtlasPlugin from "./main";
+import type AlmagestPlugin from "./main";
 import { WorkDoc, publishMessage } from "./messages";
 import { plural } from "./palettestate";
 
@@ -14,25 +14,25 @@ interface Published {
 }
 
 /** Asks the user to publish a volume; Publish captures it and starts the agent that absorbs it. */
-export function confirmPublish(plugin: AtlasPlugin, vol: JournalVolume): void {
+export function confirmPublish(plugin: AlmagestPlugin, vol: JournalVolume): void {
 	const title = editionTitle(vol.volume, new Date());
 	new PublishModal(plugin.app, vol, title, numbered(vol.edition, title), () => void publish(plugin, vol.volume)).open();
 }
 
 /** Publish for the volume of a path, from the command: the binary says whether the volume has a change. */
-export async function confirmPublishOf(plugin: AtlasPlugin, volume: string): Promise<void> {
+export async function confirmPublishOf(plugin: AlmagestPlugin, volume: string): Promise<void> {
 	try {
-		const { journals } = await plugin.atlas<{ journals: Partial<JournalVolume>[] | null }>(["journal", "list"]);
+		const { journals } = await plugin.almagest<{ journals: Partial<JournalVolume>[] | null }>(["journal", "list"]);
 		const vol = journalVolumes(journals).find((v) => v.volume === volume);
 		if (!vol) {
-			new Notice(`Atlas: ${JOURNALS}/${volume} is not a journal volume.`);
+			new Notice(`Almagest: ${JOURNALS}/${volume} is not a journal volume.`);
 			return;
 		}
 		const why = publishBlocked(vol);
-		if (why) new Notice(`Atlas: ${vol.name}: ${why}`, 8000);
+		if (why) new Notice(`Almagest: ${vol.name}: ${why}`, 8000);
 		else confirmPublish(plugin, vol);
 	} catch (e) {
-		new Notice(`Atlas: ${(e as Error).message}`, 10_000);
+		new Notice(`Almagest: ${(e as Error).message}`, 10_000);
 	}
 }
 
@@ -40,24 +40,24 @@ export async function confirmPublishOf(plugin: AtlasPlugin, volume: string): Pro
  * Captures the volume as an edition, starts its work document and opens it, and starts the
  * agent that absorbs the edition. One publish runs at a time.
  */
-async function publish(plugin: AtlasPlugin, volume: string): Promise<void> {
+async function publish(plugin: AlmagestPlugin, volume: string): Promise<void> {
 	if (plugin.publishing) return;
 	plugin.setPublishing(volume);
 	let edition: Captured | undefined;
 	try {
 		// The prefix keeps a volume whose name begins with a dash from reading as an option.
-		const { published } = await plugin.atlas<Published>(["journal", "publish", `${JOURNALS}/${volume}`]);
+		const { published } = await plugin.almagest<Published>(["journal", "publish", `${JOURNALS}/${volume}`]);
 		edition = published.source;
-		new Notice(`Atlas: published ${edition.title}.`);
-		const { ref: doc } = await plugin.atlas<{ ref: Captured }>(["change", "start", "--kind", "ingest", "--title", `Ingest ${edition.title}`]);
+		new Notice(`Almagest: published ${edition.title}.`);
+		const { ref: doc } = await plugin.almagest<{ ref: Captured }>(["change", "start", "--kind", "ingest", "--title", `Ingest ${edition.title}`]);
 		await plugin.openWhenSeen(doc.path, true);
 		await plugin.runAgent(publishMessage(edition, doc), `Agent · ${doc.title}`, "publish");
 	} catch (e) {
 		const message = (e as Error).message;
 		new Notice(
 			edition
-				? `Atlas: the agent for ${edition.title} did not start: ${message}. The edition waits as a pending source; wiki-sync absorbs it.`
-				: `Atlas: ${message}`,
+				? `Almagest: the agent for ${edition.title} did not start: ${message}. The edition waits as a pending source; wiki-sync absorbs it.`
+				: `Almagest: ${message}`,
 			10_000,
 		);
 	} finally {
@@ -81,14 +81,14 @@ class PublishModal extends Modal {
 		const { vol } = this;
 		this.setTitle(`Publish ${vol.name}`);
 		const el = this.contentEl;
-		el.addClass("atlas-publish");
+		el.addClass("almagest-publish");
 		el.createEl("p", { text: `Publish captures the ${plural(vol.notes, "note", "notes")} of ${JOURNALS}/${vol.volume}/ as one source:` });
-		el.createDiv({ cls: "atlas-publish-title", text: this.title });
-		if (this.numbered) el.createEl("p", { cls: "atlas-publish-quiet", text: "An edition of this day exists, so this one takes a number." });
+		el.createDiv({ cls: "almagest-publish-title", text: this.title });
+		if (this.numbered) el.createEl("p", { cls: "almagest-publish-quiet", text: "An edition of this day exists, so this one takes a number." });
 		el.createEl("p", {
 			text: "Then a work document opens, and an agent absorbs the edition into the wiki and cites it. You approve its changes. No agent edits the volume.",
 		});
-		const buttons = el.createDiv({ cls: "atlas-publish-buttons" });
+		const buttons = el.createDiv({ cls: "almagest-publish-buttons" });
 		buttons.createEl("button", { text: "Cancel" }).onclick = () => this.close();
 		const go = buttons.createEl("button", { cls: "mod-cta", text: "Publish" });
 		go.onclick = () => {

@@ -1,8 +1,9 @@
 import { App, FileSystemAdapter, Modal, Notice, Plugin, TAbstractFile, TFile, debounce } from "obsidian";
 import { ChangeRunner, changeProcessor } from "./change";
-import { AtlasError, findBinary, runAtlas } from "./cli";
+import { AlmagestError, findBinary, runAlmagest } from "./cli";
 import {
 	LAYOUT,
+	VAULT_DOCUMENTS,
 	MIGRATES_FROM,
 	MigrationReport,
 	Synced,
@@ -27,7 +28,7 @@ import { openTerminal } from "./launcher";
 import { volumeOf } from "./journalstate";
 import { PALETTE_ICON, PALETTE_VIEW, PaletteView } from "./palette";
 import { confirmPublishOf } from "./publish";
-import { AtlasSettingTab, AtlasSettings, DEFAULT_SETTINGS } from "./settings";
+import { AlmagestSettingTab, AlmagestSettings, DEFAULT_SETTINGS } from "./settings";
 import { isWikified } from "./marks";
 import { Wikify, markExtension, markPostProcessor } from "./wikify";
 import { NAV_ICON, TAG_NAV_VIEW, TagNavigator } from "./tagnav";
@@ -39,8 +40,8 @@ const ECHO_WINDOW = 5000;
 /** How long to wait for Obsidian to see a document the binary wrote. */
 const SEE_MS = 10_000;
 
-export default class AtlasPlugin extends Plugin {
-	settings: AtlasSettings = { ...DEFAULT_SETTINGS };
+export default class AlmagestPlugin extends Plugin {
+	settings: AlmagestSettings = { ...DEFAULT_SETTINGS };
 	/** The agent settings of 8.0.2, kept in data.json until they move to the vault's config file. */
 	private legacy: Record<string, unknown> | null = null;
 
@@ -71,16 +72,16 @@ export default class AtlasPlugin extends Plugin {
 	readonly conversations = new Conversations(
 		() => this.paletteViews().forEach((v) => v.render()),
 		(c, turn) => {
-			if (turn.status === "failed") new Notice(`Atlas: the ${c.label} agent stopped: ${turn.error ?? "its turn failed"}.`, 10_000);
+			if (turn.status === "failed") new Notice(`Almagest: the ${c.label} agent stopped: ${turn.error ?? "its turn failed"}.`, 10_000);
 		},
 	);
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
-		this.addSettingTab(new AtlasSettingTab(this.app, this));
+		this.addSettingTab(new AlmagestSettingTab(this.app, this));
 
-		this.registerMarkdownCodeBlockProcessor("atlas-repo", repoProcessor(this));
-		this.registerMarkdownCodeBlockProcessor("atlas-change", changeProcessor(this, new ChangeRunner(this)));
+		this.registerMarkdownCodeBlockProcessor("almagest-repo", repoProcessor(this));
+		this.registerMarkdownCodeBlockProcessor("almagest-change", changeProcessor(this, new ChangeRunner(this)));
 
 		this.registerEditorExtension(markExtension(this.wikify));
 		this.registerMarkdownPostProcessor(markPostProcessor(this, this.wikify));
@@ -96,16 +97,16 @@ export default class AtlasPlugin extends Plugin {
 			},
 		});
 
-		this.addRibbonIcon("refresh-cw", "Atlas: sync the vault", () => void this.sync(true));
+		this.addRibbonIcon("refresh-cw", "Almagest: sync the vault", () => void this.sync(true));
 		this.addCommand({ id: "sync", name: "Sync the vault", callback: () => void this.sync(true) });
 
 		this.registerView(TAG_NAV_VIEW, (leaf) => new TagNavigator(leaf));
-		this.addRibbonIcon(NAV_ICON, "Atlas: open the Atlas navigator", () => void this.openTags());
-		this.addCommand({ id: "open-tags", name: "Open the Atlas navigator", callback: () => void this.openTags() });
+		this.addRibbonIcon(NAV_ICON, "Almagest: open the Almagest navigator", () => void this.openTags());
+		this.addCommand({ id: "open-tags", name: "Open the Almagest navigator", callback: () => void this.openTags() });
 
 		this.registerView(PALETTE_VIEW, (leaf) => new PaletteView(leaf, this));
-		this.addRibbonIcon(PALETTE_ICON, "Atlas", () => void this.openPalette());
-		this.addCommand({ id: "open-palette", name: "Open the Atlas palette", callback: () => void this.openPalette() });
+		this.addRibbonIcon(PALETTE_ICON, "Almagest", () => void this.openPalette());
+		this.addCommand({ id: "open-palette", name: "Open the Almagest palette", callback: () => void this.openPalette() });
 
 		this.addCommand({ id: "start-agent", name: "Start agent", callback: () => void this.startAgent() });
 		this.addCommand({
@@ -120,8 +121,8 @@ export default class AtlasPlugin extends Plugin {
 		});
 
 		this.registerView(SESSIONS_VIEW, (leaf) => new SessionsView(leaf, this));
-		this.sessionsRibbon = this.addRibbonIcon("bot", "Atlas: open the sessions", () => void this.openSessions());
-		this.sessionsRibbon.addClass("atlas-sessions-ribbon");
+		this.sessionsRibbon = this.addRibbonIcon("bot", "Almagest: open the sessions", () => void this.openSessions());
+		this.sessionsRibbon.addClass("almagest-sessions-ribbon");
 		this.addCommand({ id: "open-sessions", name: "Open the sessions", callback: () => void this.openSessions() });
 
 		this.addCommand({ id: "migrate", name: `Migrate this vault to the ${layoutName(LAYOUT)} layout`, callback: () => void this.migrate() });
@@ -167,12 +168,12 @@ export default class AtlasPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		const saved = (await this.loadData()) as Partial<AtlasSettings> | null;
+		const saved = (await this.loadData()) as Partial<AlmagestSettings> | null;
 		const old = Object.entries(saved ?? {}).filter(([k]) => LEGACY_KEYS.includes(k));
 		this.legacy = old.length > 0 ? Object.fromEntries(old) : null;
 		this.settings = { ...DEFAULT_SETTINGS };
 		// Only the keys this version knows; an older version's key goes at the next save.
-		for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof AtlasSettings)[]) {
+		for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof AlmagestSettings)[]) {
 			if (saved && saved[key] !== undefined) (this.settings as unknown as Record<string, unknown>)[key] = saved[key];
 		}
 		this.settings.snapshotQuietSeconds = quietSeconds(this.settings.snapshotQuietSeconds);
@@ -182,13 +183,13 @@ export default class AtlasPlugin extends Plugin {
 		await this.saveData({ ...this.legacy, ...this.settings });
 	}
 
-	/** Runs one atlas command in this vault and returns its JSON; answers are the exit codes that print an answer too. */
-	atlas<T>(args: string[], answers: number[] = []): Promise<T> {
+	/** Runs one almagest command in this vault and returns its JSON; answers are the exit codes that print an answer too. */
+	almagest<T>(args: string[], answers: number[] = []): Promise<T> {
 		const adapter = this.app.vault.adapter;
 		if (!(adapter instanceof FileSystemAdapter)) {
-			return Promise.reject(new AtlasError("this vault is not a folder on disk"));
+			return Promise.reject(new AlmagestError("this vault is not a folder on disk"));
 		}
-		return runAtlas<T>(findBinary(this.settings.binaryPath), adapter.getBasePath(), args, answers);
+		return runAlmagest<T>(findBinary(this.settings.binaryPath), adapter.getBasePath(), args, answers);
 	}
 
 	// Sync
@@ -196,7 +197,7 @@ export default class AtlasPlugin extends Plugin {
 	/** A manual sync runs every step; an automatic one runs the steps that read no git. */
 	async sync(manual: boolean): Promise<void> {
 		if (this.syncing) {
-			if (manual) new Notice("Atlas: a sync is running.");
+			if (manual) new Notice("Almagest: a sync is running.");
 			return;
 		}
 		if (this.syncTimer !== null) window.clearTimeout(this.syncTimer);
@@ -206,15 +207,15 @@ export default class AtlasPlugin extends Plugin {
 		let wrote: string[] = [];
 		try {
 			const args = manual ? ["vault", "sync"] : ["vault", "sync", "--views"];
-			const out = await this.atlas<{ synced: Synced }>(args);
+			const out = await this.almagest<{ synced: Synced }>(args);
 			wrote = syncedPaths(out.synced);
 			this.lastAutoError = "";
-			if (manual) new Notice(`Atlas: ${syncSummary(out.synced)}`);
-			for (const line of strayNotices(out.synced)) new Notice(`Atlas: ${line}`, 0);
+			if (manual) new Notice(`Almagest: ${syncSummary(out.synced)}`);
+			for (const line of strayNotices(out.synced)) new Notice(`Almagest: ${line}`, 0);
 		} catch (e) {
 			const message = (e as Error).message;
 			// A background sync that fails the same way again stays quiet.
-			if (manual || message !== this.lastAutoError) new Notice(`Atlas: ${message}`);
+			if (manual || message !== this.lastAutoError) new Notice(`Almagest: ${message}`);
 			if (!manual) this.lastAutoError = message;
 		} finally {
 			this.syncing = false;
@@ -280,13 +281,13 @@ export default class AtlasPlugin extends Plugin {
 	private async snapshot(): Promise<boolean> {
 		if (!this.migrated()) return false;
 		try {
-			await this.atlas<unknown>(["vault", "snapshot"]);
+			await this.almagest<unknown>(["vault", "snapshot"]);
 			this.lastSnapshotError = "";
 			return false;
 		} catch (e) {
 			const message = (e as Error).message;
 			if (isLockHeld(message)) return true;
-			if (message !== this.lastSnapshotError) console.warn(`Atlas: the snapshot failed: ${message}`);
+			if (message !== this.lastSnapshotError) console.warn(`Almagest: the snapshot failed: ${message}`);
 			this.lastSnapshotError = message;
 			return false;
 		}
@@ -296,9 +297,18 @@ export default class AtlasPlugin extends Plugin {
 
 	/** The layout the vault document records; this plugin's when there is none to read. */
 	private layout(): number {
-		const atlas = this.app.vault.getFileByPath("Atlas.md");
-		if (!atlas) return LAYOUT;
-		return layoutOf(this.app.metadataCache.getFileCache(atlas)?.frontmatter);
+		const file = this.vaultDocument();
+		if (!file) return LAYOUT;
+		return layoutOf(this.app.metadataCache.getFileCache(file)?.frontmatter);
+	}
+
+	/** The vault document, of this release or an earlier one, or null. */
+	private vaultDocument(): TFile | null {
+		for (const path of VAULT_DOCUMENTS) {
+			const file = this.app.vault.getFileByPath(path);
+			if (file) return file;
+		}
+		return null;
 	}
 
 	/** Whether the vault has the layout this plugin reads. */
@@ -311,13 +321,13 @@ export default class AtlasPlugin extends Plugin {
 		const notice = new Notice("", 0);
 		const el = notice.messageEl;
 		const layout = this.layout();
-		const needs = `Atlas: this vault has the ${layoutName(layout)} layout. This plugin needs the ${layoutName(LAYOUT)} layout.`;
+		const needs = `Almagest: this vault has the ${layoutName(layout)} layout. This plugin needs the ${layoutName(LAYOUT)} layout.`;
 		if (layout < MIGRATES_FROM) {
-			el.createDiv({ text: `${needs} Migrate the vault to 8.x with Atlas 8.1.1 first.` });
+			el.createDiv({ text: `${needs} Migrate it to 8.x with release 8.1.1 first (the tag threads-final of almagest, when the project was Atlas).` });
 			return;
 		}
 		el.createDiv({ text: needs });
-		const button = el.createEl("button", { text: "Show the migration", cls: "mod-cta atlas-notice-button" });
+		const button = el.createEl("button", { text: "Show the migration", cls: "mod-cta almagest-notice-button" });
 		button.onclick = () => {
 			notice.hide();
 			void this.migrate();
@@ -326,18 +336,18 @@ export default class AtlasPlugin extends Plugin {
 
 	private async migrate(): Promise<void> {
 		try {
-			const report = await this.atlas<MigrationReport>(["vault", "migrate", "--dry-run"]);
+			const report = await this.almagest<MigrationReport>(["vault", "migrate", "--dry-run"]);
 			new MigrationModal(this.app, report, this.layout(), async () => {
 				try {
-					const done = await this.atlas<MigrationReport>(["vault", "migrate"]);
-					new Notice(`Atlas: ${migrationSummary(done)}`, 10_000);
-					for (const line of strayNotices(done)) new Notice(`Atlas: ${line}`, 0);
+					const done = await this.almagest<MigrationReport>(["vault", "migrate"]);
+					new Notice(`Almagest: ${migrationSummary(done)}`, 10_000);
+					for (const line of strayNotices(done)) new Notice(`Almagest: ${line}`, 0);
 				} catch (e) {
-					new Notice(`Atlas: ${(e as Error).message}`, 10_000);
+					new Notice(`Almagest: ${(e as Error).message}`, 10_000);
 				}
 			}).open();
 		} catch (e) {
-			new Notice(`Atlas: ${(e as Error).message}`, 10_000);
+			new Notice(`Almagest: ${(e as Error).message}`, 10_000);
 		}
 	}
 
@@ -385,7 +395,7 @@ export default class AtlasPlugin extends Plugin {
 			file = this.app.vault.getFileByPath(path);
 		}
 		if (!(file instanceof TFile)) {
-			new Notice(`Atlas: Obsidian does not see ${path} yet.`);
+			new Notice(`Almagest: Obsidian does not see ${path} yet.`);
 			return;
 		}
 		await this.app.workspace.getLeaf(newTab ? "tab" : false).openFile(file);
@@ -412,8 +422,8 @@ export default class AtlasPlugin extends Plugin {
 			void sessionGroups(this.app, this.staleHours()).then(({ groups }) => {
 				const waiting = groups.open.filter((s) => s.state === "needs you").length;
 				if (this.sessionsRibbon) {
-					if (waiting > 0) this.sessionsRibbon.dataset.atlasCount = String(waiting);
-					else delete this.sessionsRibbon.dataset.atlasCount;
+					if (waiting > 0) this.sessionsRibbon.dataset.almagestCount = String(waiting);
+					else delete this.sessionsRibbon.dataset.almagestCount;
 				}
 			});
 			this.sessionViews().forEach((v) => void v.render());
@@ -424,22 +434,22 @@ export default class AtlasPlugin extends Plugin {
 
 	/** How long a session with no recorded process may go quiet before it counts as gone. */
 	staleHours(): number {
-		const atlas = this.app.vault.getFileByPath("Atlas.md");
-		const n = Number(atlas ? this.app.metadataCache.getFileCache(atlas)?.frontmatter?.stale_hours : 0);
+		const file = this.vaultDocument();
+		const n = Number(file ? this.app.metadataCache.getFileCache(file)?.frontmatter?.stale_hours : 0);
 		return n > 0 ? n : 12;
 	}
 
 	// Agents
 
-	/** The agent preferences: the vault's config file over ~/.atlas/config.json. */
+	/** The agent preferences: the vault's config file over ~/.almagest/config.json. */
 	agentConfig(): Promise<AgentConfig> {
-		return this.atlas<AgentConfig>(["config"]);
+		return this.almagest<AgentConfig>(["config"]);
 	}
 
 	/** Sets or unsets (value "") one agent preference, in the vault's file or the global one. */
 	async setPreference(key: string, value: string, global: boolean): Promise<AgentConfig> {
 		const args = value ? ["config", "set", key, value] : ["config", "unset", key];
-		return this.atlas<AgentConfig>(global ? [...args, "--global"] : args);
+		return this.almagest<AgentConfig>(global ? [...args, "--global"] : args);
 	}
 
 	/** Moves the agent settings of 8.0.2 into the vault's config file, once. */
@@ -452,7 +462,7 @@ export default class AtlasPlugin extends Plugin {
 			this.legacy = null;
 			await this.saveSettings();
 		} catch (e) {
-			console.warn("Atlas: the agent settings did not move to .atlas/config.json", e);
+			console.warn("Almagest: the agent settings did not move to .almagest/config.json", e);
 		}
 	}
 
@@ -464,11 +474,11 @@ export default class AtlasPlugin extends Plugin {
 				await openTerminal(prefs.terminal, command, prefs.terminal_command);
 				return;
 			} catch (e) {
-				new Notice(`Atlas: cannot open the terminal (${(e as Error).message}). The Atlas settings choose it.`, 8000);
+				new Notice(`Almagest: cannot open the terminal (${(e as Error).message}). The Almagest settings choose it.`, 8000);
 			}
 		}
 		await navigator.clipboard.writeText(command);
-		new Notice(`Atlas: copied ${what}. Run it in a terminal.`);
+		new Notice(`Almagest: copied ${what}. Run it in a terminal.`);
 	}
 
 	/** Starts the agent in the vault, in a terminal; a prompt is its first message. */
@@ -479,7 +489,7 @@ export default class AtlasPlugin extends Plugin {
 		try {
 			config = await this.agentConfig();
 		} catch (e) {
-			new Notice(`Atlas: cannot read the agent preferences: ${(e as Error).message}`, 8000);
+			new Notice(`Almagest: cannot read the agent preferences: ${(e as Error).message}`, 8000);
 			return;
 		}
 		await this.runInTerminal(startCommand(adapter.getBasePath(), config.preferences.agent_command, prompt), "the agent command", config);
@@ -498,10 +508,10 @@ export default class AtlasPlugin extends Plugin {
 				this.conversations.follow(api, path, label);
 				return;
 			} catch (e) {
-				new Notice(`Atlas: Duet did not start the agent (${(e as Error).message}). Atlas starts it in a terminal.`, 10_000);
+				new Notice(`Almagest: Duet did not start the agent (${(e as Error).message}). Almagest starts it in a terminal.`, 10_000);
 			}
 		} else {
-			new Notice("Atlas: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Atlas starts the agent in a terminal.", 10_000);
+			new Notice("Almagest: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Almagest starts the agent in a terminal.", 10_000);
 		}
 		await this.startAgent(message);
 	}
@@ -540,7 +550,7 @@ class MigrationModal extends Modal {
 		const from = r.from || layoutName(this.layout);
 		this.setTitle(`Migrate to the ${layoutName(LAYOUT)} layout`);
 		const el = this.contentEl;
-		el.addClass("atlas-migration");
+		el.addClass("almagest-migration");
 		el.createEl("p", { text: `The migration moves ${r.vault} from the ${from} layout to the ${layoutName(LAYOUT)} layout in one commit. git revert takes it back. It:` });
 		const steps = el.createEl("ul");
 		for (const step of migrationSteps(this.layout)) steps.createEl("li", { text: step });
@@ -558,7 +568,7 @@ class MigrationModal extends Modal {
 		list(r.strays, "Your notes in views/, to move to ingest/", move);
 		list(r.warnings, "Warnings", (w) => w);
 
-		const buttons = el.createDiv({ cls: "atlas-migration-buttons" });
+		const buttons = el.createDiv({ cls: "almagest-migration-buttons" });
 		buttons.createEl("button", { text: "Cancel" }).onclick = () => this.close();
 		const go = buttons.createEl("button", { text: "Migrate", cls: "mod-cta" });
 		go.onclick = async () => {

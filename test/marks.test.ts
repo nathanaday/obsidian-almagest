@@ -121,10 +121,10 @@ test("acceptAll accepts every link mark and leaves new marks and code", () => {
 test("acceptAll leaves a link mark whose title names no note now", () => {
 	const text = "{{link:A|a}} and {{link:Gone|g}}.";
 	assert.deepEqual(acceptAll(text, (t) => t !== "Gone"), { text: "[[A|a]] and {{link:Gone|g}}.", count: 1, gone: 1 });
-	assert.equal(acceptedLine(1, 1), "Atlas: accepted 1 link mark. 1 names no note now; Ignore it or fix the title.");
-	assert.equal(acceptedLine(2, 0), "Atlas: accepted 2 link marks.");
-	assert.equal(acceptedLine(0, 2), "Atlas: no link mark to accept. 2 name no note now; Ignore them or fix the title.");
-	assert.equal(acceptedLine(0, 0), "Atlas: this note holds no link mark.");
+	assert.equal(acceptedLine(1, 1), "Almagest: accepted 1 link mark. 1 names no note now; Ignore it or fix the title.");
+	assert.equal(acceptedLine(2, 0), "Almagest: accepted 2 link marks.");
+	assert.equal(acceptedLine(0, 2), "Almagest: no link mark to accept. 2 name no note now; Ignore them or fix the title.");
+	assert.equal(acceptedLine(0, 0), "Almagest: this note holds no link mark.");
 });
 
 test("a wikified copy is a markdown note whose name ends with · wikified, or that and a number", () => {
@@ -143,7 +143,7 @@ test("wikify takes a markdown note of the user's", () => {
 	assert.equal(wikifyBlocked("Loose.md"), "");
 	assert.equal(wikifyBlocked("ingest/Paper.MD"), "");
 	assert.equal(wikifyBlocked("ingest/paper.pdf"), "Wikify takes a markdown note.");
-	assert.equal(wikifyBlocked("Atlas.md"), "Wikify takes a note of yours, not Atlas.md.");
+	assert.equal(wikifyBlocked("Almagest.md"), "Wikify takes a note of yours, not Almagest.md.");
 	for (const top of ["source-core", "changes", "sessions", "wiki-view", "trash", ".obsidian"]) {
 		assert.equal(wikifyBlocked(`${top}/sub/Note.md`), `Wikify takes a note of yours, not one in ${top}/.`);
 	}

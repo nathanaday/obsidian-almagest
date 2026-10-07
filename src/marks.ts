@@ -136,8 +136,8 @@ export function acceptAll(text: string, resolves: (title: string) => boolean = (
 /** The notice of bulk Accept. */
 export function acceptedLine(count: number, gone: number): string {
 	const left = gone === 0 ? "" : ` ${gone === 1 ? "1 names" : `${gone} name`} no note now; Ignore ${gone === 1 ? "it" : "them"} or fix the title.`;
-	if (count === 0) return gone === 0 ? "Atlas: this note holds no link mark." : `Atlas: no link mark to accept.${left}`;
-	return `Atlas: accepted ${count === 1 ? "1 link mark" : `${count} link marks`}.${left}`;
+	if (count === 0) return gone === 0 ? "Almagest: this note holds no link mark." : `Almagest: no link mark to accept.${left}`;
+	return `Almagest: accepted ${count === 1 ? "1 link mark" : `${count} link marks`}.${left}`;
 }
 
 /** Whether a path is a copy that `wikify start` made: its name ends with " · wikified", or that and a number. */
@@ -151,7 +151,7 @@ const NOT_YOURS = ["source-core", "changes", "sessions", "wiki-view", "trash", "
 /** Why `wikify start` refuses a path, or "" when it takes it. */
 export function wikifyBlocked(path: string): string {
 	if (!/\.md$/i.test(path)) return "Wikify takes a markdown note.";
-	if (path === "Atlas.md") return "Wikify takes a note of yours, not Atlas.md.";
+	if (path === "Almagest.md" || path === "Atlas.md") return `Wikify takes a note of yours, not ${path}.`;
 	const top = path.split("/")[0]!;
 	if (path.includes("/") && NOT_YOURS.includes(top)) return `Wikify takes a note of yours, not one in ${top}/.`;
 	return "";

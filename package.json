@@ -1,8 +1,8 @@
 {
-  "name": "atlas-obsidian-plugin",
+  "name": "obsidian-almagest",
   "version": "10.4.1",
   "private": true,
-  "description": "The Obsidian plugin for Atlas.",
+  "description": "The Obsidian plugin of Almagest.",
   "scripts": {
     "build": "tsc --noEmit && node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs",

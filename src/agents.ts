@@ -134,7 +134,7 @@ export function startCommand(dir: string, agent: string, prompt = ""): string {
 	return `cd ${shellQuote(dir)} && ${agent.trim() || "claude"}${first ? ` ${shellQuote(first)}` : ""}`;
 }
 
-/** The terminals Atlas opens a command in. */
+/** The terminals Almagest opens a command in. */
 export const TERMINALS = ["terminal", "iterm", "wezterm", "ghostty", "custom"] as const;
 export type TerminalApp = (typeof TERMINALS)[number];
 
@@ -146,7 +146,7 @@ export const TERMINAL_NAMES: Record<TerminalApp, string> = {
 	custom: "Custom command",
 };
 
-/** The agents Atlas starts. */
+/** The agents Almagest starts. */
 export const AGENTS = ["claude", "codex"] as const;
 export type Agent = (typeof AGENTS)[number];
 
@@ -160,7 +160,7 @@ export interface Preferences {
 	terminal_command?: string;
 }
 
-/** What atlas-obsidian config prints: the preferences in effect, and each file's own. */
+/** What almagest config prints: the preferences in effect, and each file's own. */
 export interface AgentConfig {
 	preferences: {
 		agent: Agent;

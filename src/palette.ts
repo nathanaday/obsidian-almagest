@@ -5,7 +5,7 @@ import { CHECKOUT, Checkout, day, readingListPath, returnBlocked } from "./check
 import { isSnapshotPath, lastProgressLine } from "./helpers";
 import { wikifyBlocked } from "./marks";
 import { JOURNALS, JournalVolume, publishBlocked } from "./journalstate";
-import type AtlasPlugin from "./main";
+import type AlmagestPlugin from "./main";
 import { ingestMessage, repairMessage, resolveMessage } from "./messages";
 import {
 	LintResult,
@@ -23,7 +23,7 @@ import {
 import { confirmPublish } from "./publish";
 import { sessionGroups } from "./sessions";
 
-export const PALETTE_VIEW = "atlas-palette";
+export const PALETTE_VIEW = "almagest-palette";
 export const PALETTE_ICON = "map";
 
 const REFRESH_MS = 30_000;
@@ -37,7 +37,7 @@ interface Started {
 type Action = "ingest" | "checkout" | "lint" | "repair" | "wikify" | "trash" | "return";
 
 /**
- * The Atlas palette: the vault's status from one `vault --json` call, the agents it started,
+ * The Almagest palette: the vault's status from one `vault --json` call, the agents it started,
  * and the actions. It refreshes after vault events and every 30 seconds while it is open.
  */
 export class PaletteView extends ItemView {
@@ -53,7 +53,7 @@ export class PaletteView extends ItemView {
 	private again = false;
 	private readonly soon = debounce(() => void this.refresh(), EVENT_DELAY, true);
 
-	constructor(leaf: WorkspaceLeaf, private plugin: AtlasPlugin) {
+	constructor(leaf: WorkspaceLeaf, private plugin: AlmagestPlugin) {
 		super(leaf);
 	}
 
@@ -62,7 +62,7 @@ export class PaletteView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return "Atlas";
+		return "Almagest";
 	}
 
 	getIcon(): string {
@@ -107,7 +107,7 @@ export class PaletteView extends ItemView {
 
 	private async readStatus(): Promise<void> {
 		try {
-			const out = await this.plugin.atlas<{ status: VaultStatus }>(["vault"]);
+			const out = await this.plugin.almagest<{ status: VaultStatus }>(["vault"]);
 			const { groups } = await sessionGroups(this.app, this.plugin.staleHours());
 			const state = paletteState(out.status, groups.open.length);
 			const progress = new Map<string, string>();
@@ -127,7 +127,7 @@ export class PaletteView extends ItemView {
 	render(): void {
 		const root = this.contentEl;
 		root.empty();
-		root.addClass("atlas-palette");
+		root.addClass("almagest-palette");
 		this.renderStatus(root);
 		this.renderRunning(root);
 		this.renderJournals(root);
@@ -136,21 +136,21 @@ export class PaletteView extends ItemView {
 	}
 
 	private section(root: HTMLElement, name: string): HTMLElement {
-		const el = root.createDiv({ cls: "atlas-palette-section" });
-		el.createDiv({ cls: "atlas-palette-heading", text: name });
+		const el = root.createDiv({ cls: "almagest-palette-section" });
+		el.createDiv({ cls: "almagest-palette-heading", text: name });
 		return el;
 	}
 
 	private row(parent: HTMLElement, key: string, name: string, value: string): HTMLElement {
-		const row = parent.createDiv({ cls: "atlas-palette-row" });
+		const row = parent.createDiv({ cls: "almagest-palette-row" });
 		row.dataset.row = key;
-		row.createSpan({ cls: "atlas-palette-name", text: name });
-		row.createSpan({ cls: "atlas-palette-value", text: value });
+		row.createSpan({ cls: "almagest-palette-name", text: name });
+		row.createSpan({ cls: "almagest-palette-value", text: value });
 		return row;
 	}
 
 	private link(parent: HTMLElement, title: string, path: string): HTMLElement {
-		const a = parent.createEl("a", { cls: "atlas-palette-link", text: title, href: "#" });
+		const a = parent.createEl("a", { cls: "almagest-palette-link", text: title, href: "#" });
 		a.setAttr("title", path);
 		a.onclick = (evt) => {
 			evt.preventDefault();
@@ -161,20 +161,20 @@ export class PaletteView extends ItemView {
 
 	private renderStatus(root: HTMLElement): void {
 		const el = this.section(root, "Status");
-		if (this.error) el.createDiv({ cls: "atlas-palette-error", text: `Atlas: ${this.error}` });
+		if (this.error) el.createDiv({ cls: "almagest-palette-error", text: `Almagest: ${this.error}` });
 		const s = this.state;
 		if (!s) {
-			if (!this.error) el.createDiv({ cls: "atlas-palette-quiet", text: "Reading the vault…" });
+			if (!this.error) el.createDiv({ cls: "almagest-palette-quiet", text: "Reading the vault…" });
 			return;
 		}
 		const list = (refs: Ref[], line?: (r: Ref) => string) => {
 			if (refs.length === 0) return;
-			const ul = el.createEl("ul", { cls: "atlas-palette-list" });
+			const ul = el.createEl("ul", { cls: "almagest-palette-list" });
 			for (const r of refs) {
 				const li = ul.createEl("li");
 				this.link(li, r.title, r.path);
 				const extra = line?.(r);
-				if (extra) li.createDiv({ cls: "atlas-palette-progress", text: extra });
+				if (extra) li.createDiv({ cls: "almagest-palette-progress", text: extra });
 			}
 		};
 		this.row(el, "proposed", "Proposed changes", String(s.proposed.length));
@@ -183,12 +183,12 @@ export class PaletteView extends ItemView {
 		list(s.running, (r) => [r.kind, this.progress.get(r.path) || "no step yet"].filter((x) => x).join(" · "));
 		this.row(el, "ingest", "Ingest", plural(s.ingest.length, "file", "files"));
 		if (s.ingest.length > 0) {
-			const ul = el.createEl("ul", { cls: "atlas-palette-list atlas-palette-files" });
+			const ul = el.createEl("ul", { cls: "almagest-palette-list almagest-palette-files" });
 			for (const name of s.ingest) ul.createEl("li", { text: name });
 		}
 		this.row(el, "pending", "Pending sources", String(s.pending));
 		const sessions = this.row(el, "sessions", "Live sessions", String(s.sessions));
-		const open = sessions.createEl("button", { cls: "atlas-palette-small", text: "Open sessions" });
+		const open = sessions.createEl("button", { cls: "almagest-palette-small", text: "Open sessions" });
 		open.onclick = () => void this.plugin.openSessions();
 		this.row(el, "trash", "Trash", plural(s.trash, "file", "files"));
 		this.row(el, "journals", "Journals", `${s.toPublish} to publish`);
@@ -200,10 +200,10 @@ export class PaletteView extends ItemView {
 		const running = this.plugin.conversations.list();
 		if (running.length === 0) return;
 		const el = this.section(root, "Running");
-		const ul = el.createEl("ul", { cls: "atlas-palette-list" });
+		const ul = el.createEl("ul", { cls: "almagest-palette-list" });
 		for (const c of running) {
-			const li = ul.createEl("li", { cls: "atlas-palette-agent" });
-			li.createSpan({ cls: "atlas-palette-badge", text: c.label });
+			const li = ul.createEl("li", { cls: "almagest-palette-agent" });
+			li.createSpan({ cls: "almagest-palette-badge", text: c.label });
 			this.link(li, c.path.slice(c.path.lastIndexOf("/") + 1).replace(/\.md$/, ""), c.path);
 		}
 	}
@@ -213,22 +213,22 @@ export class PaletteView extends ItemView {
 		if (!s) return;
 		const el = this.section(root, "Journals");
 		if (s.journals.length === 0) {
-			el.createDiv({ cls: "atlas-palette-quiet", text: `No journal yet: a volume is a folder directly under ${JOURNALS}/.` });
+			el.createDiv({ cls: "almagest-palette-quiet", text: `No journal yet: a volume is a folder directly under ${JOURNALS}/.` });
 			return;
 		}
 		for (const vol of s.journals) this.renderVolume(el, vol);
 	}
 
 	private renderVolume(parent: HTMLElement, vol: JournalVolume): void {
-		const el = parent.createDiv({ cls: "atlas-palette-volume" });
+		const el = parent.createDiv({ cls: "almagest-palette-volume" });
 		el.dataset.volume = vol.volume;
 		el.dataset.changed = String(vol.changed);
-		const head = el.createDiv({ cls: "atlas-palette-row" });
-		head.createSpan({ cls: "atlas-palette-name atlas-palette-volume-name", text: vol.name }).setAttr("title", `${JOURNALS}/${vol.volume}/`);
-		if (vol.changed) head.createSpan({ cls: "atlas-palette-badge atlas-palette-changed", text: "changed" });
-		head.createSpan({ cls: "atlas-palette-value", text: plural(vol.notes, "note", "notes") });
+		const head = el.createDiv({ cls: "almagest-palette-row" });
+		head.createSpan({ cls: "almagest-palette-name almagest-palette-volume-name", text: vol.name }).setAttr("title", `${JOURNALS}/${vol.volume}/`);
+		if (vol.changed) head.createSpan({ cls: "almagest-palette-badge almagest-palette-changed", text: "changed" });
+		head.createSpan({ cls: "almagest-palette-value", text: plural(vol.notes, "note", "notes") });
 
-		const edition = el.createDiv({ cls: "atlas-palette-progress atlas-palette-edition" });
+		const edition = el.createDiv({ cls: "almagest-palette-progress almagest-palette-edition" });
 		if (vol.edition) {
 			const file = this.app.metadataCache.getFirstLinkpathDest(vol.edition, "");
 			if (file) this.link(edition, vol.edition, file.path);
@@ -239,7 +239,7 @@ export class PaletteView extends ItemView {
 
 		const why = publishBlocked(vol);
 		const publishing = this.plugin.publishing === vol.volume;
-		const button = el.createEl("button", { cls: "atlas-palette-small atlas-palette-publish", text: publishing ? "Publish…" : "Publish" });
+		const button = el.createEl("button", { cls: "almagest-palette-small almagest-palette-publish", text: publishing ? "Publish…" : "Publish" });
 		if (why || this.busy || this.plugin.publishing) {
 			button.disabled = true;
 			button.setAttr("title", why || "Another action runs.");
@@ -254,25 +254,25 @@ export class PaletteView extends ItemView {
 		if (!s) return;
 		const el = this.section(root, "Checkouts");
 		if (s.checkouts.length === 0) {
-			el.createDiv({ cls: "atlas-palette-quiet", text: `No checkout yet: Checkout asks the librarian for the material on a subject, and copies it into ${CHECKOUT}/.` });
+			el.createDiv({ cls: "almagest-palette-quiet", text: `No checkout yet: Checkout asks the librarian for the material on a subject, and copies it into ${CHECKOUT}/.` });
 			return;
 		}
 		for (const c of s.checkouts) this.renderCheckout(el, c);
 	}
 
 	private renderCheckout(parent: HTMLElement, c: Checkout): void {
-		const el = parent.createDiv({ cls: "atlas-palette-checkout" });
+		const el = parent.createDiv({ cls: "almagest-palette-checkout" });
 		el.dataset.folder = c.folder;
-		const head = el.createDiv({ cls: "atlas-palette-row" });
-		this.link(head.createSpan({ cls: "atlas-palette-name atlas-palette-request" }), c.request, readingListPath(c));
-		head.createSpan({ cls: "atlas-palette-value", text: plural(c.documents, "document", "documents") });
+		const head = el.createDiv({ cls: "almagest-palette-row" });
+		this.link(head.createSpan({ cls: "almagest-palette-name almagest-palette-request" }), c.request, readingListPath(c));
+		head.createSpan({ cls: "almagest-palette-value", text: plural(c.documents, "document", "documents") });
 		const line = [c.date, `${c.edited} edited`];
 		if (c.returned) line.push(`returned ${day(c.returned)}`);
-		el.createDiv({ cls: "atlas-palette-progress atlas-palette-checkout-line", text: line.join(" · ") });
+		el.createDiv({ cls: "almagest-palette-progress almagest-palette-checkout-line", text: line.join(" · ") });
 
 		const why = returnBlocked(c);
 		const returning = this.busy === "return" && this.returning === c.folder;
-		const button = el.createEl("button", { cls: "atlas-palette-small atlas-palette-return", text: returning ? "Return…" : "Return" });
+		const button = el.createEl("button", { cls: "almagest-palette-small almagest-palette-return", text: returning ? "Return…" : "Return" });
 		if (why || this.busy || this.plugin.publishing) {
 			button.disabled = true;
 			button.setAttr("title", why || "Another action runs.");
@@ -309,15 +309,15 @@ export class PaletteView extends ItemView {
 
 	/** The button of an action, with no click handler yet. */
 	private actionButton(parent: HTMLElement, name: Action, text: string, why: string, note = ""): HTMLButtonElement {
-		const wrap = parent.createDiv({ cls: "atlas-palette-action" });
+		const wrap = parent.createDiv({ cls: "almagest-palette-action" });
 		wrap.dataset.action = name;
 		const button = wrap.createEl("button", { text: this.busy === name ? `${text}…` : text });
 		if (why || this.busy || this.plugin.publishing) {
 			button.disabled = true;
 			button.setAttr("title", why || "Another action runs.");
 		}
-		if (why) wrap.createDiv({ cls: "atlas-palette-quiet", text: why });
-		else if (note) wrap.createDiv({ cls: "atlas-palette-quiet atlas-palette-path", text: note });
+		if (why) wrap.createDiv({ cls: "almagest-palette-quiet", text: why });
+		else if (note) wrap.createDiv({ cls: "almagest-palette-quiet almagest-palette-path", text: note });
 		return button;
 	}
 
@@ -328,7 +328,7 @@ export class PaletteView extends ItemView {
 		try {
 			await run();
 		} catch (e) {
-			new Notice(`Atlas: ${(e as Error).message}`, 10_000);
+			new Notice(`Almagest: ${(e as Error).message}`, 10_000);
 		} finally {
 			this.busy = null;
 			this.render();
@@ -337,19 +337,19 @@ export class PaletteView extends ItemView {
 	}
 
 	private renderLint(parent: HTMLElement, lint: LintSummary): void {
-		const el = parent.createDiv({ cls: "atlas-palette-lint" });
-		el.createDiv({ cls: "atlas-palette-lint-counts", text: lint.counts });
+		const el = parent.createDiv({ cls: "almagest-palette-lint" });
+		el.createDiv({ cls: "almagest-palette-lint-counts", text: lint.counts });
 		if (lint.first.length > 0) {
-			const ul = el.createEl("ul", { cls: "atlas-palette-list" });
+			const ul = el.createEl("ul", { cls: "almagest-palette-list" });
 			for (const f of lint.first) {
-				const li = ul.createEl("li", { cls: "atlas-palette-finding" });
+				const li = ul.createEl("li", { cls: "almagest-palette-finding" });
 				li.dataset.severity = f.severity;
-				li.createSpan({ cls: "atlas-palette-badge", text: f.check });
+				li.createSpan({ cls: "almagest-palette-badge", text: f.check });
 				this.link(li, f.doc.title || f.doc.path, f.doc.path);
-				li.createDiv({ cls: "atlas-palette-progress", text: f.message });
+				li.createDiv({ cls: "almagest-palette-progress", text: f.message });
 			}
 		}
-		if (lint.more > 0) el.createDiv({ cls: "atlas-palette-quiet", text: `${lint.more} more: run wiki-review for all of them.` });
+		if (lint.more > 0) el.createDiv({ cls: "almagest-palette-quiet", text: `${lint.more} more: run wiki-review for all of them.` });
 		if (lint.repairable > 0) {
 			this.action(el, "repair", "Repair with an agent", "", () => this.repair(), `${plural(lint.repairable, "finding", "findings")} that a change repairs`);
 		}
@@ -369,7 +369,7 @@ export class PaletteView extends ItemView {
 	}
 
 	private async runLint(): Promise<void> {
-		this.lint = lintSummary(await this.plugin.atlas<LintResult>(["lint"]));
+		this.lint = lintSummary(await this.plugin.almagest<LintResult>(["lint"]));
 	}
 
 	private async repair(): Promise<void> {
@@ -384,7 +384,7 @@ export class PaletteView extends ItemView {
 		await saveOpen(this.app, file.path);
 		// A path that begins with a dash would read as an option.
 		const arg = file.path.startsWith("-") ? `./${file.path}` : file.path;
-		const out = await this.plugin.atlas<{ trash: TrashResult }>(["vault", "trash", arg], [2]);
+		const out = await this.plugin.almagest<{ trash: TrashResult }>(["vault", "trash", arg], [2]);
 		const outcome = trashOutcome(out.trash);
 		if (outcome.kind === "linked") {
 			const agent = () => {
@@ -394,12 +394,12 @@ export class PaletteView extends ItemView {
 			new BacklinksModal(this.app, outcome, (path) => void this.openPath(path, false), outcome.agent ? agent : null).open();
 			return;
 		}
-		new Notice(`Atlas: ${outcome.line}`, outcome.kind === "error" ? 10_000 : 6000);
+		new Notice(`Almagest: ${outcome.line}`, outcome.kind === "error" ? 10_000 : 6000);
 	}
 
 	/** Starts a work document and opens it. */
 	private async start(args: string[]): Promise<{ id: string; title: string; path: string }> {
-		const { ref } = await this.plugin.atlas<Started>(args);
+		const { ref } = await this.plugin.almagest<Started>(args);
 		await this.openPath(ref.path, true);
 		return ref;
 	}
@@ -424,7 +424,7 @@ class BacklinksModal extends Modal {
 		const { outcome } = this;
 		this.setTitle(`${outcome.title} stays`);
 		const el = this.contentEl;
-		el.addClass("atlas-backlinks");
+		el.addClass("almagest-backlinks");
 		el.createEl("p", {
 			text: `${plural(outcome.backlinks.length, "file links", "files link")} ${outcome.path}, so safe delete moved nothing. Point each link elsewhere, or drop it; then the file can go to trash/.`,
 		});
@@ -443,10 +443,10 @@ class BacklinksModal extends Modal {
 				this.close();
 				this.show(b.path);
 			};
-			if (outcome.yours.includes(b)) li.createSpan({ cls: "atlas-backlinks-type", text: " yours to fix" });
-			else if (b.type) li.createSpan({ cls: "atlas-backlinks-type", text: ` ${b.kind || b.type}` });
+			if (outcome.yours.includes(b)) li.createSpan({ cls: "almagest-backlinks-type", text: " yours to fix" });
+			else if (b.type) li.createSpan({ cls: "almagest-backlinks-type", text: ` ${b.kind || b.type}` });
 		}
-		const buttons = el.createDiv({ cls: "atlas-backlinks-buttons" });
+		const buttons = el.createDiv({ cls: "almagest-backlinks-buttons" });
 		buttons.createEl("button", { text: "Close" }).onclick = () => this.close();
 		const resolve = this.resolve;
 		if (!resolve) return;

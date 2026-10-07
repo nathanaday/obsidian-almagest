@@ -3,7 +3,7 @@
 
 import { countsLine } from "./helpers";
 
-/** What the atlas-change block shows. */
+/** What the almagest-change block shows. */
 export interface ChangeCard {
 	/** The change's status, "busy" while a button's command runs, or "none" outside a change document. */
 	state: string;
@@ -22,7 +22,7 @@ export type ChangeButton = "approve" | "cancel";
 export type ChangeAction = "apply" | "reject";
 
 const RESULT: Record<string, (fm: Record<string, unknown>) => string> = {
-	applying: () => "Being applied. If this stays, the apply stopped; the next Atlas write puts the documents back and sets the change to proposed.",
+	applying: () => "Being applied. If this stays, the apply stopped; the next Almagest write puts the documents back and sets the change to proposed.",
 	applied: (fm) => {
 		const when = stampText(fm.applied);
 		return when ? `Applied ${when}.` : "Applied.";
@@ -48,8 +48,8 @@ export function changeCard(fm: Record<string, unknown> | null | undefined, busy:
 	const status = typeof fm.status === "string" ? fm.status.trim() : "";
 	const counts = countsLine(fm.counts);
 	const card = { id, counts, kind: workKind(fm) };
-	if (busy === "apply") return { ...card, state: "busy", label: "Applying", line: "Atlas applies this change.", buttons: [] };
-	if (busy === "reject") return { ...card, state: "busy", label: "Cancelling", line: "Atlas rejects this change.", buttons: [] };
+	if (busy === "apply") return { ...card, state: "busy", label: "Applying", line: "Almagest applies this change.", buttons: [] };
+	if (busy === "reject") return { ...card, state: "busy", label: "Cancelling", line: "Almagest rejects this change.", buttons: [] };
 	if (status === "proposed") {
 		if (!id) return { ...card, state: "proposed", label: "Proposed", line: "This change has no id, so it cannot be applied from here.", buttons: [] };
 		return {

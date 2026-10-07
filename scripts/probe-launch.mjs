@@ -22,7 +22,7 @@ const bundle = await esbuild.build({ entryPoints: ["src/agents.ts"], bundle: tru
 const url = "data:text/javascript;base64," + Buffer.from(bundle.outputFiles[0].text).toString("base64");
 const { startCommand, terminalLaunch } = await import(url);
 
-const dir = mkdtempSync(join(tmpdir(), "atlas-probe-"));
+const dir = mkdtempSync(join(tmpdir(), "almagest-probe-"));
 const out = join(dir, "probe.txt");
 const program = agent.split(/\s+/)[0];
 // The probe stands where the agent command goes.

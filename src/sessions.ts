@@ -3,9 +3,9 @@ import { homedir } from "os";
 import { SessionRow, SessionState, groupSessions, plainLinks, resumeCommand } from "./agents";
 import { expandHome, formatAgo, lastProgressLine, linkTitle } from "./helpers";
 import { findTranscript, liveAgents, resumePlace } from "./launcher";
-import type AtlasPlugin from "./main";
+import type AlmagestPlugin from "./main";
 
-export const SESSIONS_VIEW = "atlas-sessions";
+export const SESSIONS_VIEW = "almagest-sessions";
 
 /** A session document as the pane shows it. */
 export interface Session extends SessionRow {
@@ -53,17 +53,17 @@ export async function sessionGroups(app: App, staleHours: number) {
  * Resumes a session in a terminal, in the account and the folder its conversation was
  * saved under. A subagent has no conversation of its own to resume.
  */
-export async function resume(plugin: AtlasPlugin, s: Session): Promise<void> {
+export async function resume(plugin: AlmagestPlugin, s: Session): Promise<void> {
 	const id = s.harness_id.trim();
 	if (!id || s.parent) {
-		new Notice("Atlas: this session has no conversation of its own to resume.");
+		new Notice("Almagest: this session has no conversation of its own to resume.");
 		return;
 	}
 	let target = { harness: s.harness, id, cwd: expandHome(s.cwd, homedir()), configDir: "" };
 	if (s.harness !== "codex") {
 		const transcript = findTranscript(s.transcript, id);
 		if (!transcript) {
-			new Notice("Atlas: Claude Code has no saved conversation for this session, so it cannot resume.", 8000);
+			new Notice("Almagest: Claude Code has no saved conversation for this session, so it cannot resume.", 8000);
 			return;
 		}
 		const place = resumePlace(transcript);
@@ -78,7 +78,7 @@ const STATE_CLASS: Record<SessionState, string> = { "needs you": "waiting", work
 export class SessionsView extends ItemView {
 	private generation = 0;
 
-	constructor(leaf: WorkspaceLeaf, private plugin: AtlasPlugin) {
+	constructor(leaf: WorkspaceLeaf, private plugin: AlmagestPlugin) {
 		super(leaf);
 	}
 
@@ -87,7 +87,7 @@ export class SessionsView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return "Atlas sessions";
+		return "Almagest sessions";
 	}
 
 	getIcon(): string {
@@ -109,7 +109,7 @@ export class SessionsView extends ItemView {
 		if (generation !== this.generation) return;
 		const root = this.contentEl;
 		root.empty();
-		root.addClass("atlas-sessions");
+		root.addClass("almagest-sessions");
 		const now = new Date();
 		const subagents = new Map<string, number>();
 		for (const r of rows) {
@@ -119,33 +119,33 @@ export class SessionsView extends ItemView {
 			}
 		}
 		if (groups.open.length === 0) {
-			root.createDiv({ cls: "atlas-sessions-empty", text: "No agent session is open." });
+			root.createDiv({ cls: "almagest-sessions-empty", text: "No agent session is open." });
 		}
 		for (const { row, state } of groups.open) this.card(root, row, state, now, generation, subagents.get(row.file.basename) ?? 0);
 		if (groups.recent.length > 0) {
-			root.createDiv({ cls: "atlas-sessions-heading", text: "Closed in the last 2 hours" });
+			root.createDiv({ cls: "almagest-sessions-heading", text: "Closed in the last 2 hours" });
 			for (const { row, state } of groups.recent) this.card(root, row, state, now, generation, 0);
 		}
 		if (groups.older > 0) {
-			const more = root.createDiv({ cls: "atlas-sessions-more" });
+			const more = root.createDiv({ cls: "almagest-sessions-more" });
 			more.setText(`${groups.older} older ${groups.older === 1 ? "session" : "sessions"} in sessions/`);
 			more.onclick = () => void this.app.workspace.openLinkText("sessions/Sessions.base", "", false);
 		}
 	}
 
 	private card(root: HTMLElement, s: Session, state: SessionState, now: Date, generation: number, subagents: number): void {
-		const card = root.createDiv({ cls: "atlas-session" });
+		const card = root.createDiv({ cls: "almagest-session" });
 		card.dataset.state = STATE_CLASS[state];
 		card.onclick = () => void this.app.workspace.getLeaf(false).openFile(s.file);
 
-		const top = card.createDiv({ cls: "atlas-session-top" });
-		top.createSpan({ cls: "atlas-session-status", text: state });
-		if (subagents > 0) top.createSpan({ cls: "atlas-session-sub", text: `+${subagents} ${subagents === 1 ? "subagent" : "subagents"}` });
+		const top = card.createDiv({ cls: "almagest-session-top" });
+		top.createSpan({ cls: "almagest-session-status", text: state });
+		if (subagents > 0) top.createSpan({ cls: "almagest-session-sub", text: `+${subagents} ${subagents === 1 ? "subagent" : "subagents"}` });
 		const closed = state === "ended" || state === "lost";
-		top.createSpan({ cls: "atlas-session-ago", text: formatAgo(closed ? s.ended || s.updated : s.updated, now) });
+		top.createSpan({ cls: "almagest-session-ago", text: formatAgo(closed ? s.ended || s.updated : s.updated, now) });
 		// An open session runs in its terminal already; resuming it would open it twice.
 		if (closed) {
-			const button = top.createEl("button", { cls: "atlas-session-resume", text: "Resume" });
+			const button = top.createEl("button", { cls: "almagest-session-resume", text: "Resume" });
 			button.onclick = (e) => {
 				e.stopPropagation();
 				void resume(this.plugin, s);
@@ -153,7 +153,7 @@ export class SessionsView extends ItemView {
 		}
 
 		const title = plainLinks(s.description);
-		card.createDiv({ cls: "atlas-session-title", text: title }).setAttr("title", title);
+		card.createDiv({ cls: "almagest-session-title", text: title }).setAttr("title", title);
 
 		// The last progress line is the card's hover text, so the card stays short.
 		void this.app.vault.cachedRead(s.file).then((text) => {

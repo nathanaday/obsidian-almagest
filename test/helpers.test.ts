@@ -41,16 +41,16 @@ import {
 test("chooseBinary prefers the setting, then the first place that exists", () => {
 	const home = "/Users/a";
 	const found = binaryCandidates(home);
-	assert.equal(found[0], "/Users/a/.atlas/bin/atlas-obsidian");
-	assert.equal(chooseBinary("~/bin/atlas-obsidian", found, () => false, home), "/Users/a/bin/atlas-obsidian");
-	assert.equal(chooseBinary("  ", found, (p) => p === "/Users/a/go/bin/atlas-obsidian", home), "/Users/a/go/bin/atlas-obsidian");
+	assert.equal(found[0], "/Users/a/.almagest/bin/almagest");
+	assert.equal(chooseBinary("~/bin/almagest", found, () => false, home), "/Users/a/bin/almagest");
+	assert.equal(chooseBinary("  ", found, (p) => p === "/Users/a/go/bin/almagest", home), "/Users/a/go/bin/almagest");
 	assert.ok(!found.some((p) => p.startsWith("/usr/")), "the system folders are left out");
-	assert.equal(chooseBinary("", found, () => true, home), "/Users/a/.atlas/bin/atlas-obsidian");
+	assert.equal(chooseBinary("", found, () => true, home), "/Users/a/.almagest/bin/almagest");
 	assert.equal(chooseBinary("", found, () => false, home), null);
 });
 
-test("errorMessage takes the atlas line of stderr", () => {
-	assert.equal(errorMessage("warning\natlas: reject needs the reason, in one line\n"), "reject needs the reason, in one line");
+test("errorMessage takes the almagest line of stderr", () => {
+	assert.equal(errorMessage("warning\nalmagest: reject needs the reason, in one line\n"), "reject needs the reason, in one line");
 	assert.equal(errorMessage("panic: boom\n"), "panic: boom");
 	assert.equal(errorMessage(""), "");
 });
@@ -120,12 +120,12 @@ test("small labels", () => {
 	assert.deepEqual(repoBlock(" doc-abc123 · ~/src/p3-edge \n"), { id: "doc-abc123", path: "~/src/p3-edge" });
 });
 
-test("layout 6 is 10.0, and the binary migrates from 8.x and 9.0", () => {
-	assert.equal(LAYOUT, 6);
+test("layout 7 is 11.0, and the binary migrates from 8.x, 9.0, and 10.0", () => {
+	assert.equal(LAYOUT, 7);
 	assert.equal(MIGRATES_FROM, 4);
 	assert.deepEqual(
-		[layoutName(7), layoutName(6), layoutName(5), layoutName(4), layoutName(3), layoutName(2), layoutName(0)],
-		["10.0", "10.0", "9.0", "8.x", "7.x", "6.x", "6.x"],
+		[layoutName(8), layoutName(7), layoutName(6), layoutName(5), layoutName(4), layoutName(3), layoutName(2), layoutName(0)],
+		["11.0", "11.0", "10.0", "9.0", "8.x", "7.x", "6.x", "6.x"],
 	);
 });
 
@@ -149,10 +149,10 @@ test("a quiet snapshot counts every event outside the config folder and wiki-vie
 });
 
 test("a held lock is told apart from other failures", () => {
-	assert.ok(isLockHeld("another atlas write holds /v/.git/atlas.lock; try again"));
-	assert.ok(isLockHeld("another atlas write in this process holds the lock of /v; try again"));
+	assert.ok(isLockHeld("another almagest write holds /v/.git/almagest.lock; try again"));
+	assert.ok(isLockHeld("another almagest write in this process holds the lock of /v; try again"));
 	assert.ok(!isLockHeld("vault takes migrate, sync, or init, not \"snapshot\""));
-	assert.ok(!isLockHeld("the atlas-obsidian binary was not found at /x"));
+	assert.ok(!isLockHeld("the almagest binary was not found at /x"));
 });
 
 test("quietSeconds reads the setting and the field", () => {
@@ -169,8 +169,12 @@ test("quietSeconds reads the setting and the field", () => {
 	assert.equal(quietSeconds(1e12), 86_400, "a timer longer than a day overflows");
 });
 
-test("the migration lists the 10.0 moves, and the 9.0 step for an 8.x vault", () => {
+test("the migration lists the 11.0 rename, the 10.0 moves before it, and the 9.0 step for an 8.x vault", () => {
+	const from10 = migrationSteps(6);
+	assert.ok(from10[0].includes("Atlas.md to Almagest.md"));
+	assert.ok(!from10.some((s) => s.includes("wiki/documents/")));
 	const from9 = migrationSteps(5);
+	assert.equal(from9.length, from10.length + 7);
 	assert.ok(from9.some((s) => s.includes("wiki/documents/ to source-core/documents/")));
 	assert.ok(from9.some((s) => s.includes("wiki/assets/ to source-core/originals/")));
 	assert.ok(from9.some((s) => s.includes("inbox/ to ingest/")));
@@ -183,10 +187,10 @@ test("the migration lists the 10.0 moves, and the 9.0 step for an 8.x vault", ()
 
 test("migrationSummary", () => {
 	assert.equal(
-		migrationSummary({ vault: "Work", commit: "0123456789abcdef", moved: [{ from: "inbox/a.pdf", to: "ingest/a.pdf" }], edited: ["x.md", "y.md"], problems: 1, plugin: "10.0.0" }),
-		"Migrated to the 10.0 layout in one commit, 0123456. 1 file moved, 2 edited. Lint finds 1 error. The Obsidian plugin is now 10.0.0; reload Obsidian to use it.",
+		migrationSummary({ vault: "Work", commit: "0123456789abcdef", moved: [{ from: "inbox/a.pdf", to: "ingest/a.pdf" }], edited: ["x.md", "y.md"], problems: 1 }),
+		"Migrated to the 11.0 layout in one commit, 0123456. 1 file moved, 2 edited. Lint finds 1 error.",
 	);
-	assert.equal(migrationSummary({ vault: "Work", commit: "abcdef0123", moved: [], edited: null, problems: 0 }), "Migrated to the 10.0 layout in one commit, abcdef0.");
+	assert.equal(migrationSummary({ vault: "Work", commit: "abcdef0123", moved: [], edited: null, problems: 0 }), "Migrated to the 11.0 layout in one commit, abcdef0.");
 });
 
 test("a tag holds its children, and a list expands to every ancestor", () => {
