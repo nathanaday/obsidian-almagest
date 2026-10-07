@@ -69,7 +69,7 @@ describe("Almagest in Obsidian", () => {
 
 	it("loads in an 11.0 vault with no console error, and adds nothing to the file explorer", { timeout: TIMEOUT }, async () => {
 		const o = await launch();
-		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.manifest.version)).toBe("11.0.0");
+		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.manifest.version)).toBe("11.0.1");
 
 		// A topic and a change document: the files that 9.0 marked in the explorer.
 		const change = await propose(o, "Add Alpha", "Alpha");
@@ -137,6 +137,29 @@ describe("Almagest in Obsidian", () => {
 		expect(explorer.sheet).toBe(true);
 		expect(explorer.rules).toBeGreaterThan(10);
 		expect(explorer.styled).toEqual([]);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("shows the settings from definitions, and saves an agent preference through the binary", { timeout: TIMEOUT }, async () => {
+		const o = await launch();
+		const settings = await o.settings("almagest");
+		const tab = settings.locator(".vertical-tab-content");
+		await until("the binary's status", async () => (await tab.textContent())?.includes("(almagest dev)") === true, { describe: async () => (await tab.textContent()) ?? "" });
+		const text = (await tab.textContent()) ?? "";
+		for (const name of ["Path to the almagest binary", "Keep the views fresh", "Snapshot after a quiet period", "All vaults", "This vault"]) expect(text).toContain(name);
+		// A setting that is not visible stays in the page, hidden.
+		// A row is the nearest .setting-item around its name; a group wraps its rows in one too.
+		const row = (name: RegExp) => tab.locator(".setting-item-name", { hasText: name }).first().locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' setting-item ')][1]");
+		const customCommand = row(/^Custom terminal command$/);
+		expect(await customCommand.isVisible()).toBe(false);
+
+		const terminal = row(/^Terminal$/);
+		// Obsidian adds a hidden select that measures the dropdown's width.
+		await terminal.locator("select:not(.is-measuring)").selectOption("custom");
+		await until("the binary's config", async () => JSON.parse(await o.almagest(["config", "--json"])).global.terminal === "custom", {
+			describe: () => o.almagest(["config"]),
+		});
+		await until("the custom command field", async () => await customCommand.isVisible());
 		expect(o.errors).toEqual([]);
 	});
 
@@ -481,7 +504,7 @@ describe("Almagest in Obsidian", () => {
 		await until("the volume in the palette", async () => (await volume.count()) === 1, { describe: () => palette.innerText() });
 		expect(await volume.locator(".almagest-palette-volume-name").textContent()).toBe("CS566 Notes");
 		expect(await volume.locator(".almagest-palette-value").textContent()).toBe("1 note");
-		expect(await volume.locator(".almagest-palette-edition").textContent()).toBe("never published");
+		expect(await volume.locator(".almagest-palette-edition").textContent()).toBe("Never published");
 		expect(await volume.locator(".almagest-palette-changed").textContent()).toBe("changed");
 		expect(await row(palette, "journals")).toBe("1 to publish");
 		expect(await publish.textContent()).toBe("Publish");

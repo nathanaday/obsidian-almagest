@@ -1,6 +1,7 @@
 import { MarkdownPostProcessorContext, MarkdownRenderChild } from "obsidian";
-import { formatAgo, isDocumentPath, repoBlock } from "./helpers";
+import { DOCUMENTS, formatAgo, repoBlock } from "./helpers";
 import type AlmagestPlugin from "./main";
+import { markdownFilesIn } from "./vaultfiles";
 
 interface Commit {
 	commit: string;
@@ -105,7 +106,8 @@ export function repoProcessor(plugin: AlmagestPlugin) {
 	return (source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
 		const { id } = repoBlock(source);
 		if (!id) return;
-		ctx.addChild(new RepoPanel(el, plugin, id, String(repoFields(plugin, id, ctx.sourcePath)?.branch ?? "")));
+		const branch = repoFields(plugin, id, ctx.sourcePath)?.branch;
+		ctx.addChild(new RepoPanel(el, plugin, id, typeof branch === "string" ? branch : ""));
 	};
 }
 
@@ -115,8 +117,7 @@ function repoFields(plugin: AlmagestPlugin, id: string, sourcePath: string): Rec
 	const own = plugin.app.vault.getFileByPath(sourcePath);
 	const fm = own ? cache.getFileCache(own)?.frontmatter : undefined;
 	if (fm?.id === id) return fm;
-	for (const f of plugin.app.vault.getMarkdownFiles()) {
-		if (!isDocumentPath(f.path)) continue;
+	for (const f of markdownFilesIn(plugin.app, DOCUMENTS)) {
 		const other = cache.getFileCache(f)?.frontmatter;
 		if (other?.id === id) return other;
 	}

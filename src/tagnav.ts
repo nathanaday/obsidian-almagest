@@ -1,5 +1,6 @@
 import { App, ItemView, TFile, WorkspaceLeaf, debounce } from "obsidian";
-import { TagDoc, asList, groupDocs, isDocumentPath, isDocumentType, narrow, normalTag, relativeTag, tagViewPath, topTags } from "./helpers";
+import { DOCUMENTS, TagDoc, asList, groupDocs, isDocumentType, narrow, normalTag, relativeTag, tagViewPath, topTags } from "./helpers";
+import { markdownFilesIn } from "./vaultfiles";
 
 export const TAG_NAV_VIEW = "almagest-tag-navigator";
 /** Not "tags", which is the icon of Obsidian's own Tags pane. */
@@ -10,8 +11,7 @@ const MAX_WITH = 30;
 /** Every document of source-core/documents, as the navigator reads it from the metadata cache. */
 export function tagDocs(app: App): TagDoc[] {
 	const out: TagDoc[] = [];
-	for (const file of app.vault.getMarkdownFiles()) {
-		if (!isDocumentPath(file.path)) continue;
+	for (const file of markdownFilesIn(app, DOCUMENTS)) {
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
 		if (!fm || !isDocumentType(fm.type)) continue;
 		const own = asList(fm.tags).map(normalTag);
@@ -111,8 +111,9 @@ export class TagNavigator extends ItemView {
 		root.createDiv({ cls: "almagest-tagnav-count", text: count });
 		const view = this.section(root, "View");
 		const page = view.createEl("button", { text: "Tag view" });
-		page.setAttr("aria-label", "Open the view of #" + this.chosen[this.chosen.length - 1]);
-		page.onclick = () => void this.openView(this.chosen[this.chosen.length - 1]);
+		const last = this.chosen[this.chosen.length - 1] ?? "";
+		page.setAttr("aria-label", "Open the view of #" + last);
+		page.onclick = () => void this.openView(last);
 		if (facets.length > 0) {
 			const list = this.section(root, "Narrow");
 			for (const f of facets.slice(0, MAX_WITH)) this.tagButton(list, f.tag, f.count, relativeTag(f.tag, this.chosen));

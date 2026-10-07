@@ -102,12 +102,12 @@ export default class AlmagestPlugin extends Plugin {
 		this.addCommand({ id: "sync", name: "Sync the vault", callback: () => void this.sync(true) });
 
 		this.registerView(TAG_NAV_VIEW, (leaf) => new TagNavigator(leaf));
-		this.addRibbonIcon(NAV_ICON, "Almagest: open the Almagest navigator", () => void this.openTags());
-		this.addCommand({ id: "open-tags", name: "Open the Almagest navigator", callback: () => void this.openTags() });
+		this.addRibbonIcon(NAV_ICON, "Open the tag navigator", () => void this.openTags());
+		this.addCommand({ id: "open-tags", name: "Open the tag navigator", callback: () => void this.openTags() });
 
 		this.registerView(PALETTE_VIEW, (leaf) => new PaletteView(leaf, this));
 		this.addRibbonIcon(PALETTE_ICON, "Almagest", () => void this.openPalette());
-		this.addCommand({ id: "open-palette", name: "Open the Almagest palette", callback: () => void this.openPalette() });
+		this.addCommand({ id: "open-palette", name: "Open the tool palette", callback: () => void this.openPalette() });
 
 		this.addCommand({ id: "start-agent", name: "Start agent", callback: () => void this.startAgent() });
 		this.addCommand({

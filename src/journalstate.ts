@@ -72,7 +72,8 @@ export function publishBlocked(v: JournalVolume): string {
 /** The volume a vault path lies in: "journals/<volume>/…" gives <volume>; any other path gives "". */
 export function volumeOf(path: string): string {
 	const parts = path.split("/");
-	return parts.length >= 3 && parts[0] === JOURNALS && parts[1] !== "" && !parts[1].startsWith(".") ? parts[1] : "";
+	const volume = parts[1] ?? "";
+	return parts.length >= 3 && parts[0] === JOURNALS && volume !== "" && !volume.startsWith(".") ? volume : "";
 }
 
 /**

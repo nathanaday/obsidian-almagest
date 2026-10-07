@@ -45,14 +45,27 @@ plugin and nothing else. This file holds what the code and the README do not say
   spawn), so `openTerminal` checks for the app first. `scripts/probe-launch.mjs` opens a
   real terminal with a probe; record each result in TESTED.md.
 
+- **The settings are definitions.** `getSettingDefinitions` (Obsidian 1.13, the
+  minimum) lists every setting, so Obsidian's settings search finds them. The binary's
+  status and the agent preferences come from the binary: the tab reads them when it
+  opens and calls `update()` when they arrive. A text field that the binary saves
+  (`almagest config set`) saves on blur, not at every key.
+- **It reads only its own folders** (`markdownFilesIn`): the documents, `sessions/`, and
+  `changes/`, never the whole vault.
+
 ## Build and test
 
 ```bash
 npm install
 npm run build          # dist/main.js, dist/manifest.json, dist/styles.css
+npm run lint           # Obsidian's review rules, as the community scan runs them, with no warning allowed
 npm test               # the unit tests of the pure modules
 npm run test:obsidian  # the end-to-end suite in a separate Obsidian
 ```
+
+The lint has its own install in `scripts/lint` (typescript-eslint needs the TypeScript 5
+API; the plugin builds with TypeScript 7). `tsconfig.json` sets
+`noUncheckedIndexedAccess`, so an index read is checked rather than asserted.
 
 The end-to-end suite (`test/obsidian/`, adapted from Duet's harness) builds the binary
 from an almagest checkout, by default `../almagest` (set `ALMAGEST_SRC` for another),

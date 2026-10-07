@@ -1,13 +1,14 @@
 {
   "name": "obsidian-almagest",
-  "version": "11.0.0",
+  "version": "11.0.1",
   "private": true,
   "description": "The Obsidian plugin of Almagest.",
   "scripts": {
     "build": "tsc --noEmit && node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs",
     "test": "node esbuild.config.mjs test && node --test build-test/*.test.cjs",
-    "test:obsidian": "npm run build && vitest run test/obsidian"
+    "test:obsidian": "npm run build && vitest run test/obsidian",
+    "lint": "npm install --prefix scripts/lint --no-audit --no-fund --silent && npm run --prefix scripts/lint lint"
   },
   "devDependencies": {
     "@codemirror/state": "6.5.0",

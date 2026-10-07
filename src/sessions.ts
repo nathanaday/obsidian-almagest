@@ -4,6 +4,7 @@ import { SessionRow, SessionState, groupSessions, plainLinks, resumeCommand } fr
 import { expandHome, formatAgo, lastProgressLine, linkTitle } from "./helpers";
 import { findTranscript, liveAgents, resumePlace } from "./launcher";
 import type AlmagestPlugin from "./main";
+import { markdownFilesIn } from "./vaultfiles";
 
 export const SESSIONS_VIEW = "almagest-sessions";
 
@@ -20,8 +21,7 @@ export interface Session extends SessionRow {
 /** Every session document of the vault. */
 export function readSessions(app: App): Session[] {
 	const out: Session[] = [];
-	for (const file of app.vault.getMarkdownFiles()) {
-		if (!file.path.startsWith("sessions/")) continue;
+	for (const file of markdownFilesIn(app, "sessions")) {
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
 		if (!fm || fm.type !== "session") continue;
 		out.push({

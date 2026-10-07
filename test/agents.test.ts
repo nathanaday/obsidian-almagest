@@ -85,7 +85,7 @@ test("each terminal runs the command in an interactive shell", () => {
 	assert.equal(appleScriptString(`say "hi" \\ bye`), `"say \\"hi\\" \\\\ bye"`);
 	const cmd = `cd '/a "b"' && claude 'x'`;
 	assert.equal(terminalLaunch("terminal", cmd, "/bin/zsh", "").args[1], `tell application "Terminal" to do script "cd '/a \\"b\\"' && claude 'x'"`);
-	assert.ok(terminalLaunch("iterm", cmd, "/bin/zsh", "").args[3].includes("write text"));
+	assert.ok(terminalLaunch("iterm", cmd, "/bin/zsh", "").args[3]?.includes("write text"));
 	const wez = terminalLaunch("wezterm", cmd, "/bin/zsh", "");
 	assert.deepEqual(wez.args, ["start", "--", "/bin/zsh", "-lic", `${cmd}; exec /bin/zsh -l`]);
 	assert.deepEqual(terminalLaunch("ghostty", cmd, "", "").args.slice(0, 5), ["-na", "Ghostty", "--args", "-e", "/bin/zsh"]);

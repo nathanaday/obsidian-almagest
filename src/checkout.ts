@@ -54,7 +54,7 @@ export class CheckoutModal extends Modal {
 			.setName("Request")
 			.setDesc("One line: the subject, in your words.")
 			.addText((text) => {
-				text.setPlaceholder("reinforcement learning").onChange((v) => {
+				text.setPlaceholder("Reinforcement learning").onChange((v) => {
 					this.request = v;
 					go?.setDisabled(oneLine(v) === "");
 				});

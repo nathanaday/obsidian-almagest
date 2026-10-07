@@ -92,8 +92,8 @@ function decision(app: App, path: string, ms: number): { done: Promise<void>; st
 	let stop = () => {};
 	const done = new Promise<void>((resolve) => {
 		const ref = app.metadataCache.on("changed", (file, _data, cache) => {
-			const status = cache.frontmatter?.status;
-			if (file.path === path && !["proposed", "applying", "running"].includes(status)) finish();
+			const status: unknown = cache.frontmatter?.status;
+			if (file.path === path && !(typeof status === "string" && ["proposed", "applying", "running"].includes(status))) finish();
 		});
 		const timer = window.setTimeout(() => finish(), ms);
 		function finish(): void {
@@ -241,7 +241,7 @@ class CancelModal extends Modal {
 			});
 		new Setting(this.contentEl)
 			.addButton((b) => b.setButtonText("Back").onClick(() => this.close()))
-			.addButton((b) => b.setButtonText("Cancel the change").setWarning().onClick(submit));
+			.addButton((b) => b.setButtonText("Cancel the change").setDestructive().onClick(submit));
 	}
 
 	onClose(): void {

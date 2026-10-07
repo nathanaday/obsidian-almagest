@@ -10,7 +10,7 @@ work; this plugin is the interface for it in Obsidian.
 
 ## Requirements
 
-- Obsidian 1.9 or later, on the desktop. The agent actions know the macOS terminals
+- Obsidian 1.13 or later, on the desktop. The agent actions know the macOS terminals
   (Terminal, iTerm2, WezTerm, Ghostty); elsewhere, set a custom terminal command.
 - The Almagest agent plugin and its `almagest` binary. Install the agent plugin in
   Claude Code:
@@ -40,6 +40,11 @@ updates itself: Obsidian's community plugins do that.
 - **Other programs.** Start agent, Ingest, and the other agent actions open your agent
   (Claude Code or Codex) in your terminal, with the command and the terminal in your
   Almagest settings, or in the Duet plugin when Duet is on.
+- **Clipboard.** Off macOS, or when no terminal opens, the plugin copies the agent's
+  command to the clipboard for you to paste. It never reads the clipboard.
+- **Vault files.** The plugin reads the folders Almagest keeps (`source-core/documents/`,
+  `sessions/`, and `changes/`) to show the documents, sessions, and changes. It lists no
+  other folder.
 - **Network.** The plugin makes no network request. The agents you start use their own.
 - **Telemetry, accounts, payment.** None.
 

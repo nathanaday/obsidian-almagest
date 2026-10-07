@@ -173,7 +173,7 @@ test("quietSeconds reads the setting and the field", () => {
 
 test("the migration lists the 11.0 rename, the 10.0 moves before it, and the 9.0 step for an 8.x vault", () => {
 	const from10 = migrationSteps(6);
-	assert.ok(from10[0].includes("Atlas.md to Almagest.md"));
+	assert.ok(from10[0]?.includes("Atlas.md to Almagest.md"));
 	assert.ok(!from10.some((s) => s.includes("wiki/documents/")));
 	const from9 = migrationSteps(5);
 	assert.equal(from9.length, from10.length + 7);
@@ -183,7 +183,7 @@ test("the migration lists the 11.0 rename, the 10.0 moves before it, and the 9.0
 	assert.ok(from9.some((s) => s.includes("wiki-view/nav/")));
 	assert.ok(!from9.some((s) => s.includes("threads/")));
 	const from8 = migrationSteps(4);
-	assert.ok(from8[0].includes("threads/"));
+	assert.ok(from8[0]?.includes("threads/"));
 	assert.equal(from8.length, from9.length + 1);
 });
 

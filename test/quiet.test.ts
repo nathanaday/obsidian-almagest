@@ -80,7 +80,7 @@ test("a held lock tries again after the next quiet period, with no new event", a
 	const clock = new FakeClock();
 	const results = [true, true, false];
 	let runs = 0;
-	const timer = new QuietTimer(clock, async () => results[runs++], 1000);
+	const timer = new QuietTimer(clock, async () => results[runs++] ?? false, 1000);
 	timer.touch();
 	await clock.advance(1000);
 	assert.equal(runs, 1);
@@ -123,13 +123,13 @@ test("never two runs at once: a period that ends during a run waits for it", asy
 	await clock.advance(1000);
 	assert.equal(calls.length, 1, "the second run waits");
 
-	calls[0](false);
+	calls[0]!(false);
 	await settle();
 	assert.ok(!timer.busy);
 	assert.ok(timer.waiting, "the edits made during the run get a quiet period of their own");
 	await clock.advance(1000);
 	assert.equal(calls.length, 2);
-	calls[1](false);
+	calls[1]!(false);
 	await settle();
 	await clock.advance(5000);
 	assert.equal(calls.length, 2);
@@ -143,7 +143,7 @@ test("an event during a run whose period is still open runs once, after it", asy
 	await clock.advance(1000);
 	timer.touch();
 	await clock.advance(200);
-	calls[0](false);
+	calls[0]!(false);
 	await settle();
 	await clock.advance(799);
 	assert.equal(calls.length, 1);
@@ -186,7 +186,7 @@ test("a held lock after stop does not arm again", async () => {
 	timer.touch();
 	await clock.advance(1000);
 	timer.stop();
-	calls[0](true);
+	calls[0]!(true);
 	await settle();
 	assert.equal(clock.pending, 0);
 });

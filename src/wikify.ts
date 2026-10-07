@@ -1,4 +1,4 @@
-import { RangeSetBuilder, StateEffect, Text } from "@codemirror/state";
+import { RangeSetBuilder, StateEffect, Text as DocText } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { MarkdownPostProcessorContext, MarkdownRenderChild, MarkdownView, Notice, TFile, debounce, editorInfoField, editorLivePreviewField } from "obsidian";
 import { saveOpen } from "./change";
@@ -6,6 +6,7 @@ import type AlmagestPlugin from "./main";
 import { Decision, Mark, acceptAll, acceptedLine, decide as decideMark, draftTitle, findMarks, isWikified, linkFor, linkMarks, locate, replacement, wikifyBlocked } from "./marks";
 import { draftMessage, wikifyMessage } from "./messages";
 import { noteTitle } from "./palettestate";
+import { markdownFilesIn } from "./vaultfiles";
 
 /** A mark as a bubble shows it: no offsets, since the text moves. */
 type MarkFields = Pick<Mark, "kind" | "title" | "phrase" | "text">;
@@ -75,11 +76,11 @@ export class Wikify {
 		const { metadataCache, vault } = this.plugin.app;
 		if (!this.drafts) {
 			this.drafts = new Map();
-			for (const file of vault.getMarkdownFiles()) {
-				if (!file.path.startsWith("changes/")) continue;
+			for (const file of markdownFilesIn(this.plugin.app, "changes")) {
 				const fm = metadataCache.getFileCache(file)?.frontmatter;
 				const t = draftTitle(file.basename);
-				if (t && fm?.kind === "draft" && DRAFTING.includes(fm.status)) this.drafts.set(t, file.path);
+				const status: unknown = fm?.status;
+				if (t && fm?.kind === "draft" && typeof status === "string" && DRAFTING.includes(status)) this.drafts.set(t, file.path);
 			}
 		}
 		const found = this.drafts.get(title);
@@ -149,7 +150,7 @@ export class Wikify {
 	 * an agent marks it.
 	 */
 	async wikify(file: TFile): Promise<void> {
-		const why = wikifyBlocked(file.path);
+		const why = wikifyBlocked(file.path, this.plugin.app.vault.configDir);
 		if (why) throw new Error(why);
 		// An edit typed a moment ago goes into the copy.
 		await saveOpen(this.plugin.app, file.path);
@@ -231,7 +232,7 @@ class MarkWidget extends WidgetType {
 	}
 
 	toDOM(view: EditorView): HTMLElement {
-		const el = document.createElement("span");
+		const el = createSpan();
 		drawBubble(el, this.w, this.mark, this.state, (d) => this.decide(view, el, d), this.sourcePath);
 		return el;
 	}
@@ -262,7 +263,7 @@ export function markExtension(w: Wikify) {
 	return ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;
-			private doc: Text | null = null;
+			private doc: DocText | null = null;
 			private marks: Mark[] = [];
 			private stop: () => void;
 			private gone = false;
@@ -375,24 +376,23 @@ class MarkBubbles extends MarkdownRenderChild {
 export function markPostProcessor(plugin: AlmagestPlugin, w: Wikify) {
 	return (el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
 		if (!isWikified(ctx.sourcePath)) return;
-		const nodes: globalThis.Text[] = [];
+		const nodes: Text[] = [];
 		const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
 			acceptNode: (n) =>
 				n.parentElement?.closest("code, pre, .almagest-mark") ? NodeFilter.FILTER_REJECT : n.nodeValue?.includes("{{") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
 		});
-		for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n as globalThis.Text);
+		for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n as Text);
 		const bubbles: Bubble[] = [];
 		const seen = new Map<string, number>();
 		for (const node of nodes) {
 			const text = node.nodeValue ?? "";
 			const marks = findMarks(text);
 			if (marks.length === 0) continue;
-			const frag = document.createDocumentFragment();
+			const frag = createFragment();
 			let at = 0;
 			for (const m of marks) {
 				if (m.from > at) frag.append(text.slice(at, m.from));
-				const span = document.createElement("span");
-				frag.append(span);
+				const span = frag.createSpan();
 				const nth = seen.get(m.text) ?? 0;
 				seen.set(m.text, nth + 1);
 				bubbles.push({ el: span, mark: { kind: m.kind, title: m.title, phrase: m.phrase, text: m.text }, nth });

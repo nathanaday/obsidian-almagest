@@ -47,6 +47,11 @@ export interface ObsidianInstance {
 	 * `freshIndex` deletes Obsidian's metadata index, as for a vault it has not opened yet.
 	 */
 	restart(options?: { between?: () => Promise<void>; freshIndex?: boolean }): Promise<void>;
+	/**
+	 * Opens the settings at a plugin's tab and returns the page that shows it: a separate
+	 * window in Obsidian 1.14, the vault window's modal before.
+	 */
+	settings(tab: string): Promise<Page>;
 	close(): Promise<void>;
 }
 
@@ -131,6 +136,23 @@ export async function launchObsidian(bin: AlmagestBinary, { pluginData, prepare 
 			instance.page = running.page;
 			instance.errors = running.errors;
 			await pluginLoaded(running);
+		},
+		async settings(tab) {
+			await running.page.evaluate((id) => {
+				const setting = (window as any).app.setting;
+				setting.open();
+				setting.openTabById(id);
+			}, tab);
+			// A pop-out window starts as about:blank, and the vault window fills it.
+			return until("the settings", async () => {
+				for (const p of running.browser.contexts().flatMap((c) => c.pages())) {
+					if (p !== running.page && (await p.$(".vertical-tab-content"))) return p;
+				}
+				return (await running.page.$(".modal.mod-settings")) ? running.page : undefined;
+			}, {
+				describe: async () =>
+					`pages: ${running.browser.contexts().flatMap((c) => c.pages()).map((p) => p.url()).join(", ")}; modals: ${await running.page.evaluate(() => [...document.querySelectorAll(".modal")].map((m) => m.className).join(" | "))}; setting: ${await running.page.evaluate(() => typeof (window as any).app.setting?.open)}`,
+			});
 		},
 		async close() {
 			await running.kill();

@@ -130,7 +130,7 @@ export function resumeCommand(t: ResumeTarget): string {
  * agent's first message: one quoted word, on one line.
  */
 export function startCommand(dir: string, agent: string, prompt = ""): string {
-	const first = prompt.replace(/[\x00-\x1f\x7f]+/g, " ").trim();
+	const first = prompt.replace(/\p{Cc}+/gu, " ").trim();
 	return `cd ${shellQuote(dir)} && ${agent.trim() || "claude"}${first ? ` ${shellQuote(first)}` : ""}`;
 }
 
@@ -170,16 +170,18 @@ export interface AgentConfig {
 		terminal_command: string;
 		sources: Record<string, "default" | "global" | "vault">;
 	};
-	global: Preferences;
+	// The JSON keys of almagest config, quoted: "global" is the machine's file, not the global object.
+	"global": Preferences;
 	vault: Preferences | null;
-	files: { global: string; vault?: string };
+	files: { "global": string; vault?: string };
 }
 
 /** One key of a config file, as config set names it: agent, agent_commands.claude, terminal, terminal_command. */
 export function preference(p: Preferences | null, key: string): string {
 	if (!p) return "";
 	if (key.startsWith("agent_commands.")) return p.agent_commands?.[key.slice("agent_commands.".length) as Agent] ?? "";
-	return String((p as Record<string, unknown>)[key] ?? "");
+	const value = (p as Record<string, unknown>)[key];
+	return typeof value === "string" ? value : "";
 }
 
 /** What a vault gets for a key it does not set: the global file's value, else the default. */
@@ -205,7 +207,7 @@ export function legacyPreferences(saved: Record<string, unknown> | null, vault: 
 	};
 	take("agent_commands.claude", saved.agentCommand, "claude");
 	if ((TERMINALS as readonly string[]).includes(String(saved.terminal))) take("terminal", saved.terminal, "terminal");
-	if (String(saved.terminalCommand ?? "").includes("{command}")) take("terminal_command", saved.terminalCommand, "");
+	if (typeof saved.terminalCommand === "string" && saved.terminalCommand.includes("{command}")) take("terminal_command", saved.terminalCommand, "");
 	return out;
 }
 
@@ -255,5 +257,5 @@ export function terminalLaunch(app: TerminalApp, command: string, shell: string,
 
 /** Text with its wikilinks as plain titles: "[[A|b]]" reads "b", "[[A]]" reads "A". */
 export function plainLinks(text: string): string {
-	return text.replace(/\[\[([^\]|]*)(?:\|([^\]]*))?\]\]/g, (_m, target: string, alias?: string) => (alias ?? target).split("#")[0]);
+	return text.replace(/\[\[([^\]|]*)(?:\|([^\]]*))?\]\]/g, (_m, target: string, alias?: string) => (alias ?? target).split("#")[0] ?? "");
 }

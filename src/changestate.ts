@@ -85,7 +85,7 @@ export function rejectReason(input: string): string {
 
 /** "2026-10-06T14:03:05" as "2026-10-06 14:03"; "" when it does not look like a stamp. */
 export function stampText(value: unknown): string {
-	const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(String(value ?? ""));
+	const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(typeof value === "string" ? value : "");
 	return m ? `${m[1]} ${m[2]}` : "";
 }
 

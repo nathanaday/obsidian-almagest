@@ -33,7 +33,7 @@ test("the palette's status comes from vault --json", () => {
 	const s = paletteState(status, 1);
 	assert.deepEqual(s.ingest, ["a.md", "b c.txt"]);
 	assert.deepEqual(s.proposed.map((r) => r.title), ["2026-10-05 Add A", "2026-10-06 Add B"]);
-	assert.equal(s.running[0].kind, "ingest");
+	assert.equal(s.running[0]?.kind, "ingest");
 	assert.equal(s.pending, 1);
 	assert.equal(s.sessions, 1);
 	assert.equal(s.trash, 3);

@@ -138,16 +138,19 @@ test("a wikified copy is a markdown note whose name ends with · wikified, or th
 });
 
 test("wikify takes a markdown note of the user's", () => {
-	assert.equal(wikifyBlocked("journals/cs566/Week 1.md"), "");
-	assert.equal(wikifyBlocked("scratchpad/Idea.md"), "");
-	assert.equal(wikifyBlocked("Loose.md"), "");
-	assert.equal(wikifyBlocked("ingest/Paper.MD"), "");
-	assert.equal(wikifyBlocked("ingest/paper.pdf"), "Wikify takes a markdown note.");
-	assert.equal(wikifyBlocked("Almagest.md"), "Wikify takes a note of yours, not Almagest.md.");
+	assert.equal(wikifyBlocked("journals/cs566/Week 1.md", ".obsidian"), "");
+	assert.equal(wikifyBlocked("scratchpad/Idea.md", ".obsidian"), "");
+	assert.equal(wikifyBlocked("Loose.md", ".obsidian"), "");
+	assert.equal(wikifyBlocked("ingest/Paper.MD", ".obsidian"), "");
+	assert.equal(wikifyBlocked("ingest/paper.pdf", ".obsidian"), "Wikify takes a markdown note.");
+	assert.equal(wikifyBlocked("Almagest.md", ".obsidian"), "Wikify takes a note of yours, not Almagest.md.");
 	for (const top of ["source-core", "changes", "sessions", "wiki-view", "trash", ".obsidian"]) {
-		assert.equal(wikifyBlocked(`${top}/sub/Note.md`), `Wikify takes a note of yours, not one in ${top}/.`);
+		assert.equal(wikifyBlocked(`${top}/sub/Note.md`, ".obsidian"), `Wikify takes a note of yours, not one in ${top}/.`);
 	}
-	assert.equal(wikifyBlocked("changes.md"), "");
+	assert.equal(wikifyBlocked("changes.md", ".obsidian"), "");
+	// A vault may name Obsidian's folder otherwise; that folder is refused, and .obsidian is then a folder of notes.
+	assert.equal(wikifyBlocked(".config/sub/Note.md", ".config"), "Wikify takes a note of yours, not one in .config/.");
+	assert.equal(wikifyBlocked(".obsidian/sub/Note.md", ".config"), "");
 });
 
 test("draftTitle reads the topic title from a draft work document's title", () => {

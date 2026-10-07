@@ -234,7 +234,7 @@ export class PaletteView extends ItemView {
 			if (file) this.link(edition, vol.edition, file.path);
 			else edition.setText(vol.edition);
 		} else {
-			edition.setText("never published");
+			edition.setText("Never published");
 		}
 
 		const why = publishBlocked(vol);
@@ -297,7 +297,7 @@ export class PaletteView extends ItemView {
 		if (this.lint) this.renderLint(el, this.lint);
 
 		const file = this.app.workspace.getActiveFile();
-		const unwikified = file ? wikifyBlocked(file.path) : "Open a note first.";
+		const unwikified = file ? wikifyBlocked(file.path, this.app.vault.configDir) : "Open a note first.";
 		this.action(el, "wikify", "Wikify this note", unwikified, () => this.plugin.wikify.wikify(file!), file?.path ?? "");
 		this.action(el, "trash", "Safe delete this file", file ? "" : "Open a file first.", () => this.safeDelete(), file?.path ?? "");
 	}

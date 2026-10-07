@@ -37,7 +37,7 @@ export function liveAgents(pids: number[]): Promise<Set<number>> {
 			for (const line of String(stdout ?? "").split("\n")) {
 				const m = /^\s*(\d+)\s+(.*)$/.exec(line);
 				if (!m) continue;
-				const name = m[2].trim().split("/").pop() ?? "";
+				const name = (m[2] ?? "").trim().split("/").pop() ?? "";
 				if (name === "claude" || name === "codex" || name.startsWith("claude-") || name.startsWith("codex-")) out.add(Number(m[1]));
 			}
 			resolve(out);

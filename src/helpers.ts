@@ -85,8 +85,8 @@ export function expandHome(path: string, home: string): string {
 /** The message after "almagest: " on the last line of stderr that has one. */
 export function errorMessage(stderr: string): string {
 	const lines = stderr.split("\n").map((l) => l.trim()).filter((l) => l !== "");
-	for (let i = lines.length - 1; i >= 0; i--) {
-		if (lines[i].startsWith("almagest: ")) return lines[i].slice("almagest: ".length);
+	for (const line of [...lines].reverse()) {
+		if (line.startsWith("almagest: ")) return line.slice("almagest: ".length);
 	}
 	return lines[lines.length - 1] ?? "";
 }
@@ -131,7 +131,10 @@ export function movedNotices(out: unknown): string[] {
 	const moved = (out as { moved_from_wiki_view?: unknown }).moved_from_wiki_view;
 	if (!Array.isArray(moved)) return [];
 	return moved
-		.filter((m): m is { from: string; to: string } => typeof m?.from === "string" && typeof m?.to === "string")
+		.filter((m: unknown): m is { from: string; to: string } => {
+			const x = m as { from?: unknown; to?: unknown } | null;
+			return typeof x?.from === "string" && typeof x?.to === "string";
+		})
 		.map(movedLine);
 }
 
@@ -164,7 +167,7 @@ export function countsLine(counts: unknown): string {
 		};
 		return Object.entries(names)
 			.map(([key, name]) => [(counts as Record<string, unknown>)[key], name] as const)
-			.filter(([n]) => typeof n === "number" && n > 0)
+			.filter((e): e is readonly [number, string] => typeof e[0] === "number" && e[0] > 0)
 			.map(([n, name]) => `${n} ${name}`)
 			.join(", ");
 	}
@@ -190,7 +193,7 @@ export function formatAgo(when: string | Date | undefined, now: Date): string {
 export function linkTitle(value: unknown): string {
 	if (typeof value !== "string") return "";
 	const m = /^\s*\[\[([^\]|#]*)(?:[#|][^\]]*)?\]\]\s*$/.exec(value);
-	return (m ? m[1] : value).trim();
+	return (m?.[1] ?? value).trim();
 }
 
 /** The three types of source-core/documents, as schema.DocumentTypes lists them. */
@@ -346,7 +349,7 @@ export function groupDocs(docs: TagDoc[]): { name: string; docs: TagDoc[] }[] {
 	const out = NAV_GROUPS.map((g) => ({ name: g.name, docs: [] as TagDoc[] }));
 	for (const d of docs) {
 		const i = NAV_GROUPS.findIndex((g) => g.test(d));
-		if (i >= 0) out[i].docs.push(d);
+		out[i]?.docs.push(d);
 	}
 	for (const g of out) g.docs.sort((a, b) => a.title.localeCompare(b.title));
 	return out.filter((g) => g.docs.length > 0);

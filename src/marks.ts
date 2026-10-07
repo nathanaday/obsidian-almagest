@@ -146,14 +146,14 @@ export function isWikified(path: string): boolean {
 	return /\.md$/i.test(name) && / · wikified(?: \(\d+\))?$/.test(name.slice(0, -3));
 }
 
-const NOT_YOURS = ["source-core", "changes", "sessions", "wiki-view", "trash", ".obsidian"];
+const NOT_YOURS = ["source-core", "changes", "sessions", "wiki-view", "trash"];
 
-/** Why `wikify start` refuses a path, or "" when it takes it. */
-export function wikifyBlocked(path: string): string {
+/** Why `wikify start` refuses a path, or "" when it takes it. configDir is Obsidian's folder, `Vault#configDir`. */
+export function wikifyBlocked(path: string, configDir: string): string {
 	if (!/\.md$/i.test(path)) return "Wikify takes a markdown note.";
 	if (path === "Almagest.md" || path === "Atlas.md") return `Wikify takes a note of yours, not ${path}.`;
-	const top = path.split("/")[0]!;
-	if (path.includes("/") && NOT_YOURS.includes(top)) return `Wikify takes a note of yours, not one in ${top}/.`;
+	const top = path.split("/")[0] ?? "";
+	if (path.includes("/") && (NOT_YOURS.includes(top) || top === configDir)) return `Wikify takes a note of yours, not one in ${top}/.`;
 	return "";
 }
 
