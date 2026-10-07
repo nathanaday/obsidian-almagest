@@ -53,31 +53,35 @@ updates itself: Obsidian's community plugins do that.
 With the plugin, Obsidian adds:
 
 - **The Almagest palette** in the right sidebar (the Almagest ribbon button, or the command
-  "Open the tool palette"). It shows the proposed changes, the running work documents,
-  the files in `ingest/`, the pending sources, the live sessions, the files in `trash/`,
-  the journal volumes, the checkouts, and the lint problems. Its actions:
-  - **Ingest** starts a work document for the files in `ingest/`, opens it, and starts
-    an agent that reports into it.
-  - **Wiki lint** runs `lint` and lists the first findings. **Repair with an agent**
-    starts a repair work document and an agent that proposes the repairs into it.
-  - **Safe delete this file** runs `almagest vault trash` on the open file. When
-    no file links it, the file moves to `trash/`; a topic, a source, or a repository
-    leaves through a change that applies at once, so `change undo` in a terminal brings
-    it back; an agent cannot undo it. When files link it, nothing moves, and a list
-    names the links. For a knowledge document that documents link, the list offers
-    **Resolve with an agent**: the agent points each link in a document elsewhere and
-    proposes the remove. A link in your own notes (the scratchpad, `journals/`,
-    `checkout/`, and the like) is yours to fix; while one stays, the agent
-    proposes no remove, and you run Safe delete again after you fix it.
-  - **Publish** next to a journal volume (marked when the volume has changes) runs
-    `almagest journal publish`, then starts a work document and an agent that
-    absorbs the edition. See [Journals](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#journals).
-  - **Checkout** asks for your request and starts an agent that checks out the
-    material on it.
-  - **Return** next to a checkout runs `almagest checkout return` and opens the
-    change. It is on when a copy is edited and the checkout is not returned. See [Checkouts](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#checkouts).
-  - **Wikify this note** (experimental) copies the open note to `scratchpad/`, opens
-    the copy, and starts an agent that marks it. See [Wikify a note](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#wikify-a-note-experimental).
+  "Open the tool palette"). Its home lists the areas of Almagest, each with one line on
+  where it stands and a count when something waits for you. Select an area to open its
+  page: what it is, its numbers, its actions, and its lists.
+  - **Changes**: the changes to review, and the running work documents with their last
+    step.
+  - **Ingest**: the files in `ingest/`. **Ingest** starts a work document for them, opens
+    it, and starts an agent that reports into it.
+  - **Wiki health**: **Run wiki lint** lists the first findings, and **Repair with an
+    agent** starts a repair work document and an agent that proposes the repairs into it.
+  - **Journals**: each volume, marked "changed" when it has writing to publish.
+    **Publish** runs `almagest journal publish`, then starts a work document and an agent
+    that absorbs the edition. See [Journals](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#journals).
+  - **Library**: **Check out material** asks for your request and starts the librarian.
+    **Return** next to a checkout runs `almagest checkout return` and opens the change;
+    it is on when a copy is edited and the checkout is not returned. See
+    [Checkouts](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#checkouts).
+  - **Agents**: the agents Almagest started and still work, **Start an agent**, and the
+    sessions pane.
+  - **This note**: **Wikify this note** (experimental) copies the open note to
+    `scratchpad/`, opens the copy, and starts an agent that marks it (see
+    [Wikify a note](https://github.com/nathanaday/almagest/blob/main/docs/guide.md#wikify-a-note-experimental)). **Safe delete this note**
+    runs `almagest vault trash` on it. When nothing links it, it moves to `trash/`; a
+    topic, a source, or a repository leaves through a change that applies at once, so
+    `change undo` in a terminal brings it back, and no agent can undo it. When files link
+    it, nothing moves, and a list names the links. For a knowledge document that
+    documents link, the list offers **Resolve with an agent**: the agent points each link
+    in a document elsewhere and proposes the remove. A link in your own notes (the
+    scratchpad, `journals/`, `checkout/`, and the like) is yours to fix; while one stays,
+    the agent proposes no remove, and you run Safe delete again after you fix it.
 
   The palette starts an agent through the Duet plugin. Without Duet, it starts your
   agent in a terminal (the agent and terminal settings of Almagest) with the same

@@ -4,7 +4,7 @@
 export const DOCUMENTS = "source-core/documents/";
 const WIKI_VIEW = "wiki-view/";
 const NAV_FOLDER = "wiki-view/nav/";
-const INGEST = "ingest/";
+export const INGEST = "ingest/";
 
 /** Whether a path lies in source-core/documents. */
 export function isDocumentPath(path: string): boolean {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isRepairable, lintSummary, noteTitle, paletteState, trashOutcome } from "../src/palettestate";
+import { areaLine, AREAS, isRepairable, lintSummary, noteTitle, paletteState, trashOutcome } from "../src/palettestate";
 
 const ref = (title: string, path: string, extra: Record<string, unknown> = {}) => ({ id: `id-${title}`, type: "change", title, path, tags: [], ...extra });
 
@@ -137,4 +137,39 @@ test("a link outside the knowledge documents is the user's, and an agent resolve
 
 test("safe delete that neither moved nor found a backlink is an error", () => {
 	assert.equal(trashOutcome({ path: "x.md", backlinks: null, moved: "" }).kind, "error");
+});
+
+test("the palette's home names each area's state in one line, with a chip only when it counts", () => {
+	const empty = paletteState({}, 0);
+	const lines = AREAS.map((a) => areaLine(a, empty, 0, false));
+	assert.deepEqual(
+		lines.map((l) => [l.name, l.line, l.count]),
+		[
+			["Changes", "Nothing to review", 0],
+			["Ingest", "Drop files in ingest/", 0],
+			["Wiki health", "No errors", 0],
+			["Journals", "Your own writing", 0],
+			["Library", "Gather the pages on a subject", 0],
+			["Agents", "0 live sessions", 0],
+			["This note", "Open a note first", 0],
+		],
+	);
+	const busy = paletteState(
+		{
+			ingest: [{ name: "a.pdf" }, { name: "b.md" }],
+			pending: [ref("Paper", "source-core/documents/Paper.md")],
+			changes: { proposed: [ref("Add A", "changes/a.md")], running: [ref("Ingest", "changes/i.md"), ref("Repair", "changes/r.md")] },
+			problems: 3,
+			journals: [{ volume: "cs566", name: "CS566", notes: 2, changed: true }],
+			checkouts: [{ folder: "checkout/2026-10-06 RL", edited: 1 }],
+		},
+		1,
+	);
+	assert.deepEqual(areaLine("changes", busy, 0, true), { name: "Changes", line: "1 to review · 2 running", count: 1, tone: "accent" });
+	assert.deepEqual(areaLine("ingest", busy, 0, true), { name: "Ingest", line: "2 files waiting · 1 source to absorb", count: 2, tone: "accent" });
+	assert.deepEqual(areaLine("health", busy, 0, true), { name: "Wiki health", line: "3 errors", count: 3, tone: "warning" });
+	assert.equal(areaLine("journals", busy, 0, true).line, "1 to publish");
+	assert.equal(areaLine("library", busy, 0, true).line, "1 to return");
+	assert.deepEqual(areaLine("agents", busy, 2, true), { name: "Agents", line: "2 working · 1 live session", count: 2, tone: "muted" });
+	assert.equal(areaLine("note", busy, 0, true).line, "Wikify it, or delete it safely");
 });

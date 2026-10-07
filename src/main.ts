@@ -63,7 +63,7 @@ export default class AlmagestPlugin extends Plugin {
 
 	/** The agents the palette started through Duet, while their turn runs. */
 	readonly conversations = new Conversations(
-		() => this.paletteViews().forEach((v) => v.render()),
+		() => this.paletteViews().forEach((v) => v.draw()),
 		(c, turn) => {
 			if (turn.status === "failed") new Notice(`Almagest: the ${c.label} agent stopped: ${turn.error ?? "its turn failed"}.`, 10_000);
 		},
@@ -342,7 +342,7 @@ export default class AlmagestPlugin extends Plugin {
 	setPublishing(volume: string): void {
 		this.publishing = volume;
 		for (const view of this.paletteViews()) {
-			view.render();
+			view.draw();
 			if (!volume) void view.refresh();
 		}
 	}
@@ -429,7 +429,7 @@ export default class AlmagestPlugin extends Plugin {
 	}
 
 	/** Starts the agent in the vault, in a terminal; a prompt is its first message. */
-	private async startAgent(prompt = ""): Promise<void> {
+	async startAgent(prompt = ""): Promise<void> {
 		const adapter = this.app.vault.adapter;
 		if (!(adapter instanceof FileSystemAdapter)) return;
 		let config: AgentConfig;

@@ -49,6 +49,17 @@ repository. This file holds what the code and the README do not say.
   status and the agent preferences come from the binary: the tab reads them when it
   opens and calls `update()` when they arrive. A text field that the binary saves
   (`almagest config set`) saves on blur, not at every key.
+- **The palette is a home and pages.** Its home lists the areas (`AREAS`), each with one
+  line and a count (`areaLine`, pure and tested); an area's page holds its numbers, its
+  actions, and its lists, in the same order on every page. One design language: a chip
+  only counts or names a state (accent: the user's to do; warning: a problem; muted: a
+  fact); a button only acts (one primary per page; the same small button for each item's
+  action; a destructive one quiet, never the loudest); a link only opens a document. A
+  disabled button says why in its tooltip and the page's empty state, not in a caption,
+  and the palette never repeats the open note's path, which the editor shows.
+- **A view's methods may be Obsidian's.** Obsidian's `View` calls `open(containerEl)`
+  when a leaf opens it, so a method named `open` on a view replaces that and breaks the
+  view. The palette names its own `show` (a page) and `draw` (the content).
 - **It reads only its own folders** (`markdownFilesIn`): the documents, `sessions/`, and
   `changes/`, never the whole vault.
 
