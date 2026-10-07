@@ -62,8 +62,11 @@ binary built from the checkout beside it.
 `ALMAGEST_HOME` in a temporary folder. The harness copies `dist/` into the vault as the
 plugin, as the community directory installs it, and sets `binaryPath` to the built
 binary. Then it starts a separate Obsidian with a temporary
-profile (`--user-data-dir`) and drives it with Playwright over the DevTools protocol. The
-user's Obsidian, `~/.almagest`, and vaults stay as they are. `npm test` does not need
+profile (`--user-data-dir`) and drives it with Playwright over the DevTools protocol.
+Obsidian brings itself to the front when its window opens, so the harness hides it at
+once, with no throttle on the hidden window: the focus goes back to your app after a
+fraction of a second, and you can keep working while the suite runs. `OBSIDIAN_SHOW=1`
+leaves the window on screen, to watch a run. The user's Obsidian, `~/.almagest`, and vaults stay as they are. `npm test` does not need
 Obsidian. The suite takes about 95 seconds, and has 23 tests.
 
 | Test | What it proves |

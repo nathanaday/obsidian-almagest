@@ -294,6 +294,8 @@ describe("Almagest in Obsidian", () => {
 
 	/** Goes back to the palette's home. */
 	async function home(palette: Palette): Promise<void> {
+		// A notice that the test already read would cover the palette's rows and its way back.
+		await palette.page().evaluate(() => document.querySelectorAll(".notice-container .notice").forEach((n) => n.remove()));
 		if ((await palette.getAttribute("data-page")) === "home") return;
 		await palette.locator(".almagest-back").click();
 		await until("the palette's home", async () => (await palette.getAttribute("data-page")) === "home");

@@ -72,7 +72,7 @@ npm install
 npm run build          # dist/main.js, dist/manifest.json, dist/styles.css
 npm run lint           # Obsidian's review rules, as the community scan runs them, with no warning allowed
 npm test               # the unit tests of the pure modules
-npm run test:obsidian  # the end-to-end suite in a separate Obsidian
+npm run test:obsidian  # the end-to-end suite in a separate, hidden Obsidian (OBSIDIAN_SHOW=1 to watch it)
 ```
 
 The lint has its own install in `scripts/lint` (typescript-eslint needs the TypeScript 5

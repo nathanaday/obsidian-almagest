@@ -9,6 +9,8 @@ import { type Browser, chromium, type Page } from "playwright-core";
 const OBSIDIAN = process.env.OBSIDIAN_BINARY ?? "/Applications/Obsidian.app/Contents/MacOS/Obsidian";
 /** Obsidian's own data folder, where it keeps the app updates that it downloaded. */
 const OBSIDIAN_DATA = process.env.OBSIDIAN_DATA ?? path.join(homedir(), "Library/Application Support/obsidian");
+/** OBSIDIAN_SHOW=1 leaves the test window on screen, to watch a run. */
+const SHOW = process.env.OBSIDIAN_SHOW === "1";
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 const PLUGIN_BUILD = path.join(REPO, "dist");
 /** A checkout of the almagest repository, which holds the binary the plugin runs. */
@@ -197,6 +199,7 @@ async function start(profile: string, env: NodeJS.ProcessEnv): Promise<Running> 
 	try {
 		browser = await connect(port);
 		const page = await vaultPage(browser);
+		if (!SHOW) await hide(page);
 		const errors: string[] = [];
 		page.on("console", (msg) => {
 			if (msg.type() === "error") errors.push(msg.text());
@@ -208,6 +211,19 @@ async function start(profile: string, env: NodeJS.ProcessEnv): Promise<Running> 
 		await kill();
 		throw error;
 	}
+}
+
+/**
+ * Hides Obsidian, which brings itself to the front when its window opens, so the focus goes
+ * back to the app the user works in. The hidden window keeps rendering, with no throttle.
+ */
+async function hide(page: Page): Promise<void> {
+	await page.waitForFunction(() => typeof (window as any).require === "function", undefined, { timeout: 30_000 });
+	await page.evaluate(() => {
+		const { remote } = (window as any).require("electron");
+		remote.getCurrentWebContents().setBackgroundThrottling(false);
+		remote.app.hide();
+	});
 }
 
 async function pluginLoaded({ page, errors }: Running): Promise<void> {
