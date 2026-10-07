@@ -42,11 +42,19 @@ repository. This file holds what the code and the README do not say.
   counts what moves and whose button runs `vault migrate`; for any other, the update.
   It follows `Almagest.md`'s metadata, so a migration in a terminal clears the notice too.
   `vault migrate` came with protocol 2, so a binary of protocol 1 is named for update.
-- **Duet hosts the agents when it is on.** Almagest does not copy Duet's code: two copies
-  would bind two Yjs hubs to one editor and both wrap `Vault.modify`. The plugin starts
-  an agent through Duet's API for other plugins (Duet 0.3.0 or later:
+- **Duet hosts the agents when the user chooses it, and Almagest works without it.**
+  Almagest does not copy Duet's code: two copies would bind two Yjs hubs to one editor
+  and both wrap `Vault.modify`. With `conversations: "duet"` (the default) and Duet on,
+  the plugin starts an agent through Duet's API for other plugins (Duet 0.3.0 or later:
   `app.plugins.getPlugin("duet")?.api`, with `newConversation`, `conversationStatus`, and
-  `onTurnEnd`), else in the user's terminal.
+  `onTurnEnd`), and Start an agent runs Duet's command `duet:new-chat`, since the API
+  needs a first message. Otherwise the agent starts in the user's terminal.
+  `recommendDuet` (Duet chosen, not on) decides both tips: the one the plugin draws at
+  the top of `Almagest.md` (`duettip.ts`, a state field in live preview and a post
+  processor in reading view) and the one a new terminal prints. The tip in `Almagest.md`
+  is never written: every agent reads the file as the vault's context, and git shares it
+  between machines with and without Duet. Obsidian sends no event when a plugin turns on
+  or off, so the plugin reads Duet's state every two seconds and redraws on a change.
 - **A terminal launch fails where no one sees it** (osascript and `open` exit after the
   spawn), so `openTerminal` checks for the app first. `scripts/probe-launch.mjs` opens a
   real terminal with a probe; record each result in TESTED.md.

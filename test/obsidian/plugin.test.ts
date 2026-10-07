@@ -6,6 +6,9 @@ import { type AlmagestBinary, buildAlmagest, frontmatter, launchObsidian, type O
 
 const TIMEOUT = 90_000;
 
+/** A terminal command while Duet is the choice and does not run: the tip, then the agent in the vault. */
+const TIP_THEN_AGENT = /^printf '.+' '.+Almagest works best with the Duet community plugin.+' 'obsidian:\/\/show-plugin\?id=duet' && cd '.+' && claude '.+'$/s;
+
 describe("Almagest in Obsidian", () => {
 	let bin: AlmagestBinary;
 	let obsidian: ObsidianInstance | undefined;
@@ -413,10 +416,10 @@ describe("Almagest in Obsidian", () => {
 		expect(doc.kind).toBe("ingest");
 		expect(frontmatter(await o.read(doc.path)).files).toBe("[Paper one.md]");
 		const message = `/almagest:wiki-ingest Ingest the files of ingest/ into the wiki. Your work document is [[${doc.title}]] (${doc.id}): report each step with change progress, and propose into it with change propose and id ${doc.id}.`;
-		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command).toMatch(TIP_THEN_AGENT);
 		expect(command.endsWith(` && claude '${message}'`)).toBe(true);
 
-		expect(await notices(o)).toContain("Almagest: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Almagest starts the agent in a terminal.");
+		expect(await notices(o)).toContain("Almagest: Duet is not on, so the agent starts in a terminal. The Almagest settings say what Duet needs, or choose the terminal there.");
 		expect(await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)).toBe(doc.path);
 		await until("the palette to count the running work", async () => (await line(palette, "changes")) === "1 running", { describe: () => palette.innerText() });
 		await goTo(palette, "changes");
@@ -424,9 +427,11 @@ describe("Almagest in Obsidian", () => {
 		expect(o.errors).toEqual([]);
 	});
 
-	it("starts an ingest through Duet's API, and lists the conversation under Running until its turn ends", { timeout: TIMEOUT }, async () => {
-		const o = await launch({ prepare: (vault) => writeFile(path.join(vault, "ingest/Paper one.md"), "# Paper one\n") });
-		// A stand-in for Duet at the API boundary: it records each call and ends a turn when the test says so.
+	/**
+	 * A stand-in for Duet at its boundaries: the API, which records each call and ends a turn
+	 * when the test says so, and the command "New conversation", which counts its runs.
+	 */
+	async function fakeDuet(o: ObsidianInstance): Promise<void> {
 		await o.page.evaluate(() => {
 			const w = window as any;
 			const status = new Map<string, string>();
@@ -452,7 +457,23 @@ describe("Almagest in Obsidian", () => {
 					},
 				},
 			};
+			w.duetNewChats = 0;
+			w.app.commands.commands["duet:new-chat"] = { id: "duet:new-chat", name: "Duet: New conversation", callback: () => w.duetNewChats++ };
 		});
+	}
+
+	/** Takes the stand-in Duet away, as the user does by turning Duet off. */
+	async function removeDuet(o: ObsidianInstance): Promise<void> {
+		await o.page.evaluate(() => {
+			const w = window as any;
+			delete w.app.plugins.plugins.duet;
+			delete w.app.commands.commands["duet:new-chat"];
+		});
+	}
+
+	it("starts an ingest through Duet's API, and lists the conversation under Running until its turn ends", { timeout: TIMEOUT }, async () => {
+		const o = await launch({ prepare: (vault) => writeFile(path.join(vault, "ingest/Paper one.md"), "# Paper one\n") });
+		await fakeDuet(o);
 		const palette = await openPalette(o);
 		await goTo(palette, "ingest");
 		const ingest = palette.locator('button[data-action="ingest"]', { hasText: "Ingest 1 file" });
@@ -480,8 +501,131 @@ describe("Almagest in Obsidian", () => {
 
 		await o.page.evaluate((title) => (window as any).duetEnd(`Duet/Agent · ${title}.md`), doc.title);
 		await until("the turn's end to clear the list", async () => (await running.count()) === 0, { describe: () => palette.innerText() });
-		expect(await notices(o)).not.toContain("Almagest: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Almagest starts the agent in a terminal.");
-		await o.page.evaluate(() => delete (window as any).app.plugins.plugins.duet);
+		expect(await notices(o)).not.toContain("Almagest: Duet is not on, so the agent starts in a terminal. The Almagest settings say what Duet needs, or choose the terminal there.");
+		await removeDuet(o);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("the settings choose where agents work: Duet names what it needs, and the terminal's settings show while a terminal starts the agents", { timeout: TIMEOUT }, async () => {
+		const o = await launch();
+		const settings = await o.settings("almagest");
+		const tab = settings.locator(".vertical-tab-content");
+		const row = (name: RegExp) => tab.locator(".setting-item-name", { hasText: name }).first().locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' setting-item ')][1]");
+		const choice = row(/^Agent conversations$/).locator("select:not(.is-measuring)");
+		const duet = tab.locator(".almagest-duet-state");
+		const terminalSettings = tab.locator(".setting-item-heading, .setting-group-heading, h3, .setting-item-name", { hasText: /^All vaults$/ });
+		await until("the Duet line", async () => (await duet.count()) === 1, { describe: async () => (await tab.textContent()) ?? "" });
+
+		// Duet is the default; without it, the settings name the install and keep the terminal's settings.
+		expect(await choice.inputValue()).toBe("duet");
+		expect(await choice.locator("option").allTextContents()).toEqual(["Duet (recommended)", "Terminal (configurable)"]);
+		expect(await duet.getAttribute("data-state")).toBe("missing");
+		expect(await duet.textContent()).toContain("Duet is not installed. Install it from Obsidian's community plugins.");
+		expect(await duet.locator("button", { hasText: "Install Duet" }).count()).toBe(1);
+		expect(await terminalSettings.count()).toBeGreaterThan(0);
+
+		// With Duet on, Duet runs the conversations, and the terminal's settings leave.
+		await fakeDuet(o);
+		await until("Duet on", async () => (await duet.getAttribute("data-state")) === "on", { describe: async () => (await tab.textContent()) ?? "" });
+		expect(await duet.textContent()).toContain("Duet runs each agent conversation in a note of this vault");
+		expect(await terminalSettings.count()).toBe(0);
+
+		// The terminal: no Duet line, and the terminal's settings.
+		await choice.selectOption("terminal");
+		await until("the terminal's settings", async () => (await duet.count()) === 0 && (await terminalSettings.count()) > 0, { describe: async () => (await tab.textContent()) ?? "" });
+		expect(await o.page.evaluate(() => (window as any).app.plugins.plugins.almagest.settings.conversations)).toBe("terminal");
+		await removeDuet(o);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("shows the Duet tip above Almagest.md's text while Duet is the choice and does not run, and writes nothing into the file", { timeout: TIMEOUT }, async () => {
+		const o = await launch();
+		// A note keeps both views in the page; each check looks in the one the leaf shows.
+		const view = { source: ".markdown-source-view", preview: ".markdown-reading-view" } as const;
+		const tipIn = (mode: keyof typeof view) => o.page.locator(`.workspace-leaf.mod-active ${view[mode]} .almagest-duet-tip`);
+		let tip = tipIn("source");
+		const shows = async (mode: string) => {
+			await until(`the tip in ${mode}`, async () => (await tip.count()) === 1 && (await tip.isVisible()), { describe: () => o.page.locator(".workspace-leaf.mod-active").innerText() });
+			expect(await tip.locator(".callout-title-inner").textContent()).toBe("Tip");
+			expect(await tip.textContent()).toContain("Almagest works best with the Duet community plugin.");
+			expect(await tip.locator("a.almagest-duet-link").getAttribute("href")).toBe("obsidian://show-plugin?id=duet");
+		};
+		// A vault with no description has no text after the properties; the tip follows them.
+		for (const mode of ["source", "preview"] as const) {
+			await open(o, "Almagest.md", mode);
+			tip = tipIn(mode);
+			await shows(`${mode}, with no text`);
+		}
+		// With text, the tip comes before it.
+		await o.page.evaluate(async () => {
+			const app = (window as any).app;
+			const file = app.vault.getFileByPath("Almagest.md");
+			await app.vault.modify(file, (await app.vault.read(file)) + "\nThe vault's own context.\n");
+		});
+		const before = await o.read("Almagest.md");
+		for (const mode of ["source", "preview"] as const) {
+			await open(o, "Almagest.md", mode);
+			tip = tipIn(mode);
+			await shows(`${mode}, with text`);
+			// The text follows the tip, in the same view.
+			const follows = await tip.evaluate((el, scope) => {
+				const text = [...document.querySelectorAll(`.workspace-leaf.mod-active ${scope} *`)].find((x) => x.childElementCount === 0 && x.textContent === "The vault's own context.");
+				return !!text && (el.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+			}, view[mode]);
+			expect(follows).toBe(true);
+		}
+		// The tip stays out of other notes.
+		await o.page.evaluate(async () => {
+			await (window as any).app.vault.create("scratchpad/Plain.md", "Text.\n");
+		});
+		await open(o, "scratchpad/Plain.md", "source");
+		expect(await o.page.locator(".workspace-leaf.mod-active .almagest-duet-tip").count()).toBe(0);
+
+		// Duet on: no tip. Duet off again: the tip. The terminal chosen: no tip.
+		await open(o, "Almagest.md", "source");
+		tip = tipIn("source");
+		await until("the tip", async () => (await tip.count()) === 1);
+		await fakeDuet(o);
+		await until("the tip to leave with Duet on", async () => (await tip.count()) === 0);
+		await removeDuet(o);
+		await until("the tip to come back", async () => (await tip.count()) === 1);
+		await o.page.evaluate(async () => {
+			const plugin = (window as any).app.plugins.plugins.almagest;
+			plugin.settings.conversations = "terminal";
+			plugin.duetChanged();
+		});
+		await until("the tip to leave with the terminal chosen", async () => (await tip.count()) === 0);
+		await open(o, "Almagest.md", "preview");
+		expect(await tipIn("preview").count()).toBe(0);
+		expect(await o.read("Almagest.md")).toBe(before);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("with the terminal chosen, an agent starts in a terminal with no tip and no notice", { timeout: TIMEOUT }, async () => {
+		const o = await launch({ pluginData: { conversations: "terminal" } });
+		const out = await stubTerminal(o);
+		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:start-agent"));
+		const command = await terminalCommand(out);
+		expect(command).toMatch(/^cd '.+' && claude$/);
+		expect((await notices(o)).filter((t) => t.includes("Duet"))).toEqual([]);
+		expect(o.errors).toEqual([]);
+	});
+
+	it("Start an agent opens a new Duet conversation when Duet runs, and a terminal with the tip when it does not", { timeout: TIMEOUT }, async () => {
+		const o = await launch();
+		const out = await stubTerminal(o);
+		await fakeDuet(o);
+		const palette = await openPalette(o);
+		await goTo(palette, "agents");
+		await palette.locator('button[data-action="start"]').click();
+		await until("the Duet conversation", async () => (await o.page.evaluate(() => (window as any).duetNewChats)) === 1);
+		expect(existsSync(out)).toBe(false);
+
+		await removeDuet(o);
+		await goTo(palette, "agents");
+		await palette.locator('button[data-action="start"]').click();
+		const command = await terminalCommand(out);
+		expect(command).toMatch(/^printf '.+' 'obsidian:\/\/show-plugin\?id=duet' && cd '.+' && claude$/s);
 		expect(o.errors).toEqual([]);
 	});
 
@@ -587,7 +731,7 @@ describe("Almagest in Obsidian", () => {
 		const doc = await workDoc(o, `Ingest ${title}`);
 		expect(doc.kind).toBe("ingest");
 		const message = `/almagest:wiki-sync Absorb the source [[${title}]] (${fields.id}), the user's journal edition. Cite it where its ideas land. Your work document is [[${doc.title}]] (${doc.id}): report each step with change progress, and propose into it with change propose and id ${doc.id}.`;
-		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command).toMatch(TIP_THEN_AGENT);
 		expect(command.endsWith(` && claude '${message.replace(/'/g, "'\\''")}'`)).toBe(true);
 		expect(await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)).toBe(doc.path);
 		expect(await notices(o)).toContain(`Almagest: published ${title}.`);
@@ -845,9 +989,9 @@ describe("Almagest in Obsidian", () => {
 		await until("the modal to close", async () => (await modal.count()) === 0);
 
 		const command = await terminalCommand(out);
-		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command).toMatch(TIP_THEN_AGENT);
 		expect(command.endsWith(" && claude '/almagest:wiki-checkout Check out the material on: reinforcement learning'")).toBe(true);
-		expect(await notices(o)).toContain("Almagest: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Almagest starts the agent in a terminal.");
+		expect(await notices(o)).toContain("Almagest: Duet is not on, so the agent starts in a terminal. The Almagest settings say what Duet needs, or choose the terminal there.");
 		expect(o.errors).toEqual([]);
 	});
 
@@ -1070,9 +1214,9 @@ describe("Almagest in Obsidian", () => {
 		expect(doc.kind).toBe("draft");
 		expect(doc.title).toMatch(/^\d{4}-\d{2}-\d{2} Draft Momentum$/);
 		const message = `/almagest:wiki-edit Draft a topic titled Momentum from [[Lecture · wikified]] and what the wiki holds; give it a why. Your work document is [[${doc.title}]] (${doc.id}): report each step with change progress, and propose into it with change propose and id ${doc.id}.`;
-		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command).toMatch(TIP_THEN_AGENT);
 		expect(command.endsWith(` && claude '${message.replace(/'/g, "'\\''")}'`)).toBe(true);
-		expect(await notices(o)).toContain("Almagest: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Almagest starts the agent in a terminal.");
+		expect(await notices(o)).toContain("Almagest: Duet is not on, so the agent starts in a terminal. The Almagest settings say what Duet needs, or choose the terminal there.");
 
 		// The bubble shows drafting while the work document runs and waits for the user.
 		await until("drafting", async () => (await momentum.getAttribute("data-state")) === "drafting", { describe: () => momentum.innerHTML() });
@@ -1213,7 +1357,7 @@ describe("Almagest in Obsidian", () => {
 		const copy = "scratchpad/Lecture · wikified.md";
 		expect(await o.read(copy)).toBe(LECTURE_TEXT);
 		expect(await o.read(LECTURE)).toBe(LECTURE_TEXT);
-		expect(command).toMatch(/^cd '.+' && claude '.+'$/);
+		expect(command).toMatch(TIP_THEN_AGENT);
 		expect(command.endsWith(" && claude '/almagest:wiki-wikify Wikify [[Lecture · wikified]]: mark what the wiki knows and the subjects worth a topic, with wikify mark.'")).toBe(true);
 		await until("the copy to open", async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === copy);
 		expect(o.errors).toEqual([]);

@@ -87,9 +87,14 @@ With the plugin, Obsidian adds:
     scratchpad, `journals/`, `checkout/`, and the like) is yours to fix; while one stays,
     the agent proposes no remove, and you run Safe delete again after you fix it.
 
-  The palette starts an agent through the Duet plugin. Without Duet, it starts your
-  agent in a terminal (the agent and terminal settings of Almagest) with the same
-  message.
+  The setting **Agent conversations** chooses where an agent works: **Duet
+  (recommended)**, in a conversation note of the vault through the Duet plugin, or
+  **Terminal (configurable)**, in a new terminal with the agent and terminal settings of
+  Almagest. Every feature works with either. While Duet is the choice but is not installed
+  or not on, agents start in a terminal, the settings name what Duet needs, and a tip
+  recommends Duet at the top of `Almagest.md` and in each new terminal. The plugin draws
+  the tip in `Almagest.md` and never writes it into the file. Choose Terminal, and the tip
+  goes away. Resume of a closed terminal session always opens a terminal.
 - **Wikify bubbles** in a wikified copy: Accept, Ignore, Create, and Link on each mark.
 - **Approve and Cancel** in each change document. Approve applies the change, as
   `almagest change apply` does in a terminal. Cancel asks for an optional reason

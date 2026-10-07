@@ -17,6 +17,7 @@ import {
 	isLockHeld,
 	isSnapshotPath,
 	isWatchedPath,
+	firstBodyLine,
 	layoutNeeds,
 	layoutOf,
 	narrow,
@@ -115,6 +116,11 @@ test("small labels", () => {
 	assert.equal(layoutOf({ layout: 3 }), 3);
 	assert.equal(layoutOf({ layout: "2" }), 2);
 	assert.equal(layoutOf(undefined), 0);
+	// The Duet tip goes above the first text after the properties.
+	assert.equal(firstBodyLine("---\nid: v\nlayout: 8\n---\n\nThe vault's context.\n"), 5);
+	assert.equal(firstBodyLine("No properties.\n"), 0);
+	assert.equal(firstBodyLine("---\nid: v\n---\n\n"), -1);
+	assert.equal(firstBodyLine("---\nnever closed\n"), -1);
 	assert.equal(layoutNeeds(8), "");
 	assert.equal(layoutNeeds(7), "migrate");
 	assert.equal(layoutNeeds(9), "update");

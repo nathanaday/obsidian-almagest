@@ -1,4 +1,4 @@
-import { FileSystemAdapter, Notice, Plugin, TAbstractFile, TFile } from "obsidian";
+import { FileSystemAdapter, MarkdownView, Notice, Plugin, TAbstractFile, TFile } from "obsidian";
 import { ChangeRunner, changeProcessor } from "./change";
 import { AlmagestError, binaryInfo, findBinary, runAlmagest } from "./cli";
 import {
@@ -18,14 +18,21 @@ import {
 } from "./helpers";
 import { QuietTimer } from "./quiet";
 import { repoProcessor } from "./repo";
-import { AgentConfig, startCommand } from "./agents";
-import { Conversations, duetApi } from "./conversations";
+import { AgentConfig, duetTipCommand, recommendDuet, startCommand } from "./agents";
+import { Conversations, duetApi, duetState } from "./conversations";
+import { tipExtension, tipPostProcessor } from "./duettip";
 import { openTerminal } from "./launcher";
 import { volumeOf } from "./journalstate";
 import { PALETTE_ICON, PALETTE_VIEW, PaletteView } from "./palette";
 import { confirmPublishOf } from "./publish";
 import { AlmagestSettingTab, AlmagestSettings, DEFAULT_SETTINGS } from "./settings";
 import { isWikified } from "./marks";
+
+/** Runs another plugin's command by its id; false when no plugin gives it. */
+function executeCommand(app: unknown, id: string): boolean {
+	const commands = (app as { commands?: { executeCommandById?(id: string): boolean } }).commands;
+	return commands?.executeCommandById?.(id) === true;
+}
 
 /** The class on the body that colors Almagest's folders in the file explorer (styles.css). */
 const FOLDER_COLORS = "almagest-folder-colors";
@@ -71,18 +78,28 @@ export default class AlmagestPlugin extends Plugin {
 	);
 
 	private layoutNotice: Notice | null = null;
+	private settingTab: AlmagestSettingTab | null = null;
+	/** The choice of host and Duet's state, as the tip and the settings last showed them. */
+	private duetKey = "";
+	private readonly duetListeners = new Set<() => void>();
 	/** The layout the notice and the palettes last followed; null before the first read. */
 	private knownLayout: number | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
-		this.addSettingTab(new AlmagestSettingTab(this.app, this));
+		this.settingTab = new AlmagestSettingTab(this.app, this);
+		this.addSettingTab(this.settingTab);
 
 		this.registerMarkdownCodeBlockProcessor("almagest-repo", repoProcessor(this));
 		this.registerMarkdownCodeBlockProcessor("almagest-change", changeProcessor(this, new ChangeRunner(this)));
 
 		this.registerEditorExtension(markExtension(this.wikify));
 		this.registerMarkdownPostProcessor(markPostProcessor(this, this.wikify));
+		const tip = { show: () => this.recommendDuet(), listen: (fn: () => void) => this.onDuetChange(fn) };
+		this.registerEditorExtension(tipExtension(tip));
+		this.registerMarkdownPostProcessor(tipPostProcessor(tip));
+		// Obsidian sends no event when a plugin turns on or off, so Duet's state is read every two seconds.
+		this.registerInterval(window.setInterval(() => this.checkDuet(), 2000));
 		this.wikify.register();
 		this.addCommand({
 			id: "accept-link-marks",
@@ -412,8 +429,49 @@ export default class AlmagestPlugin extends Plugin {
 		new Notice(`Almagest: copied ${what}. Run it in a terminal.`);
 	}
 
-	/** Starts the agent in the vault, in a terminal; a prompt is its first message. */
+	// Where agents work: Duet when the settings choose it and it runs, else a terminal.
+
+	/** Duet's API when the settings choose Duet and it runs. */
+	private duet() {
+		return this.settings.conversations === "duet" ? duetApi(this.app) : undefined;
+	}
+
+	/** Whether to recommend Duet, in Almagest.md and in a new terminal. */
+	recommendDuet(): boolean {
+		return recommendDuet(this.settings.conversations, duetState(this.app));
+	}
+
+	/** Calls fn after the choice of host or Duet's state changes; returns a function that stops the calls. */
+	onDuetChange(fn: () => void): () => void {
+		this.duetListeners.add(fn);
+		return () => this.duetListeners.delete(fn);
+	}
+
+	private checkDuet(): void {
+		const key = `${this.settings.conversations} ${duetState(this.app)}`;
+		if (key === this.duetKey) return;
+		this.duetKey = key;
+		this.duetChanged();
+	}
+
+	/** Draws again what depends on Duet: the tip in Almagest.md, in both modes, and the settings. */
+	duetChanged(): void {
+		this.duetKey = `${this.settings.conversations} ${duetState(this.app)}`;
+		this.duetListeners.forEach((fn) => fn());
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			if (leaf.view instanceof MarkdownView && leaf.view.file?.path === VAULT_DOCUMENT) leaf.view.previewMode.rerender(true);
+		}
+		if (this.settingTab?.containerEl.isShown()) this.settingTab.update();
+	}
+
+	/** Starts an agent in the vault: an empty Duet conversation, or the agent in a terminal with prompt as its first message. */
 	async startAgent(prompt = ""): Promise<void> {
+		if (!prompt && this.duet() && executeCommand(this.app, "duet:new-chat")) return;
+		await this.startInTerminal(prompt);
+	}
+
+	/** Starts the agent in a new terminal; while Duet is the choice and does not run, the terminal shows the tip first. */
+	private async startInTerminal(prompt: string): Promise<void> {
 		const adapter = this.app.vault.adapter;
 		if (!(adapter instanceof FileSystemAdapter)) return;
 		let config: AgentConfig;
@@ -423,7 +481,8 @@ export default class AlmagestPlugin extends Plugin {
 			new Notice(`Almagest: cannot read the agent preferences: ${(e as Error).message}`, 8000);
 			return;
 		}
-		await this.runInTerminal(startCommand(adapter.getBasePath(), config.preferences.agent_command, prompt), "the agent command", config);
+		const command = startCommand(adapter.getBasePath(), config.preferences.agent_command, prompt);
+		await this.runInTerminal(this.recommendDuet() ? `${duetTipCommand()} && ${command}` : command, "the agent command", config);
 	}
 
 	/**
@@ -432,7 +491,7 @@ export default class AlmagestPlugin extends Plugin {
 	 * what the agent does.
 	 */
 	async runAgent(message: string, title: string, label: string): Promise<void> {
-		const api = duetApi(this.app);
+		const api = this.duet();
 		if (api) {
 			try {
 				const { path } = await api.newConversation({ message, title, loadUserSetup: true });
@@ -441,10 +500,10 @@ export default class AlmagestPlugin extends Plugin {
 			} catch (e) {
 				new Notice(`Almagest: Duet did not start the agent (${(e as Error).message}). Almagest starts it in a terminal.`, 10_000);
 			}
-		} else {
-			new Notice("Almagest: Duet runs the agents in Obsidian. Duet 0.3.0 or later is not on, so Almagest starts the agent in a terminal.", 10_000);
+		} else if (this.settings.conversations === "duet") {
+			new Notice("Almagest: Duet is not on, so the agent starts in a terminal. The Almagest settings say what Duet needs, or choose the terminal there.", 10_000);
 		}
-		await this.startAgent(message);
+		await this.startInTerminal(message);
 	}
 
 	/** Drops the conversations whose turn ended while no event came, such as when Duet turned off. */

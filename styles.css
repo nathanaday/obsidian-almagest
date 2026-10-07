@@ -567,3 +567,18 @@ body.almagest-folder-colors .nav-folder-title:is([data-path="wiki-view"], [data-
 body.almagest-folder-colors .nav-folder-title[data-path="tool"] {
 	color: var(--text-faint);
 }
+
+/* The Duet tip at the top of Almagest.md, which the plugin draws while Duet is the choice and does not run. */
+.almagest-duet-tip {
+	margin-block: var(--size-4-2) var(--size-4-4);
+}
+.almagest-duet-tip-block {
+	padding-block: var(--size-4-2) var(--size-4-4);
+}
+.almagest-duet-tip-block > .almagest-duet-tip {
+	margin-block: 0;
+}
+.almagest-duet-tip-note {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}

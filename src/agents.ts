@@ -134,6 +134,46 @@ export function startCommand(dir: string, agent: string, prompt = ""): string {
 	return `cd ${shellQuote(dir)} && ${agent.trim() || "claude"}${first ? ` ${shellQuote(first)}` : ""}`;
 }
 
+// Duet: the plugin that hosts agent conversations in the vault. Almagest works without it.
+
+/** Duet's page in Obsidian's community plugins. */
+export const DUET_LINK = "obsidian://show-plugin?id=duet";
+
+/** Duet as Almagest finds it: on (with its API), on but too old for the API, installed but off, or not installed. */
+export type DuetState = "on" | "old" | "off" | "missing";
+
+/** Where an agent works when Almagest starts one. */
+export type ConversationHost = "duet" | "terminal";
+
+/** The recommendation of Duet, in Almagest.md and in a terminal that Almagest opens. */
+export const DUET_TIP =
+	"Did you know you can work with your agents directly in Obsidian? Almagest works best with the Duet community plugin. Once installed, Almagest will automatically handle agent conversations in this vault instead of a new terminal session.";
+
+/** Whether to recommend Duet: the settings choose it, and it does not run. A user who chose the terminal sees no tip. */
+export function recommendDuet(host: ConversationHost, state: DuetState): boolean {
+	return host === "duet" && state !== "on";
+}
+
+/** What the settings say about Duet while it is the choice: that it runs the conversations, or what it needs first. */
+export function duetLine(state: DuetState): string {
+	const until = "Until then, Almagest starts each agent in a terminal, with the settings below.";
+	switch (state) {
+		case "on":
+			return "Duet runs each agent conversation in a note of this vault, and Duet's settings choose the agent. Resume of a closed terminal session still opens a terminal.";
+		case "old":
+			return `This Duet has no API for Almagest. Update Duet to 0.3.0 or later in Community plugins. ${until}`;
+		case "off":
+			return `Duet is installed but off. Turn it on in Community plugins. ${until}`;
+		case "missing":
+			return `Duet is not installed. Install it from Obsidian's community plugins. ${until}`;
+	}
+}
+
+/** A shell command that prints the Duet tip, before the agent starts in a new terminal. */
+export function duetTipCommand(): string {
+	return `printf '\\n\\033[1mTip:\\033[0m %s\\n\\033[1mInstall Duet:\\033[0m %s\\n\\n' ${shellQuote(DUET_TIP)} ${shellQuote(DUET_LINK)}`;
+}
+
 /** The terminals Almagest opens a command in. */
 export const TERMINALS = ["terminal", "iterm", "wezterm", "ghostty", "custom"] as const;
 export type TerminalApp = (typeof TERMINALS)[number];

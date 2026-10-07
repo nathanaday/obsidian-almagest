@@ -1,7 +1,8 @@
 import { App, Notice, PluginSettingTab, Setting, SettingDefinitionGroup, SettingDefinitionItem, TextComponent, debounce } from "obsidian";
 import { binaryInfo, findBinary } from "./cli";
 import { SNAPSHOT_QUIET_DEFAULT, binaryProblem, quietSeconds } from "./helpers";
-import { AGENTS, AGENT_NAMES, Agent, AgentConfig, Preferences, TERMINALS, TERMINAL_NAMES, inherited, preference } from "./agents";
+import { AGENTS, AGENT_NAMES, Agent, AgentConfig, ConversationHost, DUET_LINK, Preferences, TERMINALS, TERMINAL_NAMES, duetLine, inherited, preference } from "./agents";
+import { duetState } from "./conversations";
 import type AlmagestPlugin from "./main";
 import { homedir } from "os";
 
@@ -14,6 +15,8 @@ export interface AlmagestSettings {
 	snapshotQuietSeconds: number;
 	/** Whether the file explorer colors wiki-view/, journals/, ingest/, and tool/. */
 	colorFolders: boolean;
+	/** Where an agent works when Almagest starts one: a Duet conversation, or a new terminal. */
+	conversations: ConversationHost;
 }
 
 export const DEFAULT_SETTINGS: AlmagestSettings = {
@@ -21,6 +24,7 @@ export const DEFAULT_SETTINGS: AlmagestSettings = {
 	syncOnChange: true,
 	snapshotQuietSeconds: SNAPSHOT_QUIET_DEFAULT,
 	colorFolders: true,
+	conversations: "duet",
 };
 
 /** An agent preference's control key: `agent:<global|vault>:<key>`, the key as almagest config names it. */
@@ -91,7 +95,7 @@ export class AlmagestSettingTab extends PluginSettingTab {
 				desc: "In the file explorer: what you read (wiki-view/) in cyan, what you write and add (journals/, ingest/) in purple, and what Almagest keeps for itself (tool/) dimmed.",
 				control: { type: "toggle", key: "colorFolders" },
 			},
-			...this.agentGroups(),
+			...this.conversationSettings(),
 		];
 	}
 
@@ -112,6 +116,11 @@ export class AlmagestSettingTab extends PluginSettingTab {
 		} else if (key === "syncOnChange") {
 			settings.syncOnChange = Boolean(value);
 			await this.plugin.saveSettings();
+		} else if (key === "conversations") {
+			settings.conversations = value === "terminal" ? "terminal" : "duet";
+			await this.plugin.saveSettings();
+			this.plugin.duetChanged();
+			this.update();
 		} else if (key === "colorFolders") {
 			settings.colorFolders = Boolean(value);
 			await this.plugin.saveSettings();
@@ -160,6 +169,36 @@ export class AlmagestSettingTab extends PluginSettingTab {
 	}
 
 	/**
+	 * Where agents work: the choice of Duet or the terminal, what Duet needs while it is the
+	 * choice, and the terminal's settings whenever a terminal starts the agents.
+	 */
+	private conversationSettings(): SettingDefinitionItem[] {
+		const host = this.plugin.settings.conversations;
+		const state = duetState(this.app);
+		const items: SettingDefinitionItem[] = [
+			{
+				name: "Agent conversations",
+				desc: "Where an agent works when Almagest starts one: in a Duet conversation note in this vault, or in a new terminal.",
+				control: { type: "dropdown", key: "conversations", options: { duet: "Duet (recommended)", terminal: "Terminal (configurable)" } },
+			},
+		];
+		if (host === "duet") {
+			items.push({
+				name: "Duet",
+				desc: duetLine(state),
+				render: (setting: Setting) => {
+					setting.settingEl.addClass("almagest-duet-state");
+					setting.settingEl.dataset.state = state;
+					if (state === "missing") setting.addButton((b) => b.setButtonText("Install Duet").setCta().onClick(() => window.open(DUET_LINK)));
+				},
+			});
+		}
+		// Resume opens a terminal whatever the choice, so the terminal's settings stay set; they show while a terminal starts the agents.
+		if (host === "terminal" || state !== "on") items.push(...this.agentGroups());
+		return items;
+	}
+
+	/**
 	 * The agent preferences: one group for every vault, one for this vault. A vault key
 	 * left empty takes the global value, which its option and placeholder name.
 	 */
@@ -170,7 +209,7 @@ export class AlmagestSettingTab extends PluginSettingTab {
 		}
 		const intro = {
 			name: "Agents",
-			desc: `Start agent, Resume, and the palette's agents without Duet read these. ${shortHome(config.files["global"])} holds them for every vault; .almagest/config.json in this vault overrides them, key by key. almagest config shows the result.`,
+			desc: `The terminal and the agent that Start agent, Resume, and the palette's agents use. ${shortHome(config.files["global"])} holds them for every vault; .almagest/config.json in this vault overrides them, key by key. almagest config shows the result.`,
 		};
 		return [intro, this.agentGroup(config, true), this.agentGroup(config, false)];
 	}

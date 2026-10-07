@@ -382,5 +382,18 @@ export function layoutNeeds(layout: number): "migrate" | "update" | "" {
 	return layout === LAYOUT_BEFORE_TOOL ? "migrate" : "update";
 }
 
+/** The 0-based line of a note's first text after its frontmatter, or -1 when it has none. */
+export function firstBodyLine(text: string): number {
+	const lines = text.split("\n");
+	let i = 0;
+	if (lines[0]?.trim() === "---") {
+		const end = lines.findIndex((l, n) => n > 0 && l.trim() === "---");
+		if (end < 0) return -1;
+		i = end + 1;
+	}
+	for (; i < lines.length; i++) if (lines[i]!.trim() !== "") return i;
+	return -1;
+}
+
 /** The vault document, which records the layout. */
 export const VAULT_DOCUMENT = "Almagest.md";
