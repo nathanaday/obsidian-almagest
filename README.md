@@ -53,7 +53,7 @@ updates itself: Obsidian's community plugins do that.
 With the plugin, Obsidian adds:
 
 - **The Almagest palette** in the right sidebar (the Almagest ribbon button, or the command
-  "Open the Almagest palette"). It shows the proposed changes, the running work documents,
+  "Open the tool palette"). It shows the proposed changes, the running work documents,
   the files in `ingest/`, the pending sources, the live sessions, the files in `trash/`,
   the journal volumes, the checkouts, and the lint problems. Its actions:
   - **Ingest** starts a work document for the files in `ingest/`, opens it, and starts
@@ -90,7 +90,7 @@ With the plugin, Obsidian adds:
 - **Quiet snapshots.** After two minutes with no file change, the plugin commits your
   edits to the vault's git history. Set the period in the Almagest settings; 0 turns it
   off. Every Almagest write also commits your edits first, so you need not commit by hand.
-- **The Almagest navigator** in the left sidebar, which narrows the documents one tag at a
+- **The tag navigator** in the left sidebar (the command "Open the tag navigator"), which narrows the documents one tag at a
   time.
 - **The sessions pane** in the right sidebar, with Resume, and the **Start agent**
   command.
