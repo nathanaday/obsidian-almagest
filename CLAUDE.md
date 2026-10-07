@@ -100,8 +100,9 @@ makes a vault with `almagest vault init`, copies `dist/` into it as the plugin, 
 it in a separate Obsidian with a temporary profile. It never touches the user's
 Obsidian, `~/.almagest`, or vaults. TESTED.md lists what each test proves.
 
-To try a build in a real vault, copy `dist/main.js`, `dist/manifest.json`, and
-`dist/styles.css` into the vault's `.obsidian/plugins/almagest/` and reload Obsidian.
+To try a build in a real vault with the binary and agent plugin of the same checkouts,
+run `make preview VAULT=<vault>` in the almagest checkout: it builds this plugin and
+copies `dist/` into the vault's `.obsidian/plugins/almagest/`. Then reload Obsidian.
 
 ## Release
 
