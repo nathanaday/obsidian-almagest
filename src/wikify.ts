@@ -4,7 +4,7 @@ import { MarkdownPostProcessorContext, MarkdownRenderChild, MarkdownView, Notice
 import { saveOpen } from "./change";
 import type AlmagestPlugin from "./main";
 import { Decision, Mark, acceptAll, acceptedLine, decide as decideMark, draftTitle, findMarks, isWikified, linkFor, linkMarks, locate, replacement, wikifyBlocked } from "./marks";
-import { draftMessage, wikifyMessage } from "./messages";
+import { draftMessage, makeTopicMessage, wikifyMessage } from "./messages";
 import { noteTitle } from "./palettestate";
 import { markdownFilesIn } from "./vaultfiles";
 
@@ -71,7 +71,7 @@ export class Wikify {
 	}
 
 	/** The draft work document of a title that runs or waits, "" while Create starts it, or null. */
-	private draftOf(title: string): string | null {
+	draftOf(title: string): string | null {
 		if (this.creating.has(title)) return "";
 		const { metadataCache, vault } = this.plugin.app;
 		if (!this.drafts) {
@@ -95,8 +95,11 @@ export class Wikify {
 		return null;
 	}
 
-	/** Create: a draft work document, then the agent that drafts the topic into it. */
-	async create(title: string, sourcePath: string): Promise<void> {
+	/**
+	 * Create, or Make topic with the selected phrase: a draft work document, then the agent
+	 * that drafts the topic into it.
+	 */
+	async create(title: string, sourcePath: string, phrase?: string): Promise<void> {
 		if (this.creating.has(title)) return;
 		this.creating.add(title);
 		this.refresh();
@@ -105,7 +108,8 @@ export class Wikify {
 			await saveOpen(this.plugin.app, sourcePath);
 			const { ref } = await this.plugin.almagest<{ ref: { id: string; title: string; path: string } }>(["change", "start", "--kind", "draft", "--title", `Draft ${title}`]);
 			this.started.set(title, ref.path);
-			await this.plugin.runAgent(draftMessage(title, noteTitle(sourcePath), ref), `Agent · ${ref.title}`, "draft");
+			const message = phrase === undefined ? draftMessage(title, noteTitle(sourcePath), ref) : makeTopicMessage(title, sourcePath, phrase, ref);
+			await this.plugin.runAgent(message, `Agent · ${ref.title}`, "draft");
 		} catch (e) {
 			new Notice(`Almagest: ${(e as Error).message}`, 10_000);
 		} finally {

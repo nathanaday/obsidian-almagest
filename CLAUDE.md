@@ -14,7 +14,7 @@ repository. This file holds what the code and the README do not say.
   the plugin into a vault. When the binary is missing, the plugin says what to install.
 - **The plugin reads the JSON of the CLI.** Every read and write runs the binary:
   `vault --json`, `change apply|reject|start`, `vault trash`, `journal publish`,
-  `checkout return`, `wikify start`, `vault snapshot`, `config`. That JSON
+  `checkout return`, `wikify start`, `search`, `vault snapshot`, `config`. That JSON
   and those flags are the contract with the binary; a change on either side is a change
   of both.
 - **It never searches `PATH` or the system folders for the binary**, so another
@@ -28,7 +28,7 @@ repository. This file holds what the code and the README do not say.
   `binaryProblem` names the update for a missing binary, an older one, and a newer one.
   Raise the protocol on both sides when a change would make an older plugin misread.
 - **It touches only what it owns.** It adds one view (the palette) with one ribbon button,
-  commands, in-document widgets (code block processors), and CSS for its own callouts and
+  commands, two items in the editor's menu while text is selected, in-document widgets (code block processors), and CSS for its own callouts and
   widgets. It patches no pane of Obsidian's own. Its one style there is the colors of its
   own top folders in the file explorer (`wiki-view`, `journals`, `ingest`, `tool`), behind
   the `colorFolders` setting, which puts the class `almagest-folder-colors` on the body;
@@ -49,12 +49,20 @@ repository. This file holds what the code and the README do not say.
   `app.plugins.getPlugin("duet")?.api`, with `newConversation`, `conversationStatus`, and
   `onTurnEnd`), and Start an agent runs Duet's command `duet:new-chat`, since the API
   needs a first message. Otherwise the agent starts in the user's terminal.
-  `recommendDuet` (Duet chosen, not on) decides both tips: the one the plugin draws at
+  `duetTip` (Duet chosen, not on) decides both tips and names the step Duet needs (install, update, or turn on): the one the plugin draws at
   the top of `Almagest.md` (`duettip.ts`, a state field in live preview and a post
   processor in reading view) and the one a new terminal prints. The tip in `Almagest.md`
   is never written: every agent reads the file as the vault's context, and git shares it
   between machines with and without Duet. Obsidian sends no event when a plugin turns on
   or off, so the plugin reads Duet's state every two seconds and redraws on a change.
+- **Quick search and Make topic act on a selection** (`quicksearch.ts`, pure parts in
+  `lookup.ts`). Quick search runs `almagest search` on topics, sources, and repositories
+  at each keystroke (about 30 ms), and opens a hit with the `match` ephemeral state that
+  Obsidian's own search passes, so the term flashes. Make topic looks for the title among
+  the documents' titles and aliases first: a document that holds it gets the link and no
+  agent. Otherwise the selection becomes `[[Title|phrase]]` at once, and Wikify's Create
+  path starts the draft with `makeTopicMessage`. Neither writes a link into `changes/`,
+  `tool/sessions/`, `wiki-view/`, `tool/trash/`, or the originals (`linkBlocked`).
 - **A terminal launch fails where no one sees it** (osascript and `open` exit after the
   spawn), so `openTerminal` checks for the app first. `scripts/probe-launch.mjs` opens a
   real terminal with a probe; record each result in TESTED.md.

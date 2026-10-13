@@ -1294,6 +1294,166 @@ describe("Almagest in Obsidian", () => {
 		expect(o.errors).toEqual([]);
 	});
 
+	/** Adds topics to the wiki through a change that the CLI proposes and applies. */
+	async function addTopics(o: ObsidianInstance, topics: { title: string; body: string; aliases?: string[] }[]): Promise<void> {
+		const plan = path.join(o.vault, "..", "lookup-topics.json");
+		await writeFile(
+			plan,
+			JSON.stringify({
+				title: "Add the topics",
+				writes: topics.map((t) => ({ op: "create", type: "topic", kind: "concept", title: t.title, fields: { description: `The ${t.title}.`, ...(t.aliases ? { aliases: t.aliases } : {}) }, body: t.body })),
+			}),
+		);
+		const change = JSON.parse(await o.almagest(["change", "propose", plan, "--json"]));
+		await o.almagest(["change", "apply", change.ref.id, "--json"]);
+		for (const t of topics) await until(`Obsidian to see ${t.title}`, () => o.page.evaluate((file) => !!(window as any).app.vault.getFileByPath(file), `tool/source-core/documents/${t.title}.md`));
+	}
+
+	/**
+	 * Selects the first place of text in the active editor's body and opens the editor's menu on it,
+	 * as a right-click does; returns the menu's item titles. Obsidian's own menu, not the
+	 * system's: a native menu opens on the user's screen, outside the page.
+	 */
+	async function rightClick(o: ObsidianInstance, text: string): Promise<string[]> {
+		await o.page.evaluate((t) => {
+			(window as any).app.vault.setConfig("nativeMenus", false);
+			const editor = (window as any).app.workspace.activeEditor.editor;
+			const value: string = editor.getValue();
+			const from = value.indexOf(t, value.startsWith("---\n") ? value.indexOf("\n---", 4) + 4 : 0);
+			editor.focus();
+			editor.setSelection(editor.offsetToPos(from), editor.offsetToPos(from + t.length));
+			const c = editor.cm.coordsAtPos(from + 1);
+			const target = document.elementFromPoint(c.left + 2, (c.top + c.bottom) / 2) ?? editor.cm.contentDOM;
+			target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: c.left + 2, clientY: (c.top + c.bottom) / 2 }));
+		}, text);
+		const items = o.page.locator(".menu .menu-item-title");
+		await items.first().waitFor({ timeout: 10_000 });
+		return items.allTextContents();
+	}
+
+	/** The rows of the quick search box once it shows the hits. */
+	async function searchRows(o: ObsidianInstance, hits: number): Promise<{ kind: string; title: string }[]> {
+		const rows = o.page.locator(".almagest-search .almagest-search-row");
+		await until(`${hits} hits`, async () => (await rows.locator("xpath=self::*[@data-kind='hit']").count()) === hits, { describe: () => o.page.locator(".almagest-search").innerText() });
+		return rows.evaluateAll((els) => els.map((e) => ({ kind: (e as HTMLElement).dataset.kind ?? "", title: e.querySelector(".almagest-search-title")?.textContent ?? "" })));
+	}
+
+	it("quick search on a selection lists the wiki's hits; Enter opens a hit at the term, Alt+Enter links the selection, and the last rows make a topic or search every file", { timeout: 120_000 }, async () => {
+		const note = "scratchpad/Notes.md";
+		const o = await launch({
+			prepare: async (vault) => {
+				await mkdir(path.join(vault, "scratchpad"), { recursive: true });
+				await writeFile(path.join(vault, note), "# Notes\n\nEach write transaction ends in one commit.\n");
+			},
+		});
+		await addTopics(o, [
+			{ title: "Vault lock", body: "## Definition\n\nThe lock file of the vault.\n\n## Use\n\nEvery write transaction takes the vault lock.\n" },
+			{ title: "Change record", body: "## Definition\n\nA change record names the write transaction that apply runs.\n" },
+		]);
+		await open(o, note, "source");
+		expect(await rightClick(o, "write transaction")).toEqual(expect.arrayContaining(["Almagest quick search", "Almagest make topic"]));
+		await o.page.locator(".menu .menu-item", { hasText: "Almagest quick search" }).click();
+
+		const box = o.page.locator(".almagest-search");
+		expect(await box.locator("input").inputValue()).toBe("write transaction");
+		const rows = await searchRows(o, 2);
+		expect(rows.map((r) => r.title).slice(0, 2).sort()).toEqual(["Change record", "Vault lock"]);
+		expect(rows.slice(2)).toEqual([
+			{ kind: "make", title: "Make topic “Write transaction”" },
+			{ kind: "files", title: "Search all files for “write transaction”" },
+		]);
+		const hit = box.locator(".almagest-search-row[data-kind='hit']").first();
+		expect(await hit.locator(".almagest-chip").textContent()).toBe("concept");
+		expect(await hit.locator(".almagest-search-snippet mark").allTextContents()).toEqual(["write", "transaction"]);
+		expect(await box.locator(".prompt-instructions").innerText()).toContain("to link the selection");
+
+		// Enter opens the first hit at the term.
+		const first = rows[0]!.title;
+		await o.page.keyboard.press("Enter");
+		await until(`${first} to open`, async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === `tool/source-core/documents/${first}.md`);
+		// Obsidian flashes the term, as its own search does.
+		await until("the term to flash", async () => (await o.page.locator(".workspace-leaf.mod-active .is-flashing").allTextContents()).join("") === "write transaction", {
+			describe: () => o.page.locator(".workspace-leaf.mod-active .is-flashing").allTextContents().then((t) => JSON.stringify(t)),
+		});
+
+		// Alt+Enter on Vault lock links the selection, from the command.
+		await open(o, note, "source");
+		await o.page.evaluate(() => {
+			const editor = (window as any).app.workspace.activeEditor.editor;
+			const from = editor.getValue().indexOf("write transaction");
+			editor.setSelection(editor.offsetToPos(from), editor.offsetToPos(from + "write transaction".length));
+			(window as any).app.commands.executeCommandById("almagest:quick-search");
+		});
+		const again = await searchRows(o, 2);
+		for (let i = 0; i < again.findIndex((r) => r.title === "Vault lock"); i++) await o.page.keyboard.press("ArrowDown");
+		await o.page.keyboard.press("Alt+Enter");
+		await saved(o, note, "Each [[Vault lock|write transaction]] ends in one commit.");
+		expect(await box.count()).toBe(0);
+
+		// With no selection and no word at the cursor, the box offers no Make topic; the last row opens Obsidian's search with the term.
+		await open(o, note, "source");
+		await o.page.evaluate(() => {
+			const editor = (window as any).app.workspace.activeEditor.editor;
+			editor.setCursor({ line: 1, ch: 0 });
+			(window as any).app.commands.executeCommandById("almagest:quick-search");
+		});
+		expect(await box.locator("input").inputValue()).toBe("");
+		await box.locator("input").fill("one commit");
+		await until("the files row", async () => (await box.locator(".almagest-search-row[data-kind='files']").count()) === 1);
+		expect(await box.locator(".almagest-search-row[data-kind='make']").count()).toBe(0);
+		await box.locator(".almagest-search-row[data-kind='files']").click();
+		const search = o.page.locator(".workspace-leaf-content[data-type='search'] .search-input-container input");
+		await until("Obsidian's search", async () => (await search.count()) === 1 && (await search.inputValue()) === '"one commit"');
+		expect(o.errors).toEqual([]);
+	});
+
+	it("Make topic links the selection and starts the agent that drafts the topic; a title the wiki holds gets the link and no agent", { timeout: 120_000 }, async () => {
+		const note = "scratchpad/Notes.md";
+		const o = await launch({
+			prepare: async (vault) => {
+				await mkdir(path.join(vault, "scratchpad"), { recursive: true });
+				await writeFile(path.join(vault, note), "# Notes\n\nThe commit log keeps each change document.\n");
+			},
+		});
+		await addTopics(o, [{ title: "Change record", aliases: ["change document"], body: "## Definition\n\nA change record.\n" }]);
+		const out = await stubTerminal(o);
+		await open(o, note, "source");
+		await rightClick(o, "commit log");
+		await o.page.locator(".menu .menu-item", { hasText: "Almagest make topic" }).click();
+		const modal = o.page.locator(".almagest-make-topic");
+		expect(await modal.locator("input").inputValue()).toBe("Commit log");
+		await modal.locator("input").press("Enter");
+
+		await saved(o, note, "The [[Commit log|commit log]] keeps each change document.");
+		const command = await terminalCommand(out);
+		const doc = await workDoc(o, "Draft Commit log");
+		expect(doc.kind).toBe("draft");
+		const message = `/almagest:wiki-edit Draft a topic titled Commit log from the note ${note}, where the user linked "commit log" to it, and what the wiki holds; give it a why. Your work document is [[${doc.title}]] (${doc.id}): report each step with change progress, and propose into it with change propose and id ${doc.id}.`;
+		expect(command).toMatch(TIP_THEN_AGENT);
+		expect(command.endsWith(` && claude '${message.replace(/'/g, "'\\''")}'`)).toBe(true);
+
+		// An alias of a document: the link, and no agent.
+		await open(o, note, "source");
+		await o.page.evaluate(() => {
+			const editor = (window as any).app.workspace.activeEditor.editor;
+			const from = editor.getValue().indexOf("change document");
+			editor.setSelection(editor.offsetToPos(from), editor.offsetToPos(from + "change document".length));
+			(window as any).app.commands.executeCommandById("almagest:make-topic");
+		});
+		await modal.locator("input").press("Enter");
+		await saved(o, note, "keeps each [[Change record|change document]].");
+		await until("the notice", async () => (await notices(o)).includes("Almagest: Change record exists, so the selection links it. No agent started."), { describe: async () => JSON.stringify(await notices(o)) });
+		const running = JSON.parse(await o.almagest(["vault", "--json"])).status.changes.running as { title: string }[];
+		expect(running.filter((r) => / Draft /.test(r.title)).length).toBe(1);
+
+		// A record takes no link: Make topic leaves the menu there.
+		await open(o, doc.path, "source");
+		const items = await rightClick(o, "Progress");
+		expect(items).toContain("Almagest quick search");
+		expect(items).not.toContain("Almagest make topic");
+		expect(o.errors).toEqual([]);
+	});
+
 	it("lists the agent sessions on the Agents page as message threads; one that waits counts on the home row, and the closed ones fold away and offer Resume", { timeout: TIMEOUT }, async () => {
 		const now = Date.now();
 		const session = (id: string, status: string, updated: number, extra: string, body: string, description = "Plan the [[Alpha]] study") =>

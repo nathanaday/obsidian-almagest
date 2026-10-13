@@ -703,3 +703,56 @@ body.almagest-folder-colors .nav-folder-title[data-path="tool"] {
 .almagest-fold[open] > summary {
 	margin-bottom: var(--size-4-2);
 }
+
+/* Quick search: one row per hit (its title and kind, its description, the snippet that names the term), then Make topic and Obsidian's search. */
+.almagest-search .almagest-search-row {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.almagest-search .almagest-search-head {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+.almagest-search .almagest-search-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-normal);
+}
+.almagest-search .almagest-search-description,
+.almagest-search .almagest-search-snippet {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+.almagest-search .almagest-search-snippet {
+	color: var(--text-faint);
+}
+.almagest-search mark {
+	color: inherit;
+	background-color: var(--text-highlight-bg);
+	border-radius: var(--radius-s);
+}
+.almagest-search .almagest-search-row:not([data-kind="hit"]) .almagest-search-title {
+	color: var(--text-accent);
+}
+.almagest-search .almagest-search-row[data-kind="make"] {
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* The modal of Make topic. */
+.almagest-make-topic .almagest-make-topic-input {
+	width: 100%;
+}
+.almagest-make-topic .almagest-make-topic-problem:empty {
+	display: none;
+}
+.almagest-make-topic .almagest-make-topic-problem {
+	color: var(--text-error);
+	font-size: var(--font-ui-smaller);
+}

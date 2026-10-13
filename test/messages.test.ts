@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkoutMessage, draftMessage, ingestMessage, publishMessage, repairMessage, resolveMessage, wikifyMessage } from "../src/messages";
+import { checkoutMessage, draftMessage, ingestMessage, makeTopicMessage, publishMessage, repairMessage, resolveMessage, wikifyMessage } from "../src/messages";
 
 const doc = { id: "chg-qhezxf", title: "2026-10-06 Ingest 2 files" };
 
@@ -76,4 +76,11 @@ test("every message runs a skill of the almagest plugin and stays on one line", 
 		assert.match(m, /^\/almagest:wiki-(ingest|review|sync|edit|checkout|wikify) /);
 		assert.ok(!m.includes("\n"));
 	}
+});
+
+test("Make topic names the note by its path and the phrase the user linked", () => {
+	assert.equal(
+		makeTopicMessage("Write transaction", "journals/cs566/week 3.md", "write\n  transaction", { id: "chg-m4k2pq", title: "2026-10-12 Draft Write transaction" }),
+		'/almagest:wiki-edit Draft a topic titled Write transaction from the note journals/cs566/week 3.md, where the user linked "write transaction" to it, and what the wiki holds; give it a why. Your work document is [[2026-10-12 Draft Write transaction]] (chg-m4k2pq): report each step with change progress, and propose into it with change propose and id chg-m4k2pq.',
+	);
 });

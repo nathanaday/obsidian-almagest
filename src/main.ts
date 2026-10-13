@@ -27,6 +27,7 @@ import { PALETTE_ICON, PALETTE_VIEW, PaletteView } from "./palette";
 import { confirmPublishOf } from "./publish";
 import { AlmagestSettingTab, AlmagestSettings, DEFAULT_SETTINGS } from "./settings";
 import { isWikified } from "./marks";
+import { registerLookup } from "./quicksearch";
 
 /** Runs another plugin's command by its id; false when no plugin gives it. */
 function executeCommand(app: unknown, id: string): boolean {
@@ -113,6 +114,7 @@ export default class AlmagestPlugin extends Plugin {
 		});
 
 		this.addCommand({ id: "sync", name: "Sync the vault", callback: () => void this.sync(true) });
+		registerLookup(this);
 
 
 		this.registerView(PALETTE_VIEW, (leaf) => new PaletteView(leaf, this));

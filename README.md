@@ -66,6 +66,10 @@ Take any draft you are working on. The agent marks what the wiki already knows, 
   <img src="docs/wikify_example.png" alt="A wikified note with link and new marks" width="80%">
 </p>
 
+### Quick search and Make topic
+
+Select a term in any note and right-click it. **Almagest quick search** lists the wiki's pages that name it, ranked, with the line that names it. Enter opens a page at the term, and Alt+Enter links your selection to the page. When no page fits, **Make topic** links the selection to a new title, and an agent drafts that topic from your note and the wiki, as a change for you to approve. The last row of the search runs Obsidian's own search, which also reads your journals and the scratchpad. Both are commands too, so you can give them hotkeys.
+
 ### Safe delete
 
 Not sure whether you can delete a page? Don't want to break anything? Safe delete moves it to `tool/trash/` when nothing links it. When something does, it shows the links, and an agent can repoint them for you. Empty `tool/trash/` yourself when you like.
@@ -103,7 +107,7 @@ updates itself: Obsidian's community plugins do that.
 
 - **A program outside the vault.** The plugin runs the `almagest` binary for every read
   and write: the status it shows, Approve and Cancel, Safe delete, Publish, Return,
-  Wikify, and the quiet snapshots. It runs `~/.almagest/bin/almagest`, or the path in its
+  Wikify, quick search, and the quiet snapshots. It runs `~/.almagest/bin/almagest`, or the path in its
   settings. It never searches `PATH`. The binary reads and writes the vault and its git
   history, and reads `~/.almagest/config.json`.
 - **Files outside the vault.** Through the binary, the plugin reads `~/.almagest/` and the

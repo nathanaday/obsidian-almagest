@@ -57,6 +57,11 @@ export function draftMessage(title: string, note: string, doc: WorkDoc): string 
 	return `/almagest:wiki-edit Draft a topic titled ${title} from [[${note}]] and what the wiki holds; give it a why. ${report(doc, "into it")}`;
 }
 
+/** Make topic on a selection: the selection links the topic to be, and an agent drafts it into its work document. */
+export function makeTopicMessage(title: string, notePath: string, phrase: string, doc: WorkDoc): string {
+	return `/almagest:wiki-edit Draft a topic titled ${title} from the note ${notePath}, where the user linked "${oneLine(phrase)}" to it, and what the wiki holds; give it a why. ${report(doc, "into it")}`;
+}
+
 /** Wikify this note: an agent marks the copy with what the wiki knows and the subjects worth a topic. */
 export function wikifyMessage(copy: string): string {
 	return `/almagest:wiki-wikify Wikify [[${copy}]]: mark what the wiki knows and the subjects worth a topic, with wikify mark.`;
