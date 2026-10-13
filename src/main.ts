@@ -45,6 +45,8 @@ const SYNC_DELAY = 2000;
 const ECHO_WINDOW = 5000;
 /** How long to wait for Obsidian to see a document the binary wrote. */
 const SEE_MS = 10_000;
+/** The view type of a Base. The backlinks and outline panes follow the active file too, so the type tells the navigator apart. */
+const BASES_VIEW = "bases";
 
 export default class AlmagestPlugin extends Plugin {
 	settings: AlmagestSettings = { ...DEFAULT_SETTINGS };
@@ -368,8 +370,9 @@ export default class AlmagestPlugin extends Plugin {
 	}
 
 	/**
-	 * Shows the navigator in the right sidebar, where its Base reads the open note. A leaf
-	 * that shows it already is reused. A binary that has not written it yet gets a sync first.
+	 * Shows the navigator in the right sidebar, where its Base reads the open note. A sidebar
+	 * leaf whose Base shows it already is reused; in a main tab the Base would read itself. A
+	 * binary that has not written it yet gets a sync first.
 	 */
 	async openNavigator(): Promise<void> {
 		const { workspace } = this.app;
@@ -384,7 +387,7 @@ export default class AlmagestPlugin extends Plugin {
 		}
 		let leaf: WorkspaceLeaf | null = null;
 		workspace.iterateAllLeaves((l) => {
-			if (!leaf && l.view instanceof FileView && l.view.file?.path === NAVIGATOR) leaf = l;
+			if (!leaf && l.getRoot() === workspace.rightSplit && l.view.getViewType() === BASES_VIEW && l.view instanceof FileView && l.view.file?.path === NAVIGATOR) leaf = l;
 		});
 		if (!leaf) {
 			leaf = workspace.getRightLeaf(false);
