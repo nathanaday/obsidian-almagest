@@ -416,11 +416,12 @@ describe("Almagest in Obsidian", () => {
 			return found;
 		}, "wiki-view/View · Navigator.base");
 		const labels = ["1 · Up", "2 · Beside", "3 · Below", "4 · Sources below", "5 · Sources", "6 · Cited by"];
+		// Each group opens with its label; "4 · Sources below" holds "5 · Sources" only as a number apart.
+		const found = labels.map((l) => ({ l, at: text.indexOf(l) })).filter((x) => x.at >= 0).sort((a, b) => a.at - b.at);
 		const groups: Record<string, string> = {};
-		for (const part of text.split("relation").slice(1)) {
-			const label = labels.filter((l) => part.trim().startsWith(l)).sort((a, b) => b.length - a.length)[0];
-			if (label) groups[label] = part.trim().slice(label.length).replace(/The doc-\w+ document\./g, " ");
-		}
+		found.forEach((x, i) => {
+			groups[x.l] = text.slice(x.at + x.l.length, found[i + 1]?.at ?? text.length);
+		});
 		return groups;
 	}
 
