@@ -261,9 +261,9 @@ export function isLockHeld(message: string): boolean {
 	return /almagest\.lock|holds the lock/.test(message);
 }
 
-/** The title of a tag's view: "Tag · school › cs513". */
+/** The title of a tag's view, from the tag's last part: "Tag · cs513". */
 function tagTitle(tag: string): string {
-	return "Tag · " + tag.split("/").join(" › ");
+	return "Tag · " + tag.slice(tag.lastIndexOf("/") + 1);
 }
 
 /** The view note of a tag, in a folder per tag part under wiki-view/nav. */

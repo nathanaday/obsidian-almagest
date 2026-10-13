@@ -132,7 +132,8 @@ test("the folders of layout 10", () => {
 	assert.ok(isDocumentPath("tool/source-core/documents/Lidar.md"));
 	assert.ok(!isDocumentPath("tool/source-core/originals/Lidar.pdf"));
 	assert.ok(!isDocumentPath("wiki/documents/Lidar.md"));
-	assert.equal(tagViewPath("work/p3"), "wiki-view/nav/work/p3/Tag · work › p3.md");
+	assert.equal(tagViewPath("work/p3"), "wiki-view/nav/work/p3/Tag · p3.md");
+	assert.equal(tagViewPath("ml"), "wiki-view/nav/ml/Tag · ml.md");
 });
 
 test("a quiet snapshot counts every event outside the config folder and wiki-view/", () => {
