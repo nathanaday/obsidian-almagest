@@ -1,7 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting, SettingDefinitionGroup, SettingDefinitionItem, TextComponent, debounce } from "obsidian";
 import { binaryInfo, findBinary } from "./cli";
 import { SNAPSHOT_QUIET_DEFAULT, binaryProblem, quietSeconds } from "./helpers";
-import { AGENTS, AGENT_NAMES, Agent, AgentConfig, ConversationHost, DUET_LINK, Preferences, TERMINALS, TERMINAL_NAMES, duetLine, inherited, preference } from "./agents";
+import { AGENTS, AGENT_NAMES, Agent, AgentConfig, ConversationHost, DUET_LINK, Preferences, TERMINALS, TERMINAL_NAMES, duetLine, duetTip, inherited, preference } from "./agents";
 import { duetState } from "./conversations";
 import type AlmagestPlugin from "./main";
 import { homedir } from "os";
@@ -189,7 +189,8 @@ export class AlmagestSettingTab extends PluginSettingTab {
 				render: (setting: Setting) => {
 					setting.settingEl.addClass("almagest-duet-state");
 					setting.settingEl.dataset.state = state;
-					if (state === "missing") setting.addButton((b) => b.setButtonText("Install Duet").setCta().onClick(() => window.open(DUET_LINK)));
+					const tip = duetTip(host, state);
+					if (tip) setting.addButton((b) => b.setButtonText(tip.action).setCta().onClick(() => window.open(DUET_LINK)));
 				},
 			});
 		}

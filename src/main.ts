@@ -18,7 +18,7 @@ import {
 } from "./helpers";
 import { QuietTimer } from "./quiet";
 import { repoProcessor } from "./repo";
-import { AgentConfig, duetTipCommand, recommendDuet, startCommand } from "./agents";
+import { AgentConfig, DuetTip, duetTip, duetTipCommand, startCommand } from "./agents";
 import { Conversations, duetApi, duetState } from "./conversations";
 import { tipExtension, tipPostProcessor } from "./duettip";
 import { openTerminal } from "./launcher";
@@ -95,7 +95,7 @@ export default class AlmagestPlugin extends Plugin {
 
 		this.registerEditorExtension(markExtension(this.wikify));
 		this.registerMarkdownPostProcessor(markPostProcessor(this, this.wikify));
-		const tip = { show: () => this.recommendDuet(), listen: (fn: () => void) => this.onDuetChange(fn) };
+		const tip = { tip: () => this.duetTip(), listen: (fn: () => void) => this.onDuetChange(fn) };
 		this.registerEditorExtension(tipExtension(tip));
 		this.registerMarkdownPostProcessor(tipPostProcessor(tip));
 		// Obsidian sends no event when a plugin turns on or off, so Duet's state is read every two seconds.
@@ -439,9 +439,9 @@ export default class AlmagestPlugin extends Plugin {
 		return this.settings.conversations === "duet" ? duetApi(this.app) : undefined;
 	}
 
-	/** Whether to recommend Duet, in Almagest.md and in a new terminal. */
-	recommendDuet(): boolean {
-		return recommendDuet(this.settings.conversations, duetState(this.app));
+	/** The Duet tip to show in Almagest.md and in a new terminal, if any. */
+	duetTip(): DuetTip | undefined {
+		return duetTip(this.settings.conversations, duetState(this.app));
 	}
 
 	/** Calls fn after the choice of host or Duet's state changes; returns a function that stops the calls. */
@@ -485,7 +485,8 @@ export default class AlmagestPlugin extends Plugin {
 			return;
 		}
 		const command = startCommand(adapter.getBasePath(), config.preferences.agent_command, prompt);
-		await this.runInTerminal(this.recommendDuet() ? `${duetTipCommand()} && ${command}` : command, "the agent command", config);
+		const tip = this.duetTip();
+		await this.runInTerminal(tip ? `${duetTipCommand(tip)} && ${command}` : command, "the agent command", config);
 	}
 
 	/**

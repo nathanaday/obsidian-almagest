@@ -590,6 +590,27 @@ describe("Almagest in Obsidian", () => {
 		await until("the tip to leave with Duet on", async () => (await tip.count()) === 0);
 		await removeDuet(o);
 		await until("the tip to come back", async () => (await tip.count()) === 1);
+		// A Duet that is on but has no API: the tip asks for the update, in both views.
+		await o.page.evaluate(() => {
+			const plugins = (window as any).app.plugins;
+			plugins.manifests.duet = { id: "duet", name: "Duet", version: "0.2.0" };
+			plugins.enabledPlugins.add("duet");
+		});
+		for (const mode of ["source", "preview"] as const) {
+			await open(o, "Almagest.md", mode);
+			tip = tipIn(mode);
+			await until(`the update tip in ${mode}`, async () => (await tip.count()) === 1 && ((await tip.textContent()) ?? "").includes("Update Duet: "), { describe: () => o.page.locator(".workspace-leaf.mod-active").innerText() });
+			expect(await tip.textContent()).toContain("this vault's Duet is too old for Almagest. Update Duet to 0.3.0 or later");
+			expect(await tip.textContent()).not.toContain("Install Duet");
+		}
+		await o.page.evaluate(() => {
+			const plugins = (window as any).app.plugins;
+			delete plugins.manifests.duet;
+			plugins.enabledPlugins.delete("duet");
+		});
+		await open(o, "Almagest.md", "source");
+		tip = tipIn("source");
+		await until("the install tip again", async () => ((await tip.textContent()) ?? "").includes("Install Duet: "));
 		await o.page.evaluate(async () => {
 			const plugin = (window as any).app.plugins.plugins.almagest;
 			plugin.settings.conversations = "terminal";
