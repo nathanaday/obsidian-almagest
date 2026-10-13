@@ -1,4 +1,4 @@
-import { FileSystemAdapter, MarkdownView, Notice, Plugin, TAbstractFile, TFile } from "obsidian";
+import { FileSystemAdapter, FileView, MarkdownView, Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
 import { ChangeRunner, changeProcessor } from "./change";
 import { AlmagestError, binaryInfo, findBinary, runAlmagest } from "./cli";
 import {
@@ -15,6 +15,7 @@ import {
 	strayNotices,
 	syncSummary,
 	syncedPaths,
+	NAVIGATOR,
 } from "./helpers";
 import { QuietTimer } from "./quiet";
 import { repoProcessor } from "./repo";
@@ -120,6 +121,7 @@ export default class AlmagestPlugin extends Plugin {
 		this.registerView(PALETTE_VIEW, (leaf) => new PaletteView(leaf, this));
 		this.addRibbonIcon(PALETTE_ICON, "Almagest", () => void this.openPalette());
 		this.addCommand({ id: "open-palette", name: "Open the tool palette", callback: () => void this.openPalette() });
+		this.addCommand({ id: "open-navigator", name: "Open the navigator", callback: () => void this.openNavigator() });
 
 		this.addCommand({ id: "start-agent", name: "Start agent", callback: () => void this.startAgent() });
 		this.addCommand({
@@ -365,6 +367,44 @@ export default class AlmagestPlugin extends Plugin {
 		await workspace.revealLeaf(leaf);
 	}
 
+	/**
+	 * Shows the navigator in the right sidebar, where its Base reads the open note. A leaf
+	 * that shows it already is reused. A binary that has not written it yet gets a sync first.
+	 */
+	async openNavigator(): Promise<void> {
+		const { workspace } = this.app;
+		let file = this.app.vault.getFileByPath(NAVIGATOR);
+		if (!file) {
+			await this.sync(false);
+			file = await this.whenSeen(NAVIGATOR);
+		}
+		if (!file) {
+			new Notice(`Almagest: the sync wrote no ${NAVIGATOR}. Update the almagest binary, then sync again.`);
+			return;
+		}
+		let leaf: WorkspaceLeaf | null = null;
+		workspace.iterateAllLeaves((l) => {
+			if (!leaf && l.view instanceof FileView && l.view.file?.path === NAVIGATOR) leaf = l;
+		});
+		if (!leaf) {
+			leaf = workspace.getRightLeaf(false);
+			if (!leaf) return;
+			await leaf.openFile(file, { active: false });
+		}
+		await workspace.revealLeaf(leaf);
+	}
+
+	/** A file once Obsidian sees it, or null after a while: a file the binary just wrote takes a moment. */
+	private async whenSeen(path: string): Promise<TFile | null> {
+		const deadline = Date.now() + SEE_MS;
+		let file = this.app.vault.getFileByPath(path);
+		while (!file && Date.now() < deadline) {
+			await new Promise((resolve) => window.setTimeout(resolve, 100));
+			file = this.app.vault.getFileByPath(path);
+		}
+		return file instanceof TFile ? file : null;
+	}
+
 	/** Marks the volume a publish captures, "" when it ends, in every palette. */
 	setPublishing(volume: string): void {
 		this.publishing = volume;
@@ -376,13 +416,8 @@ export default class AlmagestPlugin extends Plugin {
 
 	/** Opens a file once Obsidian sees it; a document the binary just wrote takes a moment. */
 	async openWhenSeen(path: string, newTab: boolean): Promise<void> {
-		const deadline = Date.now() + SEE_MS;
-		let file = this.app.vault.getFileByPath(path);
-		while (!file && Date.now() < deadline) {
-			await new Promise((resolve) => window.setTimeout(resolve, 100));
-			file = this.app.vault.getFileByPath(path);
-		}
-		if (!(file instanceof TFile)) {
+		const file = await this.whenSeen(path);
+		if (!file) {
 			new Notice(`Almagest: Obsidian does not see ${path} yet.`);
 			return;
 		}

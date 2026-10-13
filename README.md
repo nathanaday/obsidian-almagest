@@ -29,7 +29,7 @@ Any change to your knowledge base gets a dedicated "changes" page with a clear a
 
 All raw sources, change logs, and llm doc live under the hood in a `tool/` directory. It's self-updating, but you don't have to look at it. This is where the MCP tools do fast information queries and where all new sources are ingested.
 
-The plugin constructs your `wiki-view` from these sources: a home age, timeline, library, and a navigation page for each tag. The user-interface can evolve over time with improvements with no impact to the core structure.
+The plugin constructs your `wiki-view` from these sources: a home page, timeline, library, and a navigator. Home lists the broadest topics first. "Open the navigator" puts the navigator in the right sidebar, where it shows the topics above, beside, and below the note you read, so you can start at a broad topic and click down to the one you want. The user-interface can evolve over time with improvements with no impact to the core structure.
 
 <p align="center">
   <img src="docs/library_view_example.png" alt="The Library view in wiki-view" width="48%">

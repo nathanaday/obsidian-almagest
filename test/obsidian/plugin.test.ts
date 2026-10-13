@@ -400,6 +400,99 @@ describe("Almagest in Obsidian", () => {
 		expect(o.errors).toEqual([]);
 	});
 
+	/** A document of tool/source-core/documents, as a change or a hand edit leaves it. */
+	function doc(id: string, type: string, fields: string): string {
+		return `---\nid: ${id}\ntype: ${type}\ndescription: "The ${id} document."\ncreated: 2026-10-13T10:00:00\nupdated: 2026-10-13T10:00:00\n${fields}---\n\nBody.\n`;
+	}
+
+	/** The navigator's groups for the open note: each group's label, and the titles in it. */
+	async function navigatorRows(o: ObsidianInstance): Promise<Record<string, string>> {
+		const text = await o.page.evaluate((nav) => {
+			const ws = (window as any).app.workspace;
+			let found = "";
+			ws.iterateAllLeaves((leaf: any) => {
+				if (leaf.view?.file?.path === nav) found = (leaf.view.containerEl as HTMLElement).querySelector(".bases-view")?.textContent ?? "";
+			});
+			return found;
+		}, "wiki-view/View · Navigator.base");
+		const labels = ["1 · Up", "2 · Beside", "3 · Below", "4 · Sources below", "5 · Sources", "6 · Cited by"];
+		const groups: Record<string, string> = {};
+		for (const part of text.split("relation").slice(1)) {
+			const label = labels.filter((l) => part.trim().startsWith(l)).sort((a, b) => b.length - a.length)[0];
+			if (label) groups[label] = part.trim().slice(label.length).replace(/The doc-\w+ document\./g, " ");
+		}
+		return groups;
+	}
+
+	it("opens the navigator in the right sidebar, where it shows the documents above, beside, and below the open note", { timeout: 120_000 }, async () => {
+		const D = "tool/source-core/documents";
+		const o = await launch({
+			prepare: async (vault) => {
+				const write = (title: string, content: string) => writeFile(path.join(vault, D, `${title}.md`), content);
+				await write("Machine Learning", doc("doc-mlmlml", "topic", "kind: overview\ndefines: ml\n"));
+				await write("CS566", doc("doc-cs5660", "topic", "kind: overview\ndefines: ml/cs566\ntags: [ml]\n"));
+				await write("Training", doc("doc-train0", "topic", 'kind: concept\ntags: [ml]\nup: ["[[Machine Learning]]"]\n'));
+				await write("Transfer Learning", doc("doc-trans0", "topic", 'kind: concept\ntags: [ml/cs566]\nup: ["[[Training]]"]\n'));
+				await write("Optimizers", doc("doc-optim0", "topic", 'kind: concept\ntags: [ml/cs566]\nup: ["[[Training]]"]\n'));
+				await write("Fine-Tuning", doc("doc-finet0", "topic", 'kind: concept\ntags: [ml/cs566]\nup: ["[[Transfer Learning]]"]\nsources: ["[[Block 7 Slides]]"]\n'));
+				await write("Backprop", doc("doc-backp0", "topic", "kind: concept\ntags: [ml/cs566]\n"));
+				await write("Block 7 Slides", doc("doc-block7", "source", "tags: [ml/cs566]\n"));
+			},
+		});
+		// No sync has written the navigator yet: the command syncs first.
+		await rm(path.join(o.vault, "wiki-view/View · Navigator.base"), { force: true });
+		await until("Obsidian to drop the navigator", () => o.page.evaluate(() => !(window as any).app.vault.getFileByPath("wiki-view/View · Navigator.base")));
+		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
+		const leaves = () =>
+			o.page.evaluate(() => {
+				const ws = (window as any).app.workspace;
+				const found: boolean[] = [];
+				ws.iterateAllLeaves((leaf: any) => {
+					if (leaf.view?.file?.path === "wiki-view/View · Navigator.base") found.push(leaf.getRoot() === ws.rightSplit);
+				});
+				return found;
+			});
+		await until("the navigator in the right sidebar", async () => (await leaves()).length === 1);
+		expect(await leaves()).toEqual([true]);
+
+		const open = async (title: string) => {
+			await o.page.evaluate(async (file) => {
+				const app = (window as any).app;
+				await app.workspace.getLeaf(false).openFile(app.vault.getFileByPath(file));
+			}, `${D}/${title}.md`);
+		};
+		const expectations: Record<string, Record<string, string[]>> = {
+			"Transfer Learning": { "1 · Up": ["Training"], "2 · Beside": ["Optimizers"], "3 · Below": ["Fine-Tuning"] },
+			CS566: { "1 · Up": ["Machine Learning"], "3 · Below": ["Backprop"], "4 · Sources below": ["Block 7 Slides"] },
+			"Fine-Tuning": { "1 · Up": ["Transfer Learning"], "5 · Sources": ["Block 7 Slides"] },
+			"Block 7 Slides": { "1 · Up": ["CS566"], "6 · Cited by": ["Fine-Tuning"] },
+			"Machine Learning": { "3 · Below": ["CS566", "Training"] },
+		};
+		for (const [title, want] of Object.entries(expectations)) {
+			await open(title);
+			const all = Object.values(expectations).flatMap((g) => Object.values(g).flat());
+			await until(`the navigator for ${title}`, async () => {
+				const got = await navigatorRows(o);
+				if (JSON.stringify(Object.keys(got).sort()) !== JSON.stringify(Object.keys(want).sort())) return false;
+				for (const [group, titles] of Object.entries(want)) {
+					const text = got[group] ?? "";
+					if (!titles.every((t) => text.includes(t))) return false;
+					// No other document of the map shows in the group.
+					if (all.some((t) => !titles.includes(t) && t !== title && text.includes(t))) return false;
+				}
+				return true;
+			}, { describe: async () => JSON.stringify(await navigatorRows(o)) });
+		}
+
+		// The palette's action, like a second run of the command, reuses the leaf.
+		const palette = await openPalette(o);
+		await goTo(palette, "library");
+		await palette.locator('button[data-action="navigator"]').click();
+		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
+		expect(await leaves()).toEqual([true]);
+		expect(o.errors).toEqual([]);
+	});
+
 	it("starts an ingest without Duet: the work document opens, and the agent starts in the terminal", { timeout: TIMEOUT }, async () => {
 		const o = await launch({ prepare: (vault) => writeFile(path.join(vault, "ingest/Paper one.md"), "# Paper one\n") });
 		const out = await stubTerminal(o);

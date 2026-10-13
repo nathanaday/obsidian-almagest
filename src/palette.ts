@@ -40,7 +40,7 @@ interface Started {
 	ref: { id: string; title: string; path: string };
 }
 
-type Action = "ingest" | "checkout" | "lint" | "sync" | "repair" | "wikify" | "trash" | "return" | "publish" | "start" | "resume" | "migrate";
+type Action = "ingest" | "checkout" | "navigator" | "lint" | "sync" | "repair" | "wikify" | "trash" | "return" | "publish" | "start" | "resume" | "migrate";
 
 /** What `vault migrate --json` prints under "migration"; a dry run has no commit. */
 interface Migration {
@@ -437,6 +437,7 @@ export class PaletteView extends ItemView {
 		this.actions(page, (el) => {
 			const button = this.buttonEl(el, "checkout", "Check out material", "", "cta");
 			button.onclick = () => this.askCheckout();
+			this.button(el, "navigator", "Open the navigator", "", () => this.plugin.openNavigator());
 		});
 		if (s.checkouts.length === 0) {
 			this.empty(page, s.returned > 0 ? "No checkout is out." : "No checkout yet.");

@@ -9,9 +9,6 @@ import {
 	chooseBinary,
 	countsLine,
 	errorMessage,
-	expandTags,
-	groupDocs,
-	holds,
 	isDocumentPath,
 	isDocumentType,
 	isLockHeld,
@@ -20,18 +17,13 @@ import {
 	firstBodyLine,
 	layoutNeeds,
 	layoutOf,
-	narrow,
-	normalTag,
 	quietSeconds,
-	relativeTag,
 	repoBlock,
-	tagViewPath,
-	TagDoc,
-	topTags,
 	formatAgo,
 	lastProgressLine,
 	linkTitle,
 	movedNotices,
+	NAVIGATOR,
 	strayNotices,
 	syncSummary,
 	syncedPaths,
@@ -132,8 +124,7 @@ test("the folders of layout 10", () => {
 	assert.ok(isDocumentPath("tool/source-core/documents/Lidar.md"));
 	assert.ok(!isDocumentPath("tool/source-core/originals/Lidar.pdf"));
 	assert.ok(!isDocumentPath("wiki/documents/Lidar.md"));
-	assert.equal(tagViewPath("work/p3"), "wiki-view/nav/work/p3/Tag · p3.md");
-	assert.equal(tagViewPath("ml"), "wiki-view/nav/ml/Tag · ml.md");
+	assert.equal(NAVIGATOR, "wiki-view/View · Navigator.base");
 });
 
 test("a quiet snapshot counts every event outside the config folder and wiki-view/", () => {
@@ -169,48 +160,6 @@ test("quietSeconds reads the setting and the field", () => {
 	assert.equal(quietSeconds(1e12), 86_400, "a timer longer than a day overflows");
 });
 
-test("a tag holds its children, and a list expands to every ancestor", () => {
-	assert.equal(normalTag(" #Work/P3 "), "work/p3");
-	assert.equal(relativeTag("ml/cs566/project", ["ml"]), "› cs566 › project");
-	assert.equal(relativeTag("ml/cs566/project", ["ml", "ml/cs566"]), "› project");
-	assert.equal(relativeTag("tool", ["ml"]), "#tool");
-	assert.ok(holds(["work/p3/edge"], "work"));
-	assert.ok(holds(["work/p3"], "work/p3"));
-	assert.ok(!holds(["work/p3x"], "work/p3"));
-	assert.deepEqual(expandTags(["work/p3/edge", "cs513"]).sort(), ["cs513", "work", "work/p3", "work/p3/edge"]);
-});
-
-function tdoc(title: string, type: string, tags: string[], kind = "", status = ""): TagDoc {
-	return { path: `tool/source-core/documents/${title}.md`, title, type, kind, status, description: "", tags };
-}
-
-test("narrow finds the documents at the intersection and the tags that occur with them", () => {
-	const docs = [
-		tdoc("Lidar", "topic", ["cs513", "self-driving"], "concept"),
-		tdoc("Planner", "repository", ["cs513/project", "self-driving"]),
-		tdoc("Planner paper", "source", ["cs513/project", "self-driving"], "", "absorbed"),
-		tdoc("Homework", "topic", ["cs513"], "entity"),
-		tdoc("Tesla", "source", ["self-driving"]),
-		tdoc("Agents", "topic", ["cs513/project", "self-driving"], "overview"),
-	];
-	const { matches, with: facets } = narrow(docs, ["cs513", "self-driving"]);
-	assert.deepEqual(matches.map((d) => d.title), ["Lidar", "Planner", "Planner paper", "Agents"]);
-	assert.deepEqual(facets, [{ tag: "cs513/project", count: 3 }]);
-	assert.deepEqual(topTags(docs), [
-		{ tag: "self-driving", count: 5 },
-		{ tag: "cs513", count: 5 },
-	].sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag)));
-	assert.deepEqual(
-		groupDocs(matches).map((g) => [g.name, g.docs.map((d) => d.title)]),
-		[
-			["Topics", ["Agents", "Lidar"]],
-			["Sources", ["Planner paper"]],
-			["Repositories", ["Planner"]],
-		],
-		"topics first, each group by title",
-	);
-});
-
 test("a sync that moved a note out of wiki-view/ says where it went", () => {
 	const s = { strays: [{ from: "wiki-view/Draft.md", to: "ingest/Draft.md" }], skipped: ["tool/source-core/documents/Paper.md"] };
 	assert.deepEqual(strayNotices(s), ["Moved wiki-view/Draft.md to ingest/Draft.md: code writes every file in wiki-view/, so your note waits in ingest/."]);
@@ -229,7 +178,7 @@ test("any result that moved a note out of wiki-view/ says where it went", () => 
 	assert.deepEqual(movedNotices({ moved_from_wiki_view: [{ from: 1 }] }), []);
 });
 
-test("the navigator lists every document type and nothing else", () => {
+test("quick search lists every document type and nothing else", () => {
 	for (const type of ["source", "repository", "topic"]) assert.ok(isDocumentType(type), type);
 	for (const type of ["stub", "chord", "event", "session", "change", undefined]) assert.ok(!isDocumentType(type), String(type));
 });
