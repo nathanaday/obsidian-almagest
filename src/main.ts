@@ -1,4 +1,4 @@
-import { FileSystemAdapter, FileView, MarkdownView, Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
+import { FileSystemAdapter, MarkdownView, Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
 import { ChangeRunner, changeProcessor } from "./change";
 import { AlmagestError, binaryInfo, findBinary, runAlmagest } from "./cli";
 import {
@@ -385,11 +385,15 @@ export default class AlmagestPlugin extends Plugin {
 			new Notice(`Almagest: the sync wrote no ${NAVIGATOR}. Update the almagest binary, then sync again.`);
 			return;
 		}
+		// The view state, not the view: a leaf that Obsidian restored and has not shown yet is deferred.
 		let leaf: WorkspaceLeaf | null = null;
 		workspace.iterateAllLeaves((l) => {
-			if (!leaf && l.getRoot() === workspace.rightSplit && l.view.getViewType() === BASES_VIEW && l.view instanceof FileView && l.view.file?.path === NAVIGATOR) leaf = l;
+			const state = l.getViewState();
+			if (!leaf && l.getRoot() === workspace.rightSplit && state.type === BASES_VIEW && state.state?.file === NAVIGATOR) leaf = l;
 		});
-		if (!leaf) {
+		if (leaf) {
+			await (leaf as WorkspaceLeaf).loadIfDeferred();
+		} else {
 			leaf = workspace.getRightLeaf(false);
 			if (!leaf) return;
 			await leaf.openFile(file, { active: false });

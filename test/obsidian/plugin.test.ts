@@ -440,18 +440,6 @@ describe("Almagest in Obsidian", () => {
 				await write("Block 7 Slides", doc("doc-block7", "source", "tags: [ml/cs566]\n"));
 			},
 		});
-		// No sync has written the navigator yet: the command syncs first.
-		await rm(path.join(o.vault, "wiki-view/View · Navigator.base"), { force: true });
-		await until("Obsidian to drop the navigator", () => o.page.evaluate(() => !(window as any).app.vault.getFileByPath("wiki-view/View · Navigator.base")));
-		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
-		await until("the sync to write the navigator", () => o.page.evaluate(() => !!(window as any).app.vault.getFileByPath("wiki-view/View · Navigator.base")));
-		// The Base open in a main tab is no navigator: the command still opens one in the sidebar.
-		await o.page.evaluate(async () => {
-			const app = (window as any).app;
-			for (const leaf of app.workspace.getLeavesOfType("bases")) leaf.detach();
-			await app.workspace.getLeaf("tab").openFile(app.vault.getFileByPath("wiki-view/View · Navigator.base"));
-		});
-		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
 		const leaves = () =>
 			o.page.evaluate(() => {
 				const ws = (window as any).app.workspace;
@@ -461,6 +449,18 @@ describe("Almagest in Obsidian", () => {
 				});
 				return found;
 			});
+		// No sync has written the navigator yet: the command syncs first.
+		await rm(path.join(o.vault, "wiki-view/View · Navigator.base"), { force: true });
+		await until("Obsidian to drop the navigator", () => o.page.evaluate(() => !(window as any).app.vault.getFileByPath("wiki-view/View · Navigator.base")));
+		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
+		await until("the first navigator in the right sidebar", async () => JSON.stringify(await leaves()) === "[true]", { describe: async () => JSON.stringify(await leaves()) });
+		// The Base open in a main tab is no navigator: the command still opens one in the sidebar.
+		await o.page.evaluate(async () => {
+			const app = (window as any).app;
+			for (const leaf of app.workspace.getLeavesOfType("bases")) leaf.detach();
+			await app.workspace.getLeaf("tab").openFile(app.vault.getFileByPath("wiki-view/View · Navigator.base"));
+		});
+		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
 		await until("the navigator in the right sidebar", async () => (await leaves()).filter(Boolean).length === 1, {
 			describe: async () => `leaves ${JSON.stringify(await leaves())}; right ${await o.page.evaluate(() => { const ws = (window as any).app.workspace; const out: string[] = []; ws.iterateAllLeaves((l: any) => out.push(`${l.view?.getViewType()}:${l.view?.file?.path ?? ""}:${l.getRoot() === ws.rightSplit}`)); return out.join(" | "); })}; errors ${o.errors.join(" / ")}`,
 		});
@@ -507,6 +507,24 @@ describe("Almagest in Obsidian", () => {
 		await palette.locator('button[data-action="navigator"]').click();
 		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
 		expect(await leaves()).toEqual([true]);
+		// Obsidian restores a layout with its hidden tabs deferred; the command still finds the navigator.
+		await o.page.evaluate(async () => {
+			const ws = (window as any).app.workspace;
+			await ws.changeLayout(ws.getLayout());
+		});
+		const states = () =>
+			o.page.evaluate(() => {
+				const ws = (window as any).app.workspace;
+				const found: string[] = [];
+				ws.iterateAllLeaves((leaf: any) => {
+					const v = leaf.getViewState();
+					if (v.type === "bases" && v.state?.file === "wiki-view/View · Navigator.base") found.push(`${leaf.getRoot() === ws.rightSplit}:${leaf.isDeferred}`);
+				});
+				return found;
+			});
+		expect(await states()).toEqual(["true:true"]);
+		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
+		await until("the restored navigator, shown", async () => JSON.stringify(await states()) === '["true:false"]', { describe: async () => JSON.stringify(await states()) });
 		expect(o.errors).toEqual([]);
 	});
 
