@@ -63,6 +63,13 @@ repository. This file holds what the code and the README do not say.
   agent. Otherwise the selection becomes `[[Title|phrase]]` at once, and Wikify's Create
   path starts the draft with `makeTopicMessage`. Neither writes a link into `changes/`,
   `tool/sessions/`, `wiki-view/`, `tool/trash/`, or the originals (`linkBlocked`).
+- **The navigator is a Base in the right sidebar.** The binary writes
+  `wiki-view/View · Navigator.base`. "Open the navigator", a command and an action on the
+  palette's Library page, shows it in a right-sidebar leaf, where the Base's `this` is the
+  open note. It reuses a leaf only in the right split whose view state is a Base of that
+  file: the backlinks pane follows the same file, a main tab would read the Base itself,
+  and a leaf that Obsidian restored at start is deferred, with no view yet. When the file
+  is missing, it runs a views sync first.
 - **A terminal launch fails where no one sees it** (osascript and `open` exit after the
   spawn), so `openTerminal` checks for the app first. `scripts/probe-launch.mjs` opens a
   real terminal with a probe; record each result in TESTED.md.
