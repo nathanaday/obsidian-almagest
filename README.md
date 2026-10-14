@@ -29,7 +29,7 @@ Any change to your knowledge base gets a dedicated "changes" page with a clear a
 
 All raw sources, change logs, and llm doc live under the hood in a `tool/` directory. It's self-updating, but you don't have to look at it. This is where the MCP tools do fast information queries and where all new sources are ingested.
 
-The plugin constructs your `wiki-view` from these sources: a home age, timeline, library, and a navigation page for each tag. The user-interface can evolve over time with improvements with no impact to the core structure.
+The plugin constructs your `wiki-view` from these sources: a home page, a timeline, and a library. Home lists the broadest topics first. The navigator, a page of the Almagest palette, shows the topics above, beside, and below the note you read, so you can start at a broad topic on Home and click down to the one you want. The user-interface can evolve over time with improvements with no impact to the core structure.
 
 <p align="center">
   <img src="docs/library_view_example.png" alt="The Library view in wiki-view" width="48%">
@@ -65,6 +65,10 @@ Take any draft you are working on. The agent marks what the wiki already knows, 
 <p align="center">
   <img src="docs/wikify_example.png" alt="A wikified note with link and new marks" width="80%">
 </p>
+
+### Quick search and Make topic
+
+Select a term in any note and right-click it. **Almagest quick search** lists the wiki's pages that name it, ranked, with the line that names it. Enter opens a page at the term, and Alt+Enter links your selection to the page. When no page fits, **Make topic** links the selection to a new title, and an agent drafts that topic from your note and the wiki, as a change for you to approve. The last row of the search runs Obsidian's own search, which also reads your journals and the scratchpad. Both are commands too, so you can give them hotkeys.
 
 ### Safe delete
 
@@ -103,7 +107,7 @@ updates itself: Obsidian's community plugins do that.
 
 - **A program outside the vault.** The plugin runs the `almagest` binary for every read
   and write: the status it shows, Approve and Cancel, Safe delete, Publish, Return,
-  Wikify, and the quiet snapshots. It runs `~/.almagest/bin/almagest`, or the path in its
+  Wikify, quick search, and the quiet snapshots. It runs `~/.almagest/bin/almagest`, or the path in its
   settings. It never searches `PATH`. The binary reads and writes the vault and its git
   history, and reads `~/.almagest/config.json`.
 - **Files outside the vault.** Through the binary, the plugin reads `~/.almagest/` and the

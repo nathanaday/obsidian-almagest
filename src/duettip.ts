@@ -5,25 +5,25 @@
 import { EditorState, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, WidgetType } from "@codemirror/view";
 import { MarkdownPostProcessorContext, editorInfoField, editorLivePreviewField, setIcon } from "obsidian";
-import { DUET_LINK, DUET_TIP } from "./agents";
+import { DUET_LINK, DuetTip } from "./agents";
 import { VAULT_DOCUMENT, firstBodyLine } from "./helpers";
 
-/** What the tip reads: whether to show it, and a way to hear when that may change. */
+/** What the tip reads: the tip to show, if any, and a way to hear when that may change. */
 export interface TipSource {
-	show(): boolean;
+	tip(): DuetTip | undefined;
 	listen(fn: () => void): () => void;
 }
 
 /** The tip as a tip callout, as Obsidian draws one. */
-export function tipElement(): HTMLElement {
+export function tipElement(tip: DuetTip): HTMLElement {
 	const callout = createDiv({ cls: "callout almagest-duet-tip", attr: { "data-callout": "tip" } });
 	const title = callout.createDiv({ cls: "callout-title" });
 	setIcon(title.createDiv({ cls: "callout-icon" }), "lightbulb");
 	title.createDiv({ cls: "callout-title-inner", text: "Tip" });
 	const content = callout.createDiv({ cls: "callout-content" });
-	content.createEl("p", { text: DUET_TIP });
+	content.createEl("p", { text: tip.text });
 	const install = content.createEl("p");
-	install.createEl("strong", { text: "Install Duet: " });
+	install.createEl("strong", { text: `${tip.action}: ` });
 	const link = install.createEl("a", { text: "Duet in Obsidian's community plugins", href: DUET_LINK, cls: "almagest-duet-link" });
 	link.onclick = (evt) => {
 		evt.preventDefault();
@@ -36,14 +36,18 @@ export function tipElement(): HTMLElement {
 const refreshTip = StateEffect.define<null>();
 
 class TipWidget extends WidgetType {
-	eq(): boolean {
-		return true;
+	constructor(readonly tip: DuetTip) {
+		super();
+	}
+
+	eq(other: TipWidget): boolean {
+		return other.tip.text === this.tip.text;
 	}
 
 	// The editor lays a block out by its box, margins aside, so padding keeps the tip off the text.
 	toDOM(): HTMLElement {
 		const block = createDiv({ cls: "almagest-duet-tip-block" });
-		block.appendChild(tipElement());
+		block.appendChild(tipElement(this.tip));
 		return block;
 	}
 
@@ -53,10 +57,12 @@ class TipWidget extends WidgetType {
 }
 
 function tipDecorations(state: EditorState, source: TipSource): DecorationSet {
-	if (state.field(editorInfoField, false)?.file?.path !== VAULT_DOCUMENT || !state.field(editorLivePreviewField, false) || !source.show()) return Decoration.none;
+	if (state.field(editorInfoField, false)?.file?.path !== VAULT_DOCUMENT || !state.field(editorLivePreviewField, false)) return Decoration.none;
+	const tip = source.tip();
+	if (!tip) return Decoration.none;
 	const line = firstBodyLine(state.doc.toString());
 	const at = line < 0 ? state.doc.length : state.doc.line(line + 1).from;
-	return Decoration.set([Decoration.widget({ widget: new TipWidget(), block: true, side: -1 }).range(at)]);
+	return Decoration.set([Decoration.widget({ widget: new TipWidget(tip), block: true, side: -1 }).range(at)]);
 }
 
 /** The tip in live preview: a block above the first text after the properties. */
@@ -97,13 +103,14 @@ export function tipExtension(source: TipSource) {
  */
 export function tipPostProcessor(source: TipSource) {
 	return (el: HTMLElement, ctx: MarkdownPostProcessorContext): void => {
-		if (ctx.sourcePath !== VAULT_DOCUMENT || !source.show()) return;
+		const tip = ctx.sourcePath === VAULT_DOCUMENT ? source.tip() : undefined;
+		if (!tip) return;
 		const info = ctx.getSectionInfo(el);
 		if (!info) return;
 		if (info.text.startsWith("---\n")) {
-			if (info.lineStart === 0) el.append(tipElement());
+			if (info.lineStart === 0) el.append(tipElement(tip));
 		} else if (info.lineStart === firstBodyLine(info.text)) {
-			el.prepend(tipElement());
+			el.prepend(tipElement(tip));
 		}
 	};
 }

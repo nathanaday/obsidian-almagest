@@ -14,7 +14,7 @@ repository. This file holds what the code and the README do not say.
   the plugin into a vault. When the binary is missing, the plugin says what to install.
 - **The plugin reads the JSON of the CLI.** Every read and write runs the binary:
   `vault --json`, `change apply|reject|start`, `vault trash`, `journal publish`,
-  `checkout return`, `wikify start`, `vault snapshot`, `config`. That JSON
+  `checkout return`, `wikify start`, `search`, `vault snapshot`, `config`. That JSON
   and those flags are the contract with the binary; a change on either side is a change
   of both.
 - **It never searches `PATH` or the system folders for the binary**, so another
@@ -28,20 +28,24 @@ repository. This file holds what the code and the README do not say.
   `binaryProblem` names the update for a missing binary, an older one, and a newer one.
   Raise the protocol on both sides when a change would make an older plugin misread.
 - **It touches only what it owns.** It adds one view (the palette) with one ribbon button,
-  commands, in-document widgets (code block processors), and CSS for its own callouts and
+  commands, two items in the editor's menu while text is selected, in-document widgets (code block processors), and CSS for its own callouts and
   widgets. It patches no pane of Obsidian's own. Its one style there is the colors of its
   own top folders in the file explorer (`wiki-view`, `journals`, `ingest`, `tool`), behind
   the `colorFolders` setting, which puts the class `almagest-folder-colors` on the body;
   the end-to-end test checks that its rules reach nothing else, and nothing when it is off. A change note's
   `cssclasses` value (`almagest-change`) styles the note itself, so the widget's class
-  is `almagest-change-card`.
+  is `almagest-change-card`. Home's (`almagest-home`) hides its frontmatter, which only
+  its Bases read, through Obsidian's `--metadata-display-editing` and
+  `--metadata-display-reading`: Obsidian's own rules for properties outrank a plain
+  `display` (1.14.4).
 - **The plugin acts only in a vault of its layout.** It reads `layout` from
   `Almagest.md` (`LAYOUT`, 8). In a vault of another layout it runs no sync and no
   snapshot, shows one notice, and the palette shows what the vault needs in place of its
   home: for layout 7 (11.0) a Migrate page, whose dry run (`vault migrate --dry-run`)
   counts what moves and whose button runs `vault migrate`; for any other, the update.
   It follows `Almagest.md`'s metadata, so a migration in a terminal clears the notice too.
-  `vault migrate` came with protocol 2, so a binary of protocol 1 is named for update.
+  `vault migrate` came with protocol 2 and `neighbors` with protocol 3, so a binary of an
+  older protocol is named for update.
 - **Duet hosts the agents when the user chooses it, and Almagest works without it.**
   Almagest does not copy Duet's code: two copies would bind two Yjs hubs to one editor
   and both wrap `Vault.modify`. With `conversations: "duet"` (the default) and Duet on,
@@ -49,12 +53,31 @@ repository. This file holds what the code and the README do not say.
   `app.plugins.getPlugin("duet")?.api`, with `newConversation`, `conversationStatus`, and
   `onTurnEnd`), and Start an agent runs Duet's command `duet:new-chat`, since the API
   needs a first message. Otherwise the agent starts in the user's terminal.
-  `recommendDuet` (Duet chosen, not on) decides both tips: the one the plugin draws at
+  `duetTip` (Duet chosen, not on) decides both tips and names the step Duet needs (install, update, or turn on): the one the plugin draws at
   the top of `Almagest.md` (`duettip.ts`, a state field in live preview and a post
   processor in reading view) and the one a new terminal prints. The tip in `Almagest.md`
   is never written: every agent reads the file as the vault's context, and git shares it
   between machines with and without Duet. Obsidian sends no event when a plugin turns on
   or off, so the plugin reads Duet's state every two seconds and redraws on a change.
+- **Quick search and Make topic act on a selection** (`quicksearch.ts`, pure parts in
+  `lookup.ts`). Quick search runs `almagest search` on topics, sources, and repositories
+  at each keystroke (about 30 ms), and opens a hit with the `match` ephemeral state that
+  Obsidian's own search passes, so the term flashes. Make topic looks for the title among
+  the documents' titles and aliases first: a document that holds it gets the link and no
+  agent. Otherwise the selection becomes `[[Title|phrase]]` at once, and Wikify's Create
+  path starts the draft with `makeTopicMessage`. Neither writes a link into `changes/`,
+  `tool/sessions/`, `wiki-view/`, `tool/trash/`, or the originals (`linkBlocked`).
+- **The navigator is a page of the palette.** Its row sits with This note. It runs
+  `almagest neighbors <id>` (protocol 3) for the open document, at each `file-open` and
+  each status refresh, and only the last read lands (`navReads`); a file outside
+  `tool/source-core/documents/`, or one with no `id`, has none. `navstate.ts` holds the
+  pure parts. Its links open in the editor, and the navigator follows. There is no
+  command: the palette is the one way in. The navigator was a Base in `wiki-view/`
+  until 11.1; at layout ready, before the first sync removes that file, the plugin
+  closes every leaf that a saved layout restores with it (`closeOldNavigator`). After the
+  removal Obsidian would turn such a leaf into an empty one, which the plugin cannot
+  tell from any other. It finds the leaves with `getLeavesOfType`, since
+  `iterateAllLeaves` skips a sidebar's hidden tabs (Obsidian 1.14.4).
 - **A terminal launch fails where no one sees it** (osascript and `open` exit after the
   spawn), so `openTerminal` checks for the app first. `scripts/probe-launch.mjs` opens a
   real terminal with a probe; record each result in TESTED.md.

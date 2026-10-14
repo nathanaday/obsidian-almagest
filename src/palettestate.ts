@@ -73,7 +73,7 @@ export function paletteState(status: VaultStatus, sessions: { open: number; wait
 // The home of the palette: one row per area, each with a line and a count.
 
 /** The areas of the palette, in the order its home lists them. */
-export const AREAS = ["changes", "ingest", "health", "journals", "library", "agents", "note"] as const;
+export const AREAS = ["changes", "ingest", "health", "journals", "library", "agents", "navigator", "note"] as const;
 export type Area = (typeof AREAS)[number];
 
 /** What a count chip means: something for the user to do, a problem, or a plain number. */
@@ -90,9 +90,9 @@ export interface AreaLine {
 
 /**
  * The home row of an area. agents is the count of the agents the palette started that
- * still work; hasNote is whether a note is open.
+ * still work; hasNote is whether a note is open; nav is the navigator's line (navLine).
  */
-export function areaLine(area: Area, s: PaletteState, agents: number, hasNote: boolean): AreaLine {
+export function areaLine(area: Area, s: PaletteState, agents: number, hasNote: boolean, nav = "Open a wiki document"): AreaLine {
 	switch (area) {
 		case "changes": {
 			const parts = [s.proposed.length > 0 ? `${s.proposed.length} to review` : "", s.running.length > 0 ? `${s.running.length} running` : ""].filter((p) => p);
@@ -119,6 +119,8 @@ export function areaLine(area: Area, s: PaletteState, agents: number, hasNote: b
 			const line = parts.filter((p) => p).join(" · ");
 			return s.waiting > 0 ? { name: "Agents", line, count: s.waiting, tone: "accent" } : { name: "Agents", line, count: agents, tone: "muted" };
 		}
+		case "navigator":
+			return { name: "Navigator", line: nav, count: 0, tone: "muted" };
 		case "note":
 			return { name: "This note", line: hasNote ? "Wikify it, or delete it safely" : "Open a note first", count: 0, tone: "muted" };
 	}

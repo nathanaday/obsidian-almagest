@@ -154,6 +154,7 @@ test("the palette's home names each area's state in one line, with a chip only w
 			["Journals", "Your own writing", 0],
 			["Library", "Gather the pages on a subject", 0],
 			["Agents", "0 live sessions", 0],
+			["Navigator", "Open a wiki document", 0],
 			["This note", "Open a note first", 0],
 		],
 	);
@@ -173,6 +174,7 @@ test("the palette's home names each area's state in one line, with a chip only w
 	assert.deepEqual(areaLine("health", busy, 0, true), { name: "Wiki health", line: "3 errors", count: 3, tone: "warning" });
 	assert.equal(areaLine("journals", busy, 0, true).line, "1 to publish");
 	assert.deepEqual(areaLine("library", busy, 0, true), { name: "Library", line: "1 out · 1 with edits", count: 1, tone: "accent" });
+	assert.deepEqual(areaLine("navigator", busy, 0, true, "Attention · 1 up, 3 sources"), { name: "Navigator", line: "Attention · 1 up, 3 sources", count: 0, tone: "muted" });
 	assert.deepEqual(areaLine("agents", busy, 2, true), { name: "Agents", line: "2 working · 1 live session", count: 2, tone: "muted" });
 	// A session that waits for the user outranks the agents that work: its count is the user's to act on.
 	const waiting = paletteState({}, { open: 3, waiting: 2 });

@@ -18,7 +18,7 @@ import {
 } from "./helpers";
 import { QuietTimer } from "./quiet";
 import { repoProcessor } from "./repo";
-import { AgentConfig, duetTipCommand, recommendDuet, startCommand } from "./agents";
+import { AgentConfig, DuetTip, duetTip, duetTipCommand, startCommand } from "./agents";
 import { Conversations, duetApi, duetState } from "./conversations";
 import { tipExtension, tipPostProcessor } from "./duettip";
 import { openTerminal } from "./launcher";
@@ -27,6 +27,7 @@ import { PALETTE_ICON, PALETTE_VIEW, PaletteView } from "./palette";
 import { confirmPublishOf } from "./publish";
 import { AlmagestSettingTab, AlmagestSettings, DEFAULT_SETTINGS } from "./settings";
 import { isWikified } from "./marks";
+import { registerLookup } from "./quicksearch";
 
 /** Runs another plugin's command by its id; false when no plugin gives it. */
 function executeCommand(app: unknown, id: string): boolean {
@@ -43,6 +44,8 @@ const SYNC_DELAY = 2000;
 const ECHO_WINDOW = 5000;
 /** How long to wait for Obsidian to see a document the binary wrote. */
 const SEE_MS = 10_000;
+/** The navigator of 11.1 and before, a Base that a sync no longer writes. */
+const OLD_NAVIGATOR = "wiki-view/View · Navigator.base";
 
 export default class AlmagestPlugin extends Plugin {
 	settings: AlmagestSettings = { ...DEFAULT_SETTINGS };
@@ -95,7 +98,7 @@ export default class AlmagestPlugin extends Plugin {
 
 		this.registerEditorExtension(markExtension(this.wikify));
 		this.registerMarkdownPostProcessor(markPostProcessor(this, this.wikify));
-		const tip = { show: () => this.recommendDuet(), listen: (fn: () => void) => this.onDuetChange(fn) };
+		const tip = { tip: () => this.duetTip(), listen: (fn: () => void) => this.onDuetChange(fn) };
 		this.registerEditorExtension(tipExtension(tip));
 		this.registerMarkdownPostProcessor(tipPostProcessor(tip));
 		// Obsidian sends no event when a plugin turns on or off, so Duet's state is read every two seconds.
@@ -113,6 +116,7 @@ export default class AlmagestPlugin extends Plugin {
 		});
 
 		this.addCommand({ id: "sync", name: "Sync the vault", callback: () => void this.sync(true) });
+		registerLookup(this);
 
 
 		this.registerView(PALETTE_VIEW, (leaf) => new PaletteView(leaf, this));
@@ -150,6 +154,7 @@ export default class AlmagestPlugin extends Plugin {
 		);
 		this.colorFolders();
 		this.app.workspace.onLayoutReady(() => {
+			this.closeOldNavigator();
 			void this.checkBinary();
 			this.onLayoutChange();
 			this.watchForSnapshots();
@@ -314,6 +319,12 @@ export default class AlmagestPlugin extends Plugin {
 		if (problem) new Notice(`Almagest: ${problem}`, 0);
 	}
 
+	/** Hides the notice that asks for a migration: the palette's migration just ran. */
+	hideLayoutNotice(): void {
+		this.layoutNotice?.hide();
+		this.layoutNotice = null;
+	}
+
 	/** Says, until the layout changes or the user closes it, what a vault of another layout needs. */
 	private checkLayout(): void {
 		this.layoutNotice?.hide();
@@ -363,6 +374,28 @@ export default class AlmagestPlugin extends Plugin {
 		await workspace.revealLeaf(leaf);
 	}
 
+	/**
+	 * Closes the leaves that a layout saved with the old navigator restores; the palette holds
+	 * the navigator now. It runs before the first sync removes the file, after which Obsidian
+	 * would leave an empty leaf. iterateAllLeaves skips a sidebar's hidden tabs.
+	 */
+	private closeOldNavigator(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType("bases")) {
+			if (leaf.getViewState().state?.file === OLD_NAVIGATOR) leaf.detach();
+		}
+	}
+
+	/** A file once Obsidian sees it, or null after a while: a file the binary just wrote takes a moment. */
+	private async whenSeen(path: string): Promise<TFile | null> {
+		const deadline = Date.now() + SEE_MS;
+		let file = this.app.vault.getFileByPath(path);
+		while (!file && Date.now() < deadline) {
+			await new Promise((resolve) => window.setTimeout(resolve, 100));
+			file = this.app.vault.getFileByPath(path);
+		}
+		return file instanceof TFile ? file : null;
+	}
+
 	/** Marks the volume a publish captures, "" when it ends, in every palette. */
 	setPublishing(volume: string): void {
 		this.publishing = volume;
@@ -374,13 +407,8 @@ export default class AlmagestPlugin extends Plugin {
 
 	/** Opens a file once Obsidian sees it; a document the binary just wrote takes a moment. */
 	async openWhenSeen(path: string, newTab: boolean): Promise<void> {
-		const deadline = Date.now() + SEE_MS;
-		let file = this.app.vault.getFileByPath(path);
-		while (!file && Date.now() < deadline) {
-			await new Promise((resolve) => window.setTimeout(resolve, 100));
-			file = this.app.vault.getFileByPath(path);
-		}
-		if (!(file instanceof TFile)) {
+		const file = await this.whenSeen(path);
+		if (!file) {
 			new Notice(`Almagest: Obsidian does not see ${path} yet.`);
 			return;
 		}
@@ -439,9 +467,9 @@ export default class AlmagestPlugin extends Plugin {
 		return this.settings.conversations === "duet" ? duetApi(this.app) : undefined;
 	}
 
-	/** Whether to recommend Duet, in Almagest.md and in a new terminal. */
-	recommendDuet(): boolean {
-		return recommendDuet(this.settings.conversations, duetState(this.app));
+	/** The Duet tip to show in Almagest.md and in a new terminal, if any. */
+	duetTip(): DuetTip | undefined {
+		return duetTip(this.settings.conversations, duetState(this.app));
 	}
 
 	/** Calls fn after the choice of host or Duet's state changes; returns a function that stops the calls. */
@@ -485,7 +513,8 @@ export default class AlmagestPlugin extends Plugin {
 			return;
 		}
 		const command = startCommand(adapter.getBasePath(), config.preferences.agent_command, prompt);
-		await this.runInTerminal(this.recommendDuet() ? `${duetTipCommand()} && ${command}` : command, "the agent command", config);
+		const tip = this.duetTip();
+		await this.runInTerminal(tip ? `${duetTipCommand(tip)} && ${command}` : command, "the agent command", config);
 	}
 
 	/**

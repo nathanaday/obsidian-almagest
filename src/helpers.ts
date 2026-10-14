@@ -7,7 +7,8 @@ export const SESSIONS = "tool/sessions";
 export const TRASH = "tool/trash";
 export const RETURNED = "tool/returned";
 const WIKI_VIEW = "wiki-view/";
-const NAV_FOLDER = "wiki-view/nav/";
+/** The entry to the wiki, which a sync writes. */
+export const HOME = "wiki-view/View · Home.md";
 export const INGEST = "ingest/";
 
 /** Whether a path lies in tool/source-core/documents. */
@@ -30,7 +31,7 @@ export interface Synced {
  * The protocols this plugin reads: the version of the commands, flags, and JSON of the
  * binary (`almagest version --json` prints its own). Each side names the update it needs.
  */
-export const PROTOCOLS = [2];
+export const PROTOCOLS = [3];
 
 /** How to install the agent plugin, whose launcher installs the binary. */
 const INSTALL_AGENT =
@@ -203,7 +204,7 @@ export function linkTitle(value: unknown): string {
 /** The three types of tool/source-core/documents, as schema.DocumentTypes lists them. */
 const DOCUMENT_TYPES = ["source", "repository", "topic"];
 
-/** Whether a frontmatter type is one of the document types the navigator lists. */
+/** Whether a frontmatter type is one of the document types quick search lists. */
 export function isDocumentType(type: unknown): boolean {
 	return DOCUMENT_TYPES.includes(String(type));
 }
@@ -259,104 +260,6 @@ export function quietSeconds(value: unknown): number {
 /** Whether an error of the binary says another write holds the vault's lock. */
 export function isLockHeld(message: string): boolean {
 	return /almagest\.lock|holds the lock/.test(message);
-}
-
-/** The title of a tag's view: "Tag · school › cs513". */
-function tagTitle(tag: string): string {
-	return "Tag · " + tag.split("/").join(" › ");
-}
-
-/** The view note of a tag, in a folder per tag part under wiki-view/nav. */
-export function tagViewPath(tag: string): string {
-	return `${NAV_FOLDER}${tag}/${tagTitle(tag)}.md`;
-}
-
-/** A tag as the property holds it: lower case, without #. */
-export function normalTag(t: string): string {
-	return t.trim().replace(/^#/, "").toLowerCase();
-}
-
-/** Whether a list of tags holds t: it lists t or a tag below it. */
-export function holds(list: string[], t: string): boolean {
-	return list.some((x) => x === t || x.startsWith(t + "/"));
-}
-
-/** Every tag of a list and the tags above each. */
-export function expandTags(list: string[]): string[] {
-	const out = new Set<string>();
-	for (const t of list) {
-		const parts = t.split("/");
-		for (let i = 1; i <= parts.length; i++) out.add(parts.slice(0, i).join("/"));
-	}
-	return [...out];
-}
-
-/** One document as the Almagest navigator sees it. */
-export interface TagDoc {
-	path: string;
-	title: string;
-	type: string;
-	kind: string;
-	status: string;
-	description: string;
-	tags: string[];
-}
-
-export interface Facet {
-	tag: string;
-	count: number;
-}
-
-/** The documents that hold every chosen tag, and the other tags among them, most first. */
-/** A tag as the navigator shows it under the chosen ones: below a chosen tag, the part after it. */
-export function relativeTag(tag: string, chosen: string[]): string {
-	const above = chosen.filter((c) => tag.startsWith(c + "/")).sort((a, b) => b.length - a.length)[0];
-	return above ? "› " + tag.slice(above.length + 1).split("/").join(" › ") : "#" + tag;
-}
-
-export function narrow(docs: TagDoc[], chosen: string[]): { matches: TagDoc[]; with: Facet[] } {
-	const matches = docs.filter((d) => chosen.every((t) => holds(d.tags, t)));
-	const counts = new Map<string, number>();
-	const skip = new Set<string>(expandTags(chosen));
-	for (const d of matches) {
-		for (const t of expandTags(d.tags)) {
-			if (skip.has(t)) continue;
-			counts.set(t, (counts.get(t) ?? 0) + 1);
-		}
-	}
-	const withTags = [...counts.entries()]
-		.map(([tag, count]) => ({ tag, count }))
-		.sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
-	return { matches, with: withTags };
-}
-
-/** The top tags of the vault with their counts, most first. */
-export function topTags(docs: TagDoc[]): Facet[] {
-	const counts = new Map<string, number>();
-	for (const d of docs) {
-		for (const t of expandTags(d.tags)) {
-			if (!t.includes("/")) counts.set(t, (counts.get(t) ?? 0) + 1);
-		}
-	}
-	return [...counts.entries()].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
-}
-
-/** The order the navigator groups documents in. */
-const NAV_GROUPS: { name: string; test: (d: TagDoc) => boolean }[] = [
-	{ name: "Topics", test: (d) => d.type === "topic" },
-	{ name: "Sources", test: (d) => d.type === "source" },
-	{ name: "Repositories", test: (d) => d.type === "repository" },
-];
-
-/** Documents in the navigator's groups; a document goes in the first group that takes it. */
-export function groupDocs(docs: TagDoc[]): { name: string; docs: TagDoc[] }[] {
-	const out = NAV_GROUPS.map((g) => ({ name: g.name, docs: [] as TagDoc[] }));
-	for (const d of docs) {
-		const i = NAV_GROUPS.findIndex((g) => g.test(d));
-		out[i]?.docs.push(d);
-	}
-	for (const g of out) g.docs.sort((a, b) => a.title.localeCompare(b.title));
-	return out.filter((g) => g.docs.length > 0);
 }
 
 /** The id and path an almagest-repo code block holds: "doc-abc123 · ~/code/x · …". */

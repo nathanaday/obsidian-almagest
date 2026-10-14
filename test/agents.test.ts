@@ -17,10 +17,9 @@ import {
 	terminalLaunch,
 	plainLinks,
 	DUET_LINK,
-	DUET_TIP,
 	duetLine,
+	duetTip,
 	duetTipCommand,
-	recommendDuet,
 } from "../src/agents";
 
 const now = new Date("2026-10-01T12:00:00");
@@ -84,12 +83,14 @@ test("the shell hands the prompt to the agent as it was written", () => {
 	assert.equal(execFileSync("/bin/zsh", ["-c", command], { encoding: "utf8" }), prompt);
 });
 
-test("Almagest recommends Duet while Duet is the choice and does not run, and never after the user chose the terminal", () => {
-	assert.equal(recommendDuet("duet", "missing"), true);
-	assert.equal(recommendDuet("duet", "off"), true);
-	assert.equal(recommendDuet("duet", "old"), true);
-	assert.equal(recommendDuet("duet", "on"), false);
-	for (const state of ["on", "old", "off", "missing"] as const) assert.equal(recommendDuet("terminal", state), false);
+test("Almagest recommends Duet while Duet is the choice and does not run, names the step Duet needs, and never after the user chose the terminal", () => {
+	assert.equal(duetTip("duet", "missing")?.action, "Install Duet");
+	assert.equal(duetTip("duet", "old")?.action, "Update Duet");
+	assert.match(duetTip("duet", "old")!.text, /this vault's Duet is too old for Almagest\. Update Duet to 0\.3\.0 or later/);
+	assert.equal(duetTip("duet", "off")?.action, "Turn on Duet");
+	assert.match(duetTip("duet", "off")!.text, /Duet is off in this vault\. Turn it on in Community plugins/);
+	assert.equal(duetTip("duet", "on"), undefined);
+	for (const state of ["on", "old", "off", "missing"] as const) assert.equal(duetTip("terminal", state), undefined);
 	assert.match(duetLine("on"), /^Duet runs each agent conversation in a note of this vault/);
 	assert.match(duetLine("missing"), /^Duet is not installed\. .* Until then, Almagest starts each agent in a terminal/);
 	assert.match(duetLine("off"), /^Duet is installed but off\. Turn it on in Community plugins\./);
@@ -98,10 +99,13 @@ test("Almagest recommends Duet while Duet is the choice and does not run, and ne
 });
 
 test("a new terminal prints the Duet tip before the agent starts", () => {
-	const command = `${duetTipCommand()} && ${startCommand(tmpdir(), "printf %s", "the prompt")}`;
-	const out = `\n\u001b[1mTip:\u001b[0m ${DUET_TIP}\n\u001b[1mInstall Duet:\u001b[0m ${DUET_LINK}\n\nthe prompt`;
-	assert.equal(execFileSync("/bin/sh", ["-c", command], { encoding: "utf8" }), out);
-	assert.equal(execFileSync("/bin/zsh", ["-c", command], { encoding: "utf8" }), out);
+	for (const state of ["missing", "old", "off"] as const) {
+		const tip = duetTip("duet", state)!;
+		const command = `${duetTipCommand(tip)} && ${startCommand(tmpdir(), "printf %s", "the prompt")}`;
+		const out = `\n\u001b[1mTip:\u001b[0m ${tip.text}\n\u001b[1m${tip.action}:\u001b[0m ${DUET_LINK}\n\nthe prompt`;
+		assert.equal(execFileSync("/bin/sh", ["-c", command], { encoding: "utf8" }), out);
+		assert.equal(execFileSync("/bin/zsh", ["-c", command], { encoding: "utf8" }), out);
+	}
 });
 
 test("each terminal runs the command in an interactive shell", () => {

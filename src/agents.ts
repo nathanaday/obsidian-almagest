@@ -145,13 +145,30 @@ export type DuetState = "on" | "old" | "off" | "missing";
 /** Where an agent works when Almagest starts one. */
 export type ConversationHost = "duet" | "terminal";
 
-/** The recommendation of Duet, in Almagest.md and in a terminal that Almagest opens. */
-export const DUET_TIP =
-	"Did you know you can work with your agents directly in Obsidian? Almagest works best with the Duet community plugin. Once installed, Almagest will automatically handle agent conversations in this vault instead of a new terminal session.";
+/** The recommendation of Duet, in Almagest.md and in a terminal that Almagest opens: why, and the step Duet needs. */
+export interface DuetTip {
+	text: string;
+	/** The step, as the link's label. */
+	action: string;
+}
 
-/** Whether to recommend Duet: the settings choose it, and it does not run. A user who chose the terminal sees no tip. */
-export function recommendDuet(host: ConversationHost, state: DuetState): boolean {
-	return host === "duet" && state !== "on";
+/** The tip while the settings choose Duet and it does not run. A user who chose the terminal sees no tip. */
+export function duetTip(host: ConversationHost, state: DuetState): DuetTip | undefined {
+	if (host !== "duet") return undefined;
+	const then = "and Almagest will handle agent conversations in this vault instead of a new terminal session.";
+	switch (state) {
+		case "on":
+			return undefined;
+		case "old":
+			return { text: `Almagest works best with the Duet community plugin, but this vault's Duet is too old for Almagest. Update Duet to 0.3.0 or later, ${then}`, action: "Update Duet" };
+		case "off":
+			return { text: `Almagest works best with the Duet community plugin, but Duet is off in this vault. Turn it on in Community plugins, ${then}`, action: "Turn on Duet" };
+		case "missing":
+			return {
+				text: "Did you know you can work with your agents directly in Obsidian? Almagest works best with the Duet community plugin. Once installed, Almagest will automatically handle agent conversations in this vault instead of a new terminal session.",
+				action: "Install Duet",
+			};
+	}
 }
 
 /** What the settings say about Duet while it is the choice: that it runs the conversations, or what it needs first. */
@@ -170,8 +187,8 @@ export function duetLine(state: DuetState): string {
 }
 
 /** A shell command that prints the Duet tip, before the agent starts in a new terminal. */
-export function duetTipCommand(): string {
-	return `printf '\\n\\033[1mTip:\\033[0m %s\\n\\033[1mInstall Duet:\\033[0m %s\\n\\n' ${shellQuote(DUET_TIP)} ${shellQuote(DUET_LINK)}`;
+export function duetTipCommand(tip: DuetTip): string {
+	return `printf '\\n\\033[1mTip:\\033[0m %s\\n\\033[1m%s:\\033[0m %s\\n\\n' ${shellQuote(tip.text)} ${shellQuote(tip.action)} ${shellQuote(DUET_LINK)}`;
 }
 
 /** The terminals Almagest opens a command in. */

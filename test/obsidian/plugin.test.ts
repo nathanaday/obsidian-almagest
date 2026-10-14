@@ -400,6 +400,124 @@ describe("Almagest in Obsidian", () => {
 		expect(o.errors).toEqual([]);
 	});
 
+	/** A document of tool/source-core/documents, as a change or a hand edit leaves it. */
+	function doc(id: string, type: string, fields: string): string {
+		return `---\nid: ${id}\ntype: ${type}\ndescription: "The ${id} document."\ncreated: 2026-10-13T10:00:00\nupdated: 2026-10-13T10:00:00\n${fields}---\n\nBody.\n`;
+	}
+
+	/** The navigator page's groups: each group's key, and the titles in it. */
+	async function navigatorRows(palette: Palette): Promise<Record<string, string[]>> {
+		return palette.evaluate((el) => {
+			const out: Record<string, string[]> = {};
+			el.querySelectorAll<HTMLElement>("ul[data-group]").forEach((ul) => {
+				out[ul.dataset.group!] = [...ul.querySelectorAll(".almagest-item-title")].map((t) => t.textContent ?? "");
+			});
+			return out;
+		});
+	}
+
+	it("shows the navigator in the palette: the documents above, beside, and below the open document", { timeout: 120_000 }, async () => {
+		const D = "tool/source-core/documents";
+		const o = await launch({
+			prepare: async (vault) => {
+				const write = (title: string, content: string) => writeFile(path.join(vault, D, `${title}.md`), content);
+				await write("Machine Learning", doc("doc-mlmlml", "topic", "kind: overview\ndefines: ml\n"));
+				await write("CS566", doc("doc-cs5660", "topic", "kind: overview\ndefines: ml/cs566\ntags: [ml]\n"));
+				await write("Training", doc("doc-train0", "topic", 'kind: concept\ntags: [ml]\nup: ["[[Machine Learning]]"]\n'));
+				await write("Transfer Learning", doc("doc-trans0", "topic", 'kind: concept\ntags: [ml/cs566]\nup: ["[[Training]]"]\n'));
+				await write("Optimizers", doc("doc-optim0", "topic", 'kind: concept\ntags: [ml/cs566]\nup: ["[[Training]]"]\n'));
+				await write("Fine-Tuning", doc("doc-finet0", "topic", 'kind: concept\ntags: [ml/cs566]\nup: ["[[Transfer Learning]]"]\nsources: ["[[Block 7 Slides]]"]\n'));
+				await write("Backprop", doc("doc-backp0", "topic", "kind: concept\ntags: [ml/cs566]\n"));
+				await write("Block 7 Slides", doc("doc-block7", "source", "tags: [ml/cs566]\n"));
+				// The navigator of 11.1, open in the right sidebar of a saved layout.
+				await writeFile(path.join(vault, "wiki-view/View · Navigator.base"), "filters:\n  and: []\nviews: []\n");
+			},
+		});
+		await o.almagest(["vault", "sync", "--views"]);
+		expect(existsSync(path.join(o.vault, "wiki-view/View · Navigator.base"))).toBe(false);
+		expect(await o.page.evaluate(() => Object.keys((window as any).app.commands.commands).filter((id) => id.startsWith("almagest:") && /navigator/.test(id)))).toEqual([]);
+
+		const open = (file: string) =>
+			o.page.evaluate(async (file) => {
+				const app = (window as any).app;
+				await app.workspace.getLeaf(false).openFile(app.vault.getFileByPath(file));
+			}, file);
+		const palette = await openPalette(o);
+		await open("wiki-view/View · Home.md");
+		// Home is Bases: the frontmatter they read stays hidden, and Start here counts what lies under each root.
+		const homeState = () =>
+			o.page.evaluate(() => {
+				const leaf = (window as any).app.workspace.getLeavesOfType("markdown").find((l: any) => l.view.file?.path === "wiki-view/View · Home.md");
+				const el = leaf?.view.containerEl as HTMLElement | undefined;
+				const mode = leaf?.getViewState().state?.mode;
+				const meta = el?.querySelector(mode === "preview" ? ".markdown-preview-view .metadata-container" : ".markdown-source-view .metadata-container");
+				// A Base in the reading view renders once it scrolls into view.
+				el?.querySelector('.markdown-preview-view h2[data-heading="Start here"]')?.scrollIntoView();
+				const start = [...(el?.querySelectorAll(".markdown-preview-view .bases-view") ?? [])].map((v) => (v as HTMLElement).innerText).find((t) => t.includes("Machine Learning")) ?? "";
+				return { mode, hidden: !!meta && getComputedStyle(meta).display === "none", start: start.replace(/\s+/g, " ") };
+			});
+		await until("Home's properties hidden while it is edited", async () => (await homeState()).hidden, { describe: async () => JSON.stringify(await homeState()) });
+		await o.page.evaluate(async () => {
+			const leaf = (window as any).app.workspace.getLeavesOfType("markdown").find((l: any) => l.view.file?.path === "wiki-view/View · Home.md");
+			await leaf.setViewState({ ...leaf.getViewState(), state: { ...leaf.getViewState().state, mode: "preview" } });
+		});
+		await until("Home's Start here, read", async () => {
+			const h = await homeState();
+			return h.hidden && / Machine Learning 7 /.test(` ${h.start} `);
+		}, { describe: async () => JSON.stringify(await homeState()) });
+		expect(await line(palette, "navigator")).toBe("Open a wiki document");
+		await goTo(palette, "navigator");
+		// A note that is no document says where to start, with a link to Home.
+		expect(await palette.locator(".almagest-empty").innerText()).toBe("View · Home is not a wiki document. Open a topic, a source, or a repository; Home lists where to start.");
+
+		const expectations: Record<string, Record<string, string[]>> = {
+			"Transfer Learning": { up: ["Training"], beside: ["Optimizers"], below: ["Fine-Tuning"] },
+			CS566: { up: ["Machine Learning"], below: ["Backprop"], sources_below: ["Block 7 Slides"] },
+			"Fine-Tuning": { up: ["Transfer Learning"], sources: ["Block 7 Slides"] },
+			"Block 7 Slides": { up: ["CS566"], cited_by: ["Fine-Tuning"] },
+			"Machine Learning": { below: ["CS566", "Training"] },
+		};
+		for (const [title, want] of Object.entries(expectations)) {
+			await open(`${D}/${title}.md`);
+			await until(`the navigator for ${title}`, async () => JSON.stringify(await navigatorRows(palette)) === JSON.stringify(want), {
+				describe: async () => JSON.stringify(await navigatorRows(palette)),
+			});
+			expect(await palette.locator(".almagest-list-head", { hasText: "Reading" }).count()).toBe(1);
+		}
+		// A click on a neighbor opens it in the editor, and the navigator follows.
+		await palette.locator('ul[data-group="below"] .almagest-link', { hasText: "Training" }).click();
+		await until("the navigator for Training", async () => JSON.stringify(await navigatorRows(palette)) === JSON.stringify({ up: ["Machine Learning"], below: ["Optimizers", "Transfer Learning"] }), {
+			describe: async () => JSON.stringify(await navigatorRows(palette)),
+		});
+		expect(await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)).toBe(`${D}/Training.md`);
+		expect(await line(palette, "navigator")).toBe("Training · 1 up, 2 below");
+		// A document with nothing around it says so.
+		await writeFile(path.join(o.vault, D, "Alone.md"), doc("doc-alone0", "topic", "kind: concept\n"));
+		await until("Obsidian to see Alone", () => o.page.evaluate(() => !!(window as any).app.vault.getFileByPath("tool/source-core/documents/Alone.md")));
+		await open(`${D}/Alone.md`);
+		await goTo(palette, "navigator");
+		await until("the navigator for Alone", async () => (await palette.locator(".almagest-empty").count()) > 0);
+		expect(await palette.locator(".almagest-empty").innerText()).toBe("No document lies above, below, or beside Alone, and it cites none.");
+
+		// A layout saved with the old navigator in the sidebar opens without it, and without an empty leaf in its place.
+		await o.restart({
+			between: async () => {
+				await writeFile(path.join(o.vault, "wiki-view/View · Navigator.base"), "filters:\n  and: []\nviews: []\n");
+				const file = path.join(o.vault, ".obsidian/workspace.json");
+				const layout = JSON.parse(await readFile(file, "utf8"));
+				layout.right.children[0].children.push({ id: "oldnavigator00001", type: "leaf", state: { type: "bases", state: { file: "wiki-view/View · Navigator.base", viewName: "Navigator" } } });
+				await writeFile(file, JSON.stringify(layout));
+			},
+		});
+		const right = () =>
+			o.page.evaluate(() => {
+				const ws = (window as any).app.workspace;
+				return ws.getLeavesOfType("almagest-palette").length === 0 ? null : ["bases", "empty"].flatMap((t) => ws.getLeavesOfType(t)).filter((l: any) => l.getRoot() === ws.rightSplit).map((l: any) => l.getViewState().type);
+			});
+		await until("the restored layout, without the old navigator", async () => JSON.stringify(await right()) === "[]", { describe: async () => JSON.stringify(await right()) });
+		expect(o.errors).toEqual([]);
+	});
+
 	it("starts an ingest without Duet: the work document opens, and the agent starts in the terminal", { timeout: TIMEOUT }, async () => {
 		const o = await launch({ prepare: (vault) => writeFile(path.join(vault, "ingest/Paper one.md"), "# Paper one\n") });
 		const out = await stubTerminal(o);
@@ -590,6 +708,27 @@ describe("Almagest in Obsidian", () => {
 		await until("the tip to leave with Duet on", async () => (await tip.count()) === 0);
 		await removeDuet(o);
 		await until("the tip to come back", async () => (await tip.count()) === 1);
+		// A Duet that is on but has no API: the tip asks for the update, in both views.
+		await o.page.evaluate(() => {
+			const plugins = (window as any).app.plugins;
+			plugins.manifests.duet = { id: "duet", name: "Duet", version: "0.2.0" };
+			plugins.enabledPlugins.add("duet");
+		});
+		for (const mode of ["source", "preview"] as const) {
+			await open(o, "Almagest.md", mode);
+			tip = tipIn(mode);
+			await until(`the update tip in ${mode}`, async () => (await tip.count()) === 1 && ((await tip.textContent()) ?? "").includes("Update Duet: "), { describe: () => o.page.locator(".workspace-leaf.mod-active").innerText() });
+			expect(await tip.textContent()).toContain("this vault's Duet is too old for Almagest. Update Duet to 0.3.0 or later");
+			expect(await tip.textContent()).not.toContain("Install Duet");
+		}
+		await o.page.evaluate(() => {
+			const plugins = (window as any).app.plugins;
+			delete plugins.manifests.duet;
+			plugins.enabledPlugins.delete("duet");
+		});
+		await open(o, "Almagest.md", "source");
+		tip = tipIn("source");
+		await until("the install tip again", async () => ((await tip.textContent()) ?? "").includes("Install Duet: "));
 		await o.page.evaluate(async () => {
 			const plugin = (window as any).app.plugins.plugins.almagest;
 			plugin.settings.conversations = "terminal";
@@ -1270,6 +1409,166 @@ describe("Almagest in Obsidian", () => {
 		await momentum.locator("button", { hasText: "Link" }).click();
 		await saved(o, copy, "step size}}. [[Momentum]] speeds it up");
 		await until("three bubbles", async () => (await live.count()) === 3);
+		expect(o.errors).toEqual([]);
+	});
+
+	/** Adds topics to the wiki through a change that the CLI proposes and applies. */
+	async function addTopics(o: ObsidianInstance, topics: { title: string; body: string; aliases?: string[] }[]): Promise<void> {
+		const plan = path.join(o.vault, "..", "lookup-topics.json");
+		await writeFile(
+			plan,
+			JSON.stringify({
+				title: "Add the topics",
+				writes: topics.map((t) => ({ op: "create", type: "topic", kind: "concept", title: t.title, fields: { description: `The ${t.title}.`, ...(t.aliases ? { aliases: t.aliases } : {}) }, body: t.body })),
+			}),
+		);
+		const change = JSON.parse(await o.almagest(["change", "propose", plan, "--json"]));
+		await o.almagest(["change", "apply", change.ref.id, "--json"]);
+		for (const t of topics) await until(`Obsidian to see ${t.title}`, () => o.page.evaluate((file) => !!(window as any).app.vault.getFileByPath(file), `tool/source-core/documents/${t.title}.md`));
+	}
+
+	/**
+	 * Selects the first place of text in the active editor's body and opens the editor's menu on it,
+	 * as a right-click does; returns the menu's item titles. Obsidian's own menu, not the
+	 * system's: a native menu opens on the user's screen, outside the page.
+	 */
+	async function rightClick(o: ObsidianInstance, text: string): Promise<string[]> {
+		await o.page.evaluate((t) => {
+			(window as any).app.vault.setConfig("nativeMenus", false);
+			const editor = (window as any).app.workspace.activeEditor.editor;
+			const value: string = editor.getValue();
+			const from = value.indexOf(t, value.startsWith("---\n") ? value.indexOf("\n---", 4) + 4 : 0);
+			editor.focus();
+			editor.setSelection(editor.offsetToPos(from), editor.offsetToPos(from + t.length));
+			const c = editor.cm.coordsAtPos(from + 1);
+			const target = document.elementFromPoint(c.left + 2, (c.top + c.bottom) / 2) ?? editor.cm.contentDOM;
+			target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: c.left + 2, clientY: (c.top + c.bottom) / 2 }));
+		}, text);
+		const items = o.page.locator(".menu .menu-item-title");
+		await items.first().waitFor({ timeout: 10_000 });
+		return items.allTextContents();
+	}
+
+	/** The rows of the quick search box once it shows the hits. */
+	async function searchRows(o: ObsidianInstance, hits: number): Promise<{ kind: string; title: string }[]> {
+		const rows = o.page.locator(".almagest-search .almagest-search-row");
+		await until(`${hits} hits`, async () => (await rows.locator("xpath=self::*[@data-kind='hit']").count()) === hits, { describe: () => o.page.locator(".almagest-search").innerText() });
+		return rows.evaluateAll((els) => els.map((e) => ({ kind: (e as HTMLElement).dataset.kind ?? "", title: e.querySelector(".almagest-search-title")?.textContent ?? "" })));
+	}
+
+	it("quick search on a selection lists the wiki's hits; Enter opens a hit at the term, Alt+Enter links the selection, and the last rows make a topic or search every file", { timeout: 120_000 }, async () => {
+		const note = "scratchpad/Notes.md";
+		const o = await launch({
+			prepare: async (vault) => {
+				await mkdir(path.join(vault, "scratchpad"), { recursive: true });
+				await writeFile(path.join(vault, note), "# Notes\n\nEach write transaction ends in one commit.\n");
+			},
+		});
+		await addTopics(o, [
+			{ title: "Vault lock", body: "## Definition\n\nThe lock file of the vault.\n\n## Use\n\nEvery write transaction takes the vault lock.\n" },
+			{ title: "Change record", body: "## Definition\n\nA change record names the write transaction that apply runs.\n" },
+		]);
+		await open(o, note, "source");
+		expect(await rightClick(o, "write transaction")).toEqual(expect.arrayContaining(["Almagest quick search", "Almagest make topic"]));
+		await o.page.locator(".menu .menu-item", { hasText: "Almagest quick search" }).click();
+
+		const box = o.page.locator(".almagest-search");
+		expect(await box.locator("input").inputValue()).toBe("write transaction");
+		const rows = await searchRows(o, 2);
+		expect(rows.map((r) => r.title).slice(0, 2).sort()).toEqual(["Change record", "Vault lock"]);
+		expect(rows.slice(2)).toEqual([
+			{ kind: "make", title: "Make topic “Write transaction”" },
+			{ kind: "files", title: "Search all files for “write transaction”" },
+		]);
+		const hit = box.locator(".almagest-search-row[data-kind='hit']").first();
+		expect(await hit.locator(".almagest-chip").textContent()).toBe("concept");
+		expect(await hit.locator(".almagest-search-snippet mark").allTextContents()).toEqual(["write", "transaction"]);
+		expect(await box.locator(".prompt-instructions").innerText()).toContain("to link the selection");
+
+		// Enter opens the first hit at the term.
+		const first = rows[0]!.title;
+		await o.page.keyboard.press("Enter");
+		await until(`${first} to open`, async () => (await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)) === `tool/source-core/documents/${first}.md`);
+		// Obsidian flashes the term, as its own search does.
+		await until("the term to flash", async () => (await o.page.locator(".workspace-leaf.mod-active .is-flashing").allTextContents()).join("") === "write transaction", {
+			describe: () => o.page.locator(".workspace-leaf.mod-active .is-flashing").allTextContents().then((t) => JSON.stringify(t)),
+		});
+
+		// Alt+Enter on Vault lock links the selection, from the command.
+		await open(o, note, "source");
+		await o.page.evaluate(() => {
+			const editor = (window as any).app.workspace.activeEditor.editor;
+			const from = editor.getValue().indexOf("write transaction");
+			editor.setSelection(editor.offsetToPos(from), editor.offsetToPos(from + "write transaction".length));
+			(window as any).app.commands.executeCommandById("almagest:quick-search");
+		});
+		const again = await searchRows(o, 2);
+		for (let i = 0; i < again.findIndex((r) => r.title === "Vault lock"); i++) await o.page.keyboard.press("ArrowDown");
+		await o.page.keyboard.press("Alt+Enter");
+		await saved(o, note, "Each [[Vault lock|write transaction]] ends in one commit.");
+		expect(await box.count()).toBe(0);
+
+		// With no selection and no word at the cursor, the box offers no Make topic; the last row opens Obsidian's search with the term.
+		await open(o, note, "source");
+		await o.page.evaluate(() => {
+			const editor = (window as any).app.workspace.activeEditor.editor;
+			editor.setCursor({ line: 1, ch: 0 });
+			(window as any).app.commands.executeCommandById("almagest:quick-search");
+		});
+		expect(await box.locator("input").inputValue()).toBe("");
+		await box.locator("input").fill("one commit");
+		await until("the files row", async () => (await box.locator(".almagest-search-row[data-kind='files']").count()) === 1);
+		expect(await box.locator(".almagest-search-row[data-kind='make']").count()).toBe(0);
+		await box.locator(".almagest-search-row[data-kind='files']").click();
+		const search = o.page.locator(".workspace-leaf-content[data-type='search'] .search-input-container input");
+		await until("Obsidian's search", async () => (await search.count()) === 1 && (await search.inputValue()) === '"one commit"');
+		expect(o.errors).toEqual([]);
+	});
+
+	it("Make topic links the selection and starts the agent that drafts the topic; a title the wiki holds gets the link and no agent", { timeout: 120_000 }, async () => {
+		const note = "scratchpad/Notes.md";
+		const o = await launch({
+			prepare: async (vault) => {
+				await mkdir(path.join(vault, "scratchpad"), { recursive: true });
+				await writeFile(path.join(vault, note), "# Notes\n\nThe commit log keeps each change document.\n");
+			},
+		});
+		await addTopics(o, [{ title: "Change record", aliases: ["change document"], body: "## Definition\n\nA change record.\n" }]);
+		const out = await stubTerminal(o);
+		await open(o, note, "source");
+		await rightClick(o, "commit log");
+		await o.page.locator(".menu .menu-item", { hasText: "Almagest make topic" }).click();
+		const modal = o.page.locator(".almagest-make-topic");
+		expect(await modal.locator("input").inputValue()).toBe("Commit log");
+		await modal.locator("input").press("Enter");
+
+		await saved(o, note, "The [[Commit log|commit log]] keeps each change document.");
+		const command = await terminalCommand(out);
+		const doc = await workDoc(o, "Draft Commit log");
+		expect(doc.kind).toBe("draft");
+		const message = `/almagest:wiki-edit Draft a topic titled Commit log from the note ${note}, where the user linked "commit log" to it, and what the wiki holds; give it a why. Your work document is [[${doc.title}]] (${doc.id}): report each step with change progress, and propose into it with change propose and id ${doc.id}.`;
+		expect(command).toMatch(TIP_THEN_AGENT);
+		expect(command.endsWith(` && claude '${message.replace(/'/g, "'\\''")}'`)).toBe(true);
+
+		// An alias of a document: the link, and no agent.
+		await open(o, note, "source");
+		await o.page.evaluate(() => {
+			const editor = (window as any).app.workspace.activeEditor.editor;
+			const from = editor.getValue().indexOf("change document");
+			editor.setSelection(editor.offsetToPos(from), editor.offsetToPos(from + "change document".length));
+			(window as any).app.commands.executeCommandById("almagest:make-topic");
+		});
+		await modal.locator("input").press("Enter");
+		await saved(o, note, "keeps each [[Change record|change document]].");
+		await until("the notice", async () => (await notices(o)).includes("Almagest: Change record exists, so the selection links it. No agent started."), { describe: async () => JSON.stringify(await notices(o)) });
+		const running = JSON.parse(await o.almagest(["vault", "--json"])).status.changes.running as { title: string }[];
+		expect(running.filter((r) => / Draft /.test(r.title)).length).toBe(1);
+
+		// A record takes no link: Make topic leaves the menu there.
+		await open(o, doc.path, "source");
+		const items = await rightClick(o, "Progress");
+		expect(items).toContain("Almagest quick search");
+		expect(items).not.toContain("Almagest make topic");
 		expect(o.errors).toEqual([]);
 	});
 

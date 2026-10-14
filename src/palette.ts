@@ -3,11 +3,12 @@ import { saveOpen } from "./change";
 import { CheckoutModal, returnCheckout, startCheckout } from "./checkout";
 import { Checkout, LEDGER, indexPath } from "./checkoutstate";
 import { SessionGroups, SessionState, plainLinks } from "./agents";
-import { INGEST, RETURNED, SESSIONS, TOOL, TRASH, formatAgo, isSnapshotPath, lastProgressLine, linkTitle } from "./helpers";
+import { HOME, INGEST, RETURNED, SESSIONS, TOOL, TRASH, formatAgo, isDocumentPath, isSnapshotPath, lastProgressLine, linkTitle } from "./helpers";
 import { wikifyBlocked } from "./marks";
 import { JOURNALS, JournalVolume, publishBlocked } from "./journalstate";
 import type AlmagestPlugin from "./main";
 import { ingestMessage, repairMessage, resolveMessage } from "./messages";
+import { Neighbors, navGroups, navLine, navMeta } from "./navstate";
 import {
 	AREAS,
 	Area,
@@ -71,6 +72,7 @@ const AREA_ICONS: Record<Area, string> = {
 	journals: "notebook-pen",
 	library: "library",
 	agents: "bot",
+	navigator: "compass",
 	note: "file-text",
 };
 
@@ -82,6 +84,7 @@ const AREA_NAMES: Record<Area, string> = {
 	journals: "Journals",
 	library: "Library",
 	agents: "Agents",
+	navigator: "Navigator",
 	note: "This note",
 };
 
@@ -105,6 +108,11 @@ export class PaletteView extends ItemView {
 	/** The running subagents of each session, by the session's title. */
 	private subagents = new Map<string, number>();
 	private lint: LintSummary | null = null;
+	/** The neighbors of the last document the navigator read, and why the read failed. */
+	private neighbors: Neighbors | null = null;
+	private navError = "";
+	/** Counts the reads of the neighbors, so only the last one lands. */
+	private navReads = 0;
 	private busy: Action | null = null;
 	/** The folder of the checkout that Return proposes now. */
 	private returning = "";
@@ -136,7 +144,7 @@ export class PaletteView extends ItemView {
 		this.registerEvent(this.app.vault.on("modify", (f) => touch(f.path)));
 		this.registerEvent(this.app.vault.on("delete", (f) => touch(f.path)));
 		this.registerEvent(this.app.vault.on("rename", (f, old) => touch(f.path, old)));
-		this.registerEvent(this.app.workspace.on("file-open", () => this.draw()));
+		this.registerEvent(this.app.workspace.on("file-open", () => void this.readNeighbors().then(() => this.draw())));
 		this.registerInterval(window.setInterval(() => void this.refresh(), REFRESH_MS));
 		this.draw();
 		void this.refresh();
@@ -157,6 +165,7 @@ export class PaletteView extends ItemView {
 			do {
 				this.again = false;
 				await this.readStatus();
+				await this.readNeighbors();
 			} while (this.again);
 		} finally {
 			this.loading = false;
@@ -198,6 +207,30 @@ export class PaletteView extends ItemView {
 			this.error = (e as Error).message;
 		}
 		this.plugin.checkConversations();
+	}
+
+	/** Reads the neighbors of the open document; a file that is no document has none. */
+	private async readNeighbors(): Promise<void> {
+		const read = ++this.navReads;
+		const file = this.app.workspace.getActiveFile();
+		const id: unknown = file && isDocumentPath(file.path) ? this.app.metadataCache.getFileCache(file)?.frontmatter?.id : undefined;
+		if (typeof id !== "string" || id === "" || this.plugin.needs() !== "") {
+			this.neighbors = null;
+			this.navError = "";
+			return;
+		}
+		try {
+			const n = await this.plugin.almagest<Neighbors>(["neighbors", id]);
+			if (read === this.navReads) [this.neighbors, this.navError] = [n, ""];
+		} catch (e) {
+			if (read === this.navReads) [this.neighbors, this.navError] = [null, (e as Error).message];
+		}
+	}
+
+	/** The neighbors of the open file, once read; null while they are read and for a file that is no document. */
+	private openNeighbors(): Neighbors | null {
+		const path = this.app.workspace.getActiveFile()?.path;
+		return this.neighbors && this.neighbors.document.path === path ? this.neighbors : null;
 	}
 
 	/** Draws the page the palette shows. */
@@ -249,6 +282,7 @@ export class PaletteView extends ItemView {
 
 	private async migrate(): Promise<void> {
 		const { migration } = await this.plugin.almagest<{ migration: Migration }>(["vault", "migrate"]);
+		this.plugin.hideLayoutNotice();
 		new Notice(`Almagest: migrated the vault in one commit: ${plural(migration.moved.length, "file", "files")} moved into ${TOOL}/. Start a new agent session in the vault.`, 10_000);
 	}
 
@@ -274,11 +308,12 @@ export class PaletteView extends ItemView {
 			return;
 		}
 		const agents = this.plugin.conversations.list().length;
-		const hasNote = this.app.workspace.getActiveFile() !== null;
-		const groups: Area[][] = [AREAS.filter((a) => a !== "note"), ["note"]];
+		const file = this.app.workspace.getActiveFile();
+		const nav = navLine(this.openNeighbors(), file !== null && isDocumentPath(file.path));
+		const groups: Area[][] = [AREAS.filter((a) => a !== "navigator" && a !== "note"), ["navigator", "note"]];
 		for (const group of groups) {
-			const nav = root.createDiv({ cls: "almagest-nav" });
-			for (const area of group) this.navRow(nav, area, areaLine(area, s, agents, hasNote));
+			const el = root.createDiv({ cls: "almagest-nav" });
+			for (const area of group) this.navRow(el, area, areaLine(area, s, agents, file !== null, nav));
 		}
 	}
 
@@ -326,6 +361,8 @@ export class PaletteView extends ItemView {
 				return this.renderLibrary(page, s);
 			case "agents":
 				return this.renderAgents(page, s);
+			case "navigator":
+				return this.renderNavigator(page);
 			case "note":
 				return this.renderNote(page, s);
 		}
@@ -558,6 +595,38 @@ export class PaletteView extends ItemView {
 			};
 		}
 		return li;
+	}
+
+	private renderNavigator(page: HTMLElement): void {
+		this.lede(page, "The documents above, beside, and below the wiki document you read. Open one to move there, and the navigator follows.");
+		const file = this.app.workspace.getActiveFile();
+		if (!file || !isDocumentPath(file.path)) {
+			const el = page.createDiv({ cls: "almagest-empty" });
+			el.appendText(file ? `${file.basename} is not a wiki document. Open a topic, a source, or a repository; ` : "Open a topic, a source, or a repository; ");
+			this.link(el, "Home", HOME);
+			el.appendText(" lists where to start.");
+			return;
+		}
+		if (this.navError) {
+			page.createDiv({ cls: "almagest-error", text: `Almagest: ${this.navError}` });
+			return;
+		}
+		const n = this.openNeighbors();
+		if (!n) {
+			this.empty(page, "Reading the document…");
+			return;
+		}
+		this.item(this.list(page, "Reading", 1), { title: n.document.title, path: n.document.path, meta: navMeta(n.document) });
+		const groups = navGroups(n);
+		if (groups.length === 0) {
+			this.empty(page, `No document lies above, below, or beside ${n.document.title}, and it cites none.`);
+			return;
+		}
+		for (const g of groups) {
+			const list = this.list(page, g.label, g.refs.length);
+			list.dataset.group = g.key;
+			for (const r of g.refs) this.item(list, { title: r.title, path: r.path, meta: navMeta(r) });
+		}
 	}
 
 	private renderNote(page: HTMLElement, s: PaletteState): void {
