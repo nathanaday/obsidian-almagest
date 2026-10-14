@@ -454,30 +454,36 @@ describe("Almagest in Obsidian", () => {
 		await until("Obsidian to drop the navigator", () => o.page.evaluate(() => !(window as any).app.vault.getFileByPath("wiki-view/View · Navigator.base")));
 		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
 		await until("the first navigator in the right sidebar", async () => JSON.stringify(await leaves()) === "[true]", { describe: async () => JSON.stringify(await leaves()) });
-		// The Base open in a main tab is no navigator: the command still opens one in the sidebar.
-		await o.page.evaluate(async () => {
-			const app = (window as any).app;
-			for (const leaf of app.workspace.getLeavesOfType("bases")) leaf.detach();
-			await app.workspace.getLeaf("tab").openFile(app.vault.getFileByPath("wiki-view/View · Navigator.base"));
-		});
-		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
-		await until("the navigator in the right sidebar", async () => (await leaves()).filter(Boolean).length === 1, {
-			describe: async () => `leaves ${JSON.stringify(await leaves())}; right ${await o.page.evaluate(() => { const ws = (window as any).app.workspace; const out: string[] = []; ws.iterateAllLeaves((l: any) => out.push(`${l.view?.getViewType()}:${l.view?.file?.path ?? ""}:${l.getRoot() === ws.rightSplit}`)); return out.join(" | "); })}; errors ${o.errors.join(" / ")}`,
-		});
-		expect((await leaves()).sort()).toEqual([false, true]);
-		await o.page.evaluate(() => {
-			const ws = (window as any).app.workspace;
-			ws.iterateAllLeaves((leaf: any) => {
-				if (leaf.view?.getViewType() === "bases" && leaf.view.file?.path === "wiki-view/View · Navigator.base" && leaf.getRoot() !== ws.rightSplit) leaf.detach();
-			});
-		});
-
 		const open = async (title: string) => {
 			await o.page.evaluate(async (file) => {
 				const app = (window as any).app;
 				await app.workspace.getLeaf(false).openFile(app.vault.getFileByPath(file));
 			}, `${D}/${title}.md`);
 		};
+		const mainFiles = () =>
+			o.page.evaluate(() => {
+				const ws = (window as any).app.workspace;
+				const out: string[] = [];
+				ws.iterateRootLeaves((leaf: any) => out.push(leaf.getViewState().state?.file ?? ""));
+				return out;
+			});
+		// The Base opened in a main tab reads itself: it moves to the sidebar, and the tab shows its note again.
+		await open("Training");
+		const openBase = (where: false | "tab") =>
+			o.page.evaluate(async (where) => {
+				const app = (window as any).app;
+				await app.workspace.getLeaf(where).openFile(app.vault.getFileByPath("wiki-view/View · Navigator.base"));
+			}, where);
+		await openBase(false);
+		await until("the navigator in the sidebar, and the note back in its tab", async () => JSON.stringify(await leaves()) === "[true]" && JSON.stringify(await mainFiles()) === JSON.stringify([`${D}/Training.md`]), {
+			describe: async () => `leaves ${JSON.stringify(await leaves())}; main ${JSON.stringify(await mainFiles())}`,
+		});
+		// A new tab that opens it closes.
+		await openBase("tab");
+		await until("the new tab closed", async () => JSON.stringify(await leaves()) === "[true]" && JSON.stringify(await mainFiles()) === JSON.stringify([`${D}/Training.md`]), {
+			describe: async () => `leaves ${JSON.stringify(await leaves())}; main ${JSON.stringify(await mainFiles())}`,
+		});
+
 		const expectations: Record<string, Record<string, string[]>> = {
 			"Transfer Learning": { "1 · Up": ["Training"], "2 · Beside": ["Optimizers"], "3 · Below": ["Fine-Tuning"] },
 			CS566: { "1 · Up": ["Machine Learning"], "3 · Below": ["Backprop"], "4 · Sources below": ["Block 7 Slides"] },
@@ -525,6 +531,22 @@ describe("Almagest in Obsidian", () => {
 		expect(await states()).toEqual(["true:true"]);
 		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
 		await until("the restored navigator, shown", async () => JSON.stringify(await states()) === '["true:false"]', { describe: async () => JSON.stringify(await states()) });
+		// A layout saved with the Base in a main tab, as an older plugin left it, opens with the navigator in the sidebar.
+		await o.restart({
+			between: async () => {
+				const file = path.join(o.vault, ".obsidian/workspace.json");
+				const layout = JSON.parse(await readFile(file, "utf8"));
+				const leaf = (n: any): any => (n.type === "leaf" ? n : (n.children ?? []).map(leaf).find(Boolean));
+				leaf(layout.main).state = { type: "bases", state: { file: "wiki-view/View · Navigator.base", viewName: "Navigator" } };
+				await writeFile(file, JSON.stringify(layout));
+			},
+		});
+		await until("the notice of the move", () =>
+			o.page.evaluate(() => [...document.querySelectorAll(".notice")].some((n) => n.textContent?.includes("so it opens in the right sidebar"))),
+		);
+		await until("the restored main tab closed, and the navigator in the sidebar", async () => /^\["true:(true|false)"\]$/.test(JSON.stringify(await states())), {
+			describe: async () => JSON.stringify(await states()),
+		});
 		expect(o.errors).toEqual([]);
 	});
 

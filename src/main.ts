@@ -82,6 +82,9 @@ export default class AlmagestPlugin extends Plugin {
 	);
 
 	private layoutNotice: Notice | null = null;
+	/** The file each main leaf showed last, which a leaf that opens the navigator shows again. */
+	private shown = new WeakMap<WorkspaceLeaf, string>();
+	private movingNavigator = false;
 	private settingTab: AlmagestSettingTab | null = null;
 	/** The choice of host and Duet's state, as the tip and the settings last showed them. */
 	private duetKey = "";
@@ -159,6 +162,10 @@ export default class AlmagestPlugin extends Plugin {
 			void this.checkBinary();
 			this.onLayoutChange();
 			this.watchForSnapshots();
+			void this.moveNavigator();
+			// layout-change comes after a pause, so file-open keeps each leaf's file too.
+			this.registerEvent(this.app.workspace.on("file-open", () => void this.moveNavigator()));
+			this.registerEvent(this.app.workspace.on("layout-change", () => void this.moveNavigator()));
 		});
 	}
 
@@ -405,6 +412,39 @@ export default class AlmagestPlugin extends Plugin {
 			await leaf.openFile(file, { active: false });
 		}
 		await workspace.revealLeaf(leaf);
+	}
+
+	/**
+	 * Moves the navigator out of every leaf outside the sidebars, where its Base reads itself
+	 * and shows nothing: the leaf shows its last file again, or closes, and the navigator
+	 * opens in the right sidebar.
+	 */
+	private async moveNavigator(): Promise<void> {
+		if (this.movingNavigator) return;
+		const { workspace } = this.app;
+		const stray: WorkspaceLeaf[] = [];
+		workspace.iterateAllLeaves((l) => {
+			const root = l.getRoot();
+			if (root === workspace.leftSplit || root === workspace.rightSplit) return;
+			const state = l.getViewState();
+			const file: unknown = state.state?.file;
+			if (state.type === BASES_VIEW && file === NAVIGATOR) stray.push(l);
+			else if (typeof file === "string") this.shown.set(l, file);
+		});
+		if (!stray.length) return;
+		this.movingNavigator = true;
+		try {
+			for (const leaf of stray) {
+				const last = this.shown.get(leaf);
+				const file = last ? this.app.vault.getFileByPath(last) : null;
+				if (file) await leaf.openFile(file);
+				else leaf.detach();
+			}
+			await this.openNavigator();
+		} finally {
+			this.movingNavigator = false;
+		}
+		new Notice("Almagest: the navigator shows the neighbors of the note you read, so it opens in the right sidebar.");
 	}
 
 	/** A file once Obsidian sees it, or null after a while: a file the binary just wrote takes a moment. */

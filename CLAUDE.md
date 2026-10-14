@@ -69,7 +69,12 @@ repository. This file holds what the code and the README do not say.
   open note. It reuses a leaf only in the right split whose view state is a Base of that
   file: the backlinks pane follows the same file, a main tab would read the Base itself,
   and a leaf that Obsidian restored at start is deferred, with no view yet. When the file
-  is missing, it runs a views sync first.
+  is missing, it runs a views sync first. A navigator that opens in any leaf outside the
+  sidebars (from the file explorer, a link, or a layout saved that way) moves to the
+  right sidebar (`moveNavigator`, on `file-open` and `layout-change`): the leaf shows its
+  last file again, or closes, and a notice says why. `layout-change` comes after a pause,
+  so `file-open` records each leaf's file too. The move acts only on a leaf of the
+  plugin's own file.
 - **A terminal launch fails where no one sees it** (osascript and `open` exit after the
   spawn), so `openTerminal` checks for the app first. `scripts/probe-launch.mjs` opens a
   real terminal with a probe; record each result in TESTED.md.
