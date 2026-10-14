@@ -405,27 +405,18 @@ describe("Almagest in Obsidian", () => {
 		return `---\nid: ${id}\ntype: ${type}\ndescription: "The ${id} document."\ncreated: 2026-10-13T10:00:00\nupdated: 2026-10-13T10:00:00\n${fields}---\n\nBody.\n`;
 	}
 
-	/** The navigator's groups for the open note: each group's label, and the titles in it. */
-	async function navigatorRows(o: ObsidianInstance): Promise<Record<string, string>> {
-		const text = await o.page.evaluate((nav) => {
-			const ws = (window as any).app.workspace;
-			let found = "";
-			ws.iterateAllLeaves((leaf: any) => {
-				if (leaf.view?.getViewType() === "bases" && leaf.view.file?.path === nav) found = (leaf.view.containerEl as HTMLElement).querySelector(".bases-view")?.textContent ?? "";
+	/** The navigator page's groups: each group's key, and the titles in it. */
+	async function navigatorRows(palette: Palette): Promise<Record<string, string[]>> {
+		return palette.evaluate((el) => {
+			const out: Record<string, string[]> = {};
+			el.querySelectorAll<HTMLElement>("ul[data-group]").forEach((ul) => {
+				out[ul.dataset.group!] = [...ul.querySelectorAll(".almagest-item-title")].map((t) => t.textContent ?? "");
 			});
-			return found;
-		}, "wiki-view/View · Navigator.base");
-		const labels = ["1 · Up", "2 · Beside", "3 · Below", "4 · Sources below", "5 · Sources", "6 · Cited by"];
-		// Each group opens with its label; "4 · Sources below" holds "5 · Sources" only as a number apart.
-		const found = labels.map((l) => ({ l, at: text.indexOf(l) })).filter((x) => x.at >= 0).sort((a, b) => a.at - b.at);
-		const groups: Record<string, string> = {};
-		found.forEach((x, i) => {
-			groups[x.l] = text.slice(x.at + x.l.length, found[i + 1]?.at ?? text.length);
+			return out;
 		});
-		return groups;
 	}
 
-	it("opens the navigator in the right sidebar, where it shows the documents above, beside, and below the open note", { timeout: 120_000 }, async () => {
+	it("shows the navigator in the palette: the documents above, beside, and below the open document", { timeout: 120_000 }, async () => {
 		const D = "tool/source-core/documents";
 		const o = await launch({
 			prepare: async (vault) => {
@@ -438,115 +429,71 @@ describe("Almagest in Obsidian", () => {
 				await write("Fine-Tuning", doc("doc-finet0", "topic", 'kind: concept\ntags: [ml/cs566]\nup: ["[[Transfer Learning]]"]\nsources: ["[[Block 7 Slides]]"]\n'));
 				await write("Backprop", doc("doc-backp0", "topic", "kind: concept\ntags: [ml/cs566]\n"));
 				await write("Block 7 Slides", doc("doc-block7", "source", "tags: [ml/cs566]\n"));
+				// The navigator of 11.1, open in the right sidebar of a saved layout.
+				await writeFile(path.join(vault, "wiki-view/View · Navigator.base"), "filters:\n  and: []\nviews: []\n");
 			},
 		});
-		const leaves = () =>
-			o.page.evaluate(() => {
-				const ws = (window as any).app.workspace;
-				const found: boolean[] = [];
-				ws.iterateAllLeaves((leaf: any) => {
-					if (leaf.view?.getViewType() === "bases" && leaf.view.file?.path === "wiki-view/View · Navigator.base") found.push(leaf.getRoot() === ws.rightSplit);
-				});
-				return found;
-			});
-		// No sync has written the navigator yet: the command syncs first.
-		await rm(path.join(o.vault, "wiki-view/View · Navigator.base"), { force: true });
-		await until("Obsidian to drop the navigator", () => o.page.evaluate(() => !(window as any).app.vault.getFileByPath("wiki-view/View · Navigator.base")));
-		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
-		await until("the first navigator in the right sidebar", async () => JSON.stringify(await leaves()) === "[true]", { describe: async () => JSON.stringify(await leaves()) });
-		const open = async (title: string) => {
-			await o.page.evaluate(async (file) => {
+		await o.almagest(["vault", "sync", "--views"]);
+		expect(existsSync(path.join(o.vault, "wiki-view/View · Navigator.base"))).toBe(false);
+		expect(await o.page.evaluate(() => Object.keys((window as any).app.commands.commands).filter((id) => id.startsWith("almagest:") && /navigator/.test(id)))).toEqual([]);
+
+		const open = (file: string) =>
+			o.page.evaluate(async (file) => {
 				const app = (window as any).app;
 				await app.workspace.getLeaf(false).openFile(app.vault.getFileByPath(file));
-			}, `${D}/${title}.md`);
-		};
-		const mainFiles = () =>
-			o.page.evaluate(() => {
-				const ws = (window as any).app.workspace;
-				const out: string[] = [];
-				ws.iterateRootLeaves((leaf: any) => out.push(leaf.getViewState().state?.file ?? ""));
-				return out;
-			});
-		// The Base opened in a main tab reads itself: it moves to the sidebar, and the tab shows its note again.
-		await open("Training");
-		const openBase = (where: false | "tab") =>
-			o.page.evaluate(async (where) => {
-				const app = (window as any).app;
-				await app.workspace.getLeaf(where).openFile(app.vault.getFileByPath("wiki-view/View · Navigator.base"));
-			}, where);
-		await openBase(false);
-		await until("the navigator in the sidebar, and the note back in its tab", async () => JSON.stringify(await leaves()) === "[true]" && JSON.stringify(await mainFiles()) === JSON.stringify([`${D}/Training.md`]), {
-			describe: async () => `leaves ${JSON.stringify(await leaves())}; main ${JSON.stringify(await mainFiles())}`,
-		});
-		// A new tab that opens it closes.
-		await openBase("tab");
-		await until("the new tab closed", async () => JSON.stringify(await leaves()) === "[true]" && JSON.stringify(await mainFiles()) === JSON.stringify([`${D}/Training.md`]), {
-			describe: async () => `leaves ${JSON.stringify(await leaves())}; main ${JSON.stringify(await mainFiles())}`,
-		});
+			}, file);
+		const palette = await openPalette(o);
+		await open("wiki-view/View · Home.md");
+		expect(await line(palette, "navigator")).toBe("Open a wiki document");
+		await goTo(palette, "navigator");
+		// A note that is no document says where to start, with a link to Home.
+		expect(await palette.locator(".almagest-empty").innerText()).toBe("View · Home is not a wiki document. Open a topic, a source, or a repository; Home lists where to start.");
 
 		const expectations: Record<string, Record<string, string[]>> = {
-			"Transfer Learning": { "1 · Up": ["Training"], "2 · Beside": ["Optimizers"], "3 · Below": ["Fine-Tuning"] },
-			CS566: { "1 · Up": ["Machine Learning"], "3 · Below": ["Backprop"], "4 · Sources below": ["Block 7 Slides"] },
-			"Fine-Tuning": { "1 · Up": ["Transfer Learning"], "5 · Sources": ["Block 7 Slides"] },
-			"Block 7 Slides": { "1 · Up": ["CS566"], "6 · Cited by": ["Fine-Tuning"] },
-			"Machine Learning": { "3 · Below": ["CS566", "Training"] },
+			"Transfer Learning": { up: ["Training"], beside: ["Optimizers"], below: ["Fine-Tuning"] },
+			CS566: { up: ["Machine Learning"], below: ["Backprop"], sources_below: ["Block 7 Slides"] },
+			"Fine-Tuning": { up: ["Transfer Learning"], sources: ["Block 7 Slides"] },
+			"Block 7 Slides": { up: ["CS566"], cited_by: ["Fine-Tuning"] },
+			"Machine Learning": { below: ["CS566", "Training"] },
 		};
 		for (const [title, want] of Object.entries(expectations)) {
-			await open(title);
-			const all = Object.values(expectations).flatMap((g) => Object.values(g).flat());
-			await until(`the navigator for ${title}`, async () => {
-				const got = await navigatorRows(o);
-				if (JSON.stringify(Object.keys(got).sort()) !== JSON.stringify(Object.keys(want).sort())) return false;
-				for (const [group, titles] of Object.entries(want)) {
-					const text = got[group] ?? "";
-					if (!titles.every((t) => text.includes(t))) return false;
-					// No other document of the map shows in the group.
-					if (all.some((t) => !titles.includes(t) && t !== title && text.includes(t))) return false;
-				}
-				return true;
-			}, { describe: async () => JSON.stringify(await navigatorRows(o)) });
-		}
-
-		// The palette's action, like a second run of the command, reuses the leaf.
-		const palette = await openPalette(o);
-		await goTo(palette, "library");
-		await palette.locator('button[data-action="navigator"]').click();
-		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
-		expect(await leaves()).toEqual([true]);
-		// Obsidian restores a layout with its hidden tabs deferred; the command still finds the navigator.
-		await o.page.evaluate(async () => {
-			const ws = (window as any).app.workspace;
-			await ws.changeLayout(ws.getLayout());
-		});
-		const states = () =>
-			o.page.evaluate(() => {
-				const ws = (window as any).app.workspace;
-				const found: string[] = [];
-				ws.iterateAllLeaves((leaf: any) => {
-					const v = leaf.getViewState();
-					if (v.type === "bases" && v.state?.file === "wiki-view/View · Navigator.base") found.push(`${leaf.getRoot() === ws.rightSplit}:${leaf.isDeferred}`);
-				});
-				return found;
+			await open(`${D}/${title}.md`);
+			await until(`the navigator for ${title}`, async () => JSON.stringify(await navigatorRows(palette)) === JSON.stringify(want), {
+				describe: async () => JSON.stringify(await navigatorRows(palette)),
 			});
-		expect(await states()).toEqual(["true:true"]);
-		await o.page.evaluate(() => (window as any).app.commands.executeCommandById("almagest:open-navigator"));
-		await until("the restored navigator, shown", async () => JSON.stringify(await states()) === '["true:false"]', { describe: async () => JSON.stringify(await states()) });
-		// A layout saved with the Base in a main tab, as an older plugin left it, opens with the navigator in the sidebar.
+			expect(await palette.locator(".almagest-list-head", { hasText: "Reading" }).count()).toBe(1);
+		}
+		// A click on a neighbor opens it in the editor, and the navigator follows.
+		await palette.locator('ul[data-group="below"] .almagest-link', { hasText: "Training" }).click();
+		await until("the navigator for Training", async () => JSON.stringify(await navigatorRows(palette)) === JSON.stringify({ up: ["Machine Learning"], below: ["Optimizers", "Transfer Learning"] }), {
+			describe: async () => JSON.stringify(await navigatorRows(palette)),
+		});
+		expect(await o.page.evaluate(() => (window as any).app.workspace.getActiveFile()?.path)).toBe(`${D}/Training.md`);
+		expect(await line(palette, "navigator")).toBe("Training · 1 up, 2 below");
+		// A document with nothing around it says so.
+		await writeFile(path.join(o.vault, D, "Alone.md"), doc("doc-alone0", "topic", "kind: concept\n"));
+		await until("Obsidian to see Alone", () => o.page.evaluate(() => !!(window as any).app.vault.getFileByPath("tool/source-core/documents/Alone.md")));
+		await open(`${D}/Alone.md`);
+		await goTo(palette, "navigator");
+		await until("the navigator for Alone", async () => (await palette.locator(".almagest-empty").count()) > 0);
+		expect(await palette.locator(".almagest-empty").innerText()).toBe("No document lies above, below, or beside Alone, and it cites none.");
+
+		// A layout saved with the old navigator in the sidebar opens without it, and without an empty leaf in its place.
 		await o.restart({
 			between: async () => {
+				await writeFile(path.join(o.vault, "wiki-view/View · Navigator.base"), "filters:\n  and: []\nviews: []\n");
 				const file = path.join(o.vault, ".obsidian/workspace.json");
 				const layout = JSON.parse(await readFile(file, "utf8"));
-				const leaf = (n: any): any => (n.type === "leaf" ? n : (n.children ?? []).map(leaf).find(Boolean));
-				leaf(layout.main).state = { type: "bases", state: { file: "wiki-view/View · Navigator.base", viewName: "Navigator" } };
+				layout.right.children[0].children.push({ id: "oldnavigator00001", type: "leaf", state: { type: "bases", state: { file: "wiki-view/View · Navigator.base", viewName: "Navigator" } } });
 				await writeFile(file, JSON.stringify(layout));
 			},
 		});
-		await until("the notice of the move", () =>
-			o.page.evaluate(() => [...document.querySelectorAll(".notice")].some((n) => n.textContent?.includes("so it opens in the right sidebar"))),
-		);
-		await until("the restored main tab closed, and the navigator in the sidebar", async () => /^\["true:(true|false)"\]$/.test(JSON.stringify(await states())), {
-			describe: async () => JSON.stringify(await states()),
-		});
+		const right = () =>
+			o.page.evaluate(() => {
+				const ws = (window as any).app.workspace;
+				return ws.getLeavesOfType("almagest-palette").length === 0 ? null : ["bases", "empty"].flatMap((t) => ws.getLeavesOfType(t)).filter((l: any) => l.getRoot() === ws.rightSplit).map((l: any) => l.getViewState().type);
+			});
+		await until("the restored layout, without the old navigator", async () => JSON.stringify(await right()) === "[]", { describe: async () => JSON.stringify(await right()) });
 		expect(o.errors).toEqual([]);
 	});
 

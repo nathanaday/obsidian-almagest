@@ -7,8 +7,8 @@ export const SESSIONS = "tool/sessions";
 export const TRASH = "tool/trash";
 export const RETURNED = "tool/returned";
 const WIKI_VIEW = "wiki-view/";
-/** The navigator: a Base that a sync writes, for the right sidebar. */
-export const NAVIGATOR = "wiki-view/View · Navigator.base";
+/** The entry to the wiki, which a sync writes. */
+export const HOME = "wiki-view/View · Home.md";
 export const INGEST = "ingest/";
 
 /** Whether a path lies in tool/source-core/documents. */
@@ -31,7 +31,7 @@ export interface Synced {
  * The protocols this plugin reads: the version of the commands, flags, and JSON of the
  * binary (`almagest version --json` prints its own). Each side names the update it needs.
  */
-export const PROTOCOLS = [2];
+export const PROTOCOLS = [3];
 
 /** How to install the agent plugin, whose launcher installs the binary. */
 const INSTALL_AGENT =

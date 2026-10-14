@@ -23,7 +23,7 @@ import {
 	lastProgressLine,
 	linkTitle,
 	movedNotices,
-	NAVIGATOR,
+	HOME,
 	strayNotices,
 	syncSummary,
 	syncedPaths,
@@ -124,7 +124,7 @@ test("the folders of layout 10", () => {
 	assert.ok(isDocumentPath("tool/source-core/documents/Lidar.md"));
 	assert.ok(!isDocumentPath("tool/source-core/originals/Lidar.pdf"));
 	assert.ok(!isDocumentPath("wiki/documents/Lidar.md"));
-	assert.equal(NAVIGATOR, "wiki-view/View · Navigator.base");
+	assert.equal(HOME, "wiki-view/View · Home.md");
 });
 
 test("a quiet snapshot counts every event outside the config folder and wiki-view/", () => {
@@ -186,10 +186,10 @@ test("quick search lists every document type and nothing else", () => {
 test("the plugin names the update that lets it use the binary", () => {
 	assert.match(binaryProblem(null, null), /none is installed\. Install the Almagest agent plugin: .*claude plugin install almagest@nathanaday-almagest/);
 	assert.match(binaryProblem(null, "/x/almagest"), /cannot run its binary at \/x\/almagest/);
-	assert.equal(binaryProblem({ version: "11.1.0", protocol: 2 }, "/x"), "");
-	// 11.0 has no vault migrate, so this plugin cannot use it.
-	assert.match(binaryProblem({ version: "11.0.1", protocol: 1 }, "/x"), /almagest 11\.0\.1 is older than this plugin reads\. Update the agent plugin \(claude plugin update almagest@nathanaday-almagest\)/);
+	assert.equal(binaryProblem({ version: "11.2.0", protocol: 3 }, "/x"), "");
+	// 11.1 has no neighbors command, so this plugin cannot use it.
+	assert.match(binaryProblem({ version: "11.1.0", protocol: 2 }, "/x"), /almagest 11\.1\.0 is older than this plugin reads\. Update the agent plugin \(claude plugin update almagest@nathanaday-almagest\)/);
 	assert.match(binaryProblem({ version: "10.9.0" }, "/x"), /older than this plugin reads/);
-	assert.match(binaryProblem({ version: "12.0.0", protocol: 3 }, "/x"), /newer than this plugin reads\. Update Almagest in Obsidian's community plugins\./);
-	assert.deepEqual(PROTOCOLS, [2]);
+	assert.match(binaryProblem({ version: "12.0.0", protocol: 4 }, "/x"), /newer than this plugin reads\. Update Almagest in Obsidian's community plugins\./);
+	assert.deepEqual(PROTOCOLS, [3]);
 });

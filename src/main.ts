@@ -1,4 +1,4 @@
-import { FileSystemAdapter, MarkdownView, Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
+import { FileSystemAdapter, MarkdownView, Notice, Plugin, TAbstractFile, TFile } from "obsidian";
 import { ChangeRunner, changeProcessor } from "./change";
 import { AlmagestError, binaryInfo, findBinary, runAlmagest } from "./cli";
 import {
@@ -15,7 +15,6 @@ import {
 	strayNotices,
 	syncSummary,
 	syncedPaths,
-	NAVIGATOR,
 } from "./helpers";
 import { QuietTimer } from "./quiet";
 import { repoProcessor } from "./repo";
@@ -45,8 +44,8 @@ const SYNC_DELAY = 2000;
 const ECHO_WINDOW = 5000;
 /** How long to wait for Obsidian to see a document the binary wrote. */
 const SEE_MS = 10_000;
-/** The view type of a Base. The backlinks and outline panes follow the active file too, so the type tells the navigator apart. */
-const BASES_VIEW = "bases";
+/** The navigator of 11.1 and before, a Base that a sync no longer writes. */
+const OLD_NAVIGATOR = "wiki-view/View · Navigator.base";
 
 export default class AlmagestPlugin extends Plugin {
 	settings: AlmagestSettings = { ...DEFAULT_SETTINGS };
@@ -82,9 +81,6 @@ export default class AlmagestPlugin extends Plugin {
 	);
 
 	private layoutNotice: Notice | null = null;
-	/** The file each main leaf showed last, which a leaf that opens the navigator shows again. */
-	private shown = new WeakMap<WorkspaceLeaf, string>();
-	private movingNavigator = false;
 	private settingTab: AlmagestSettingTab | null = null;
 	/** The choice of host and Duet's state, as the tip and the settings last showed them. */
 	private duetKey = "";
@@ -126,7 +122,6 @@ export default class AlmagestPlugin extends Plugin {
 		this.registerView(PALETTE_VIEW, (leaf) => new PaletteView(leaf, this));
 		this.addRibbonIcon(PALETTE_ICON, "Almagest", () => void this.openPalette());
 		this.addCommand({ id: "open-palette", name: "Open the tool palette", callback: () => void this.openPalette() });
-		this.addCommand({ id: "open-navigator", name: "Open the navigator", callback: () => void this.openNavigator() });
 
 		this.addCommand({ id: "start-agent", name: "Start agent", callback: () => void this.startAgent() });
 		this.addCommand({
@@ -159,13 +154,10 @@ export default class AlmagestPlugin extends Plugin {
 		);
 		this.colorFolders();
 		this.app.workspace.onLayoutReady(() => {
+			this.closeOldNavigator();
 			void this.checkBinary();
 			this.onLayoutChange();
 			this.watchForSnapshots();
-			void this.moveNavigator();
-			// layout-change comes after a pause, so file-open keeps each leaf's file too.
-			this.registerEvent(this.app.workspace.on("file-open", () => void this.moveNavigator()));
-			this.registerEvent(this.app.workspace.on("layout-change", () => void this.moveNavigator()));
 		});
 	}
 
@@ -383,68 +375,14 @@ export default class AlmagestPlugin extends Plugin {
 	}
 
 	/**
-	 * Shows the navigator in the right sidebar, where its Base reads the open note. A sidebar
-	 * leaf whose Base shows it already is reused; in a main tab the Base would read itself. A
-	 * binary that has not written it yet gets a sync first.
+	 * Closes the leaves that a layout saved with the old navigator restores; the palette holds
+	 * the navigator now. It runs before the first sync removes the file, after which Obsidian
+	 * would leave an empty leaf. iterateAllLeaves skips a sidebar's hidden tabs.
 	 */
-	async openNavigator(): Promise<void> {
-		const { workspace } = this.app;
-		let file = this.app.vault.getFileByPath(NAVIGATOR);
-		if (!file) {
-			await this.sync(false);
-			file = await this.whenSeen(NAVIGATOR);
+	private closeOldNavigator(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType("bases")) {
+			if (leaf.getViewState().state?.file === OLD_NAVIGATOR) leaf.detach();
 		}
-		if (!file) {
-			new Notice(`Almagest: the sync wrote no ${NAVIGATOR}. Update the almagest binary, then sync again.`);
-			return;
-		}
-		// The view state, not the view: a leaf that Obsidian restored and has not shown yet is deferred.
-		let leaf: WorkspaceLeaf | null = null;
-		workspace.iterateAllLeaves((l) => {
-			const state = l.getViewState();
-			if (!leaf && l.getRoot() === workspace.rightSplit && state.type === BASES_VIEW && state.state?.file === NAVIGATOR) leaf = l;
-		});
-		if (leaf) {
-			await (leaf as WorkspaceLeaf).loadIfDeferred();
-		} else {
-			leaf = workspace.getRightLeaf(false);
-			if (!leaf) return;
-			await leaf.openFile(file, { active: false });
-		}
-		await workspace.revealLeaf(leaf);
-	}
-
-	/**
-	 * Moves the navigator out of every leaf outside the sidebars, where its Base reads itself
-	 * and shows nothing: the leaf shows its last file again, or closes, and the navigator
-	 * opens in the right sidebar.
-	 */
-	private async moveNavigator(): Promise<void> {
-		if (this.movingNavigator) return;
-		const { workspace } = this.app;
-		const stray: WorkspaceLeaf[] = [];
-		workspace.iterateAllLeaves((l) => {
-			const root = l.getRoot();
-			if (root === workspace.leftSplit || root === workspace.rightSplit) return;
-			const state = l.getViewState();
-			const file: unknown = state.state?.file;
-			if (state.type === BASES_VIEW && file === NAVIGATOR) stray.push(l);
-			else if (typeof file === "string") this.shown.set(l, file);
-		});
-		if (!stray.length) return;
-		this.movingNavigator = true;
-		try {
-			for (const leaf of stray) {
-				const last = this.shown.get(leaf);
-				const file = last ? this.app.vault.getFileByPath(last) : null;
-				if (file) await leaf.openFile(file);
-				else leaf.detach();
-			}
-			await this.openNavigator();
-		} finally {
-			this.movingNavigator = false;
-		}
-		new Notice("Almagest: the navigator shows the neighbors of the note you read, so it opens in the right sidebar.");
 	}
 
 	/** A file once Obsidian sees it, or null after a while: a file the binary just wrote takes a moment. */

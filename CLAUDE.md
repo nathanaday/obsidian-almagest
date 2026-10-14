@@ -41,7 +41,8 @@ repository. This file holds what the code and the README do not say.
   home: for layout 7 (11.0) a Migrate page, whose dry run (`vault migrate --dry-run`)
   counts what moves and whose button runs `vault migrate`; for any other, the update.
   It follows `Almagest.md`'s metadata, so a migration in a terminal clears the notice too.
-  `vault migrate` came with protocol 2, so a binary of protocol 1 is named for update.
+  `vault migrate` came with protocol 2 and `neighbors` with protocol 3, so a binary of an
+  older protocol is named for update.
 - **Duet hosts the agents when the user chooses it, and Almagest works without it.**
   Almagest does not copy Duet's code: two copies would bind two Yjs hubs to one editor
   and both wrap `Vault.modify`. With `conversations: "duet"` (the default) and Duet on,
@@ -63,18 +64,17 @@ repository. This file holds what the code and the README do not say.
   agent. Otherwise the selection becomes `[[Title|phrase]]` at once, and Wikify's Create
   path starts the draft with `makeTopicMessage`. Neither writes a link into `changes/`,
   `tool/sessions/`, `wiki-view/`, `tool/trash/`, or the originals (`linkBlocked`).
-- **The navigator is a Base in the right sidebar.** The binary writes
-  `wiki-view/View · Navigator.base`. "Open the navigator", a command and an action on the
-  palette's Library page, shows it in a right-sidebar leaf, where the Base's `this` is the
-  open note. It reuses a leaf only in the right split whose view state is a Base of that
-  file: the backlinks pane follows the same file, a main tab would read the Base itself,
-  and a leaf that Obsidian restored at start is deferred, with no view yet. When the file
-  is missing, it runs a views sync first. A navigator that opens in any leaf outside the
-  sidebars (from the file explorer, a link, or a layout saved that way) moves to the
-  right sidebar (`moveNavigator`, on `file-open` and `layout-change`): the leaf shows its
-  last file again, or closes, and a notice says why. `layout-change` comes after a pause,
-  so `file-open` records each leaf's file too. The move acts only on a leaf of the
-  plugin's own file.
+- **The navigator is a page of the palette.** Its row sits with This note. It runs
+  `almagest neighbors <id>` (protocol 3) for the open document, at each `file-open` and
+  each status refresh, and only the last read lands (`navReads`); a file outside
+  `tool/source-core/documents/`, or one with no `id`, has none. `navstate.ts` holds the
+  pure parts. Its links open in the editor, and the navigator follows. There is no
+  command: the palette is the one way in. The navigator was a Base in `wiki-view/`
+  until 11.1; at layout ready, before the first sync removes that file, the plugin
+  closes every leaf that a saved layout restores with it (`closeOldNavigator`). After the
+  removal Obsidian would turn such a leaf into an empty one, which the plugin cannot
+  tell from any other. It finds the leaves with `getLeavesOfType`, since
+  `iterateAllLeaves` skips a sidebar's hidden tabs (Obsidian 1.14.4).
 - **A terminal launch fails where no one sees it** (osascript and `open` exit after the
   spawn), so `openTerminal` checks for the app first. `scripts/probe-launch.mjs` opens a
   real terminal with a probe; record each result in TESTED.md.
