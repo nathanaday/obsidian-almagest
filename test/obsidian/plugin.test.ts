@@ -444,6 +444,27 @@ describe("Almagest in Obsidian", () => {
 			}, file);
 		const palette = await openPalette(o);
 		await open("wiki-view/View · Home.md");
+		// Home is Bases: the frontmatter they read stays hidden, and Start here counts what lies under each root.
+		const homeState = () =>
+			o.page.evaluate(() => {
+				const leaf = (window as any).app.workspace.getLeavesOfType("markdown").find((l: any) => l.view.file?.path === "wiki-view/View · Home.md");
+				const el = leaf?.view.containerEl as HTMLElement | undefined;
+				const mode = leaf?.getViewState().state?.mode;
+				const meta = el?.querySelector(mode === "preview" ? ".markdown-preview-view .metadata-container" : ".markdown-source-view .metadata-container");
+				// A Base in the reading view renders once it scrolls into view.
+				el?.querySelector('.markdown-preview-view h2[data-heading="Start here"]')?.scrollIntoView();
+				const start = [...(el?.querySelectorAll(".markdown-preview-view .bases-view") ?? [])].map((v) => (v as HTMLElement).innerText).find((t) => t.includes("Machine Learning")) ?? "";
+				return { mode, hidden: !!meta && getComputedStyle(meta).display === "none", start: start.replace(/\s+/g, " ") };
+			});
+		await until("Home's properties hidden while it is edited", async () => (await homeState()).hidden, { describe: async () => JSON.stringify(await homeState()) });
+		await o.page.evaluate(async () => {
+			const leaf = (window as any).app.workspace.getLeavesOfType("markdown").find((l: any) => l.view.file?.path === "wiki-view/View · Home.md");
+			await leaf.setViewState({ ...leaf.getViewState(), state: { ...leaf.getViewState().state, mode: "preview" } });
+		});
+		await until("Home's Start here, read", async () => {
+			const h = await homeState();
+			return h.hidden && / Machine Learning 7 /.test(` ${h.start} `);
+		}, { describe: async () => JSON.stringify(await homeState()) });
 		expect(await line(palette, "navigator")).toBe("Open a wiki document");
 		await goTo(palette, "navigator");
 		// A note that is no document says where to start, with a link to Home.

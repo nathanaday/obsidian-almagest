@@ -92,6 +92,12 @@
 	gap: var(--size-4-2);
 }
 
+/* Home: its frontmatter holds what its Bases read, by path; the page shows the Bases. Obsidian shows properties by these variables. */
+.almagest-home {
+	--metadata-display-editing: none;
+	--metadata-display-reading: none;
+}
+
 /*
  * A change document: the note's cssclass almagest-change, on Obsidian's reading view and on
  * its editor. The widget card leads, the Summary reads as a list of operations, and the

@@ -34,7 +34,10 @@ repository. This file holds what the code and the README do not say.
   the `colorFolders` setting, which puts the class `almagest-folder-colors` on the body;
   the end-to-end test checks that its rules reach nothing else, and nothing when it is off. A change note's
   `cssclasses` value (`almagest-change`) styles the note itself, so the widget's class
-  is `almagest-change-card`.
+  is `almagest-change-card`. Home's (`almagest-home`) hides its frontmatter, which only
+  its Bases read, through Obsidian's `--metadata-display-editing` and
+  `--metadata-display-reading`: Obsidian's own rules for properties outrank a plain
+  `display` (1.14.4).
 - **The plugin acts only in a vault of its layout.** It reads `layout` from
   `Almagest.md` (`LAYOUT`, 8). In a vault of another layout it runs no sync and no
   snapshot, shows one notice, and the palette shows what the vault needs in place of its
