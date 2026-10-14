@@ -321,6 +321,12 @@ export default class AlmagestPlugin extends Plugin {
 	}
 
 	/** Says, until the layout changes or the user closes it, what a vault of another layout needs. */
+	/** Hides the notice that asks for a migration: the palette's migration just ran. */
+	hideLayoutNotice(): void {
+		this.layoutNotice?.hide();
+		this.layoutNotice = null;
+	}
+
 	private checkLayout(): void {
 		this.layoutNotice?.hide();
 		this.layoutNotice = null;

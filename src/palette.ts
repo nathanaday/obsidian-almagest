@@ -249,6 +249,7 @@ export class PaletteView extends ItemView {
 
 	private async migrate(): Promise<void> {
 		const { migration } = await this.plugin.almagest<{ migration: Migration }>(["vault", "migrate"]);
+		this.plugin.hideLayoutNotice();
 		new Notice(`Almagest: migrated the vault in one commit: ${plural(migration.moved.length, "file", "files")} moved into ${TOOL}/. Start a new agent session in the vault.`, 10_000);
 	}
 
